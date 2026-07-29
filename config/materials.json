@@ -46,13 +46,13 @@
   {
     "id": "iron_ore",
     "nameZh": "鐵礦砂",
-    "nameEn": "Iron Ore",
+    "nameEn": "Iron Ore, CFR Spot",
     "currency": "USD",
-    "unit": "公噸(MT)",
-    "worldBankColumn": "Iron ore",
+    "unit": "乾公噸單位(dmtu)",
+    "worldBankColumn": "Iron ore, cfr spot",
     "fredSeriesCode": "PIORECRUSDM",
     "isLmeDerived": false,
-    "attributionNote": "資料提供：World Bank Pink Sheet（62%鐵含量到岸價格式）。"
+    "attributionNote": "資料提供：World Bank Pink Sheet；品項為Iron ore, cfr spot，原始單位為美元／乾公噸單位(dmtu)。"
   },
   {
     "id": "crude_oil",
@@ -63,17 +63,17 @@
     "worldBankColumn": "Crude oil, Brent",
     "fredSeriesCode": "MCOILBRENTEU",
     "isLmeDerived": false,
-    "attributionNote": "資料提供：World Bank Pink Sheet（布蘭特原油Brent格式）。"
+    "attributionNote": "資料提供：World Bank Pink Sheet；品項為布蘭特原油(Brent)。"
   },
   {
     "id": "natural_gas",
     "nameZh": "天然氣",
-    "nameEn": "Natural Gas, U.S.",
+    "nameEn": "Natural Gas, US",
     "currency": "USD",
     "unit": "MMBtu",
-    "worldBankColumn": "Natural gas, U.S.",
+    "worldBankColumn": "Natural gas, US",
     "fredSeriesCode": "MHHNGSP",
     "isLmeDerived": false,
-    "attributionNote": "資料提供：World Bank Pink Sheet（Henry Hub天然氣格式）。"
+    "attributionNote": "資料提供：World Bank Pink Sheet；品項為Natural gas, US，原始單位為美元／MMBtu。"
   }
 ]
