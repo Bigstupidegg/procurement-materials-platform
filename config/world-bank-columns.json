@@ -1,56 +1,56 @@
 {
+  "landingPageUrl": "https://www.worldbank.org/en/research/commodity-markets",
+  "fallbackMonthlyWorkbookUrl": "https://thedocs.worldbank.org/en/doc/74e8be41ceb20fa0da750cda2f6b9e4e-0050012026/related/CMO-Historical-Data-Monthly.xlsx",
   "sourceUrlAllowlistDomains": [
     "thedocs.worldbank.org",
     "pubdocs.worldbank.org"
   ],
   "sheetName": "Monthly Prices",
-  "headerRow": 6,
-  "dateColumnHeader": "Unnamed: 0",
+  "updatedTextRow": 4,
+  "headerRow": 5,
+  "unitRow": 6,
+  "dataStartRow": 7,
+  "periodColumnIndex": 1,
   "expectedColumns": [
     "Copper",
     "Zinc",
     "Aluminum",
     "Nickel",
-    "Iron ore",
+    "Iron ore, cfr spot",
     "Crude oil, Brent",
-    "Natural gas, U.S."
+    "Natural gas, US"
   ],
   "columnAliases": {
     "Copper": [
-      "Copper",
       "Copper, $/mt",
       "Copper ($/mt)"
     ],
     "Zinc": [
-      "Zinc",
       "Zinc, $/mt",
       "Zinc ($/mt)"
     ],
     "Aluminum": [
-      "Aluminum",
       "Aluminium",
       "Aluminum, $/mt"
     ],
     "Nickel": [
-      "Nickel",
       "Nickel, $/mt",
       "Nickel ($/mt)"
     ],
-    "Iron ore": [
+    "Iron ore, cfr spot": [
       "Iron ore",
-      "Iron ore, cfr spot",
-      "Iron Ore"
+      "Iron Ore",
+      "Iron Ore, CFR Spot"
     ],
     "Crude oil, Brent": [
-      "Crude oil, Brent",
       "Brent",
       "Crude Oil, Brent"
     ],
-    "Natural gas, U.S.": [
+    "Natural gas, US": [
       "Natural gas, U.S.",
       "Natural gas US",
       "Natural Gas, U.S."
     ]
   },
-  "notes": "第二階段設定草案；正式串接前需以最新World Bank官方Excel人工核對一次工作表、標頭列及欄名。"
+  "notes": "已依2026-07-29診斷報告核對：Monthly Prices第5列為欄名、第6列為單位、第7列起為月份資料。"
 }
