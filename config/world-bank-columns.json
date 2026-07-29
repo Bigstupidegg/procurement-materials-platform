@@ -1,0 +1,56 @@
+{
+  "sourceUrlAllowlistDomains": [
+    "thedocs.worldbank.org",
+    "pubdocs.worldbank.org"
+  ],
+  "sheetName": "Monthly Prices",
+  "headerRow": 6,
+  "dateColumnHeader": "Unnamed: 0",
+  "expectedColumns": [
+    "Copper",
+    "Zinc",
+    "Aluminum",
+    "Nickel",
+    "Iron ore",
+    "Crude oil, Brent",
+    "Natural gas, U.S."
+  ],
+  "columnAliases": {
+    "Copper": [
+      "Copper",
+      "Copper, $/mt",
+      "Copper ($/mt)"
+    ],
+    "Zinc": [
+      "Zinc",
+      "Zinc, $/mt",
+      "Zinc ($/mt)"
+    ],
+    "Aluminum": [
+      "Aluminum",
+      "Aluminium",
+      "Aluminum, $/mt"
+    ],
+    "Nickel": [
+      "Nickel",
+      "Nickel, $/mt",
+      "Nickel ($/mt)"
+    ],
+    "Iron ore": [
+      "Iron ore",
+      "Iron ore, cfr spot",
+      "Iron Ore"
+    ],
+    "Crude oil, Brent": [
+      "Crude oil, Brent",
+      "Brent",
+      "Crude Oil, Brent"
+    ],
+    "Natural gas, U.S.": [
+      "Natural gas, U.S.",
+      "Natural gas US",
+      "Natural Gas, U.S."
+    ]
+  },
+  "notes": "第二階段設定草案；正式串接前需以最新World Bank官方Excel人工核對一次工作表、標頭列及欄名。"
+}

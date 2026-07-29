@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-29T06:50:00Z",
+  "source": "DEMO_SEED",
+  "intendedProvider": "FRED",
+  "isRealData": false,
+  "label": "FRED備援／研究比較資料（尚未串接）",
+  "series": {},
+  "failedSeries": []
+}

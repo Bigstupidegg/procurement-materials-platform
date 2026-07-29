@@ -1,0 +1,79 @@
+[
+  {
+    "id": "zinc",
+    "nameZh": "鋅",
+    "nameEn": "Zinc",
+    "currency": "USD",
+    "unit": "公噸(MT)",
+    "worldBankColumn": "Zinc",
+    "fredSeriesCode": "PZINCUSDM",
+    "isLmeDerived": true,
+    "attributionNote": "資料提供：World Bank Pink Sheet；價格基準說明：LME金屬價格之月度彙整資料。"
+  },
+  {
+    "id": "copper",
+    "nameZh": "銅",
+    "nameEn": "Copper",
+    "currency": "USD",
+    "unit": "公噸(MT)",
+    "worldBankColumn": "Copper",
+    "fredSeriesCode": "PCOPPUSDM",
+    "isLmeDerived": true,
+    "attributionNote": "資料提供：World Bank Pink Sheet；價格基準說明：LME金屬價格之月度彙整資料。"
+  },
+  {
+    "id": "aluminium",
+    "nameZh": "鋁",
+    "nameEn": "Aluminium",
+    "currency": "USD",
+    "unit": "公噸(MT)",
+    "worldBankColumn": "Aluminum",
+    "fredSeriesCode": "PALUMUSDM",
+    "isLmeDerived": true,
+    "attributionNote": "資料提供：World Bank Pink Sheet；價格基準說明：LME金屬價格之月度彙整資料。"
+  },
+  {
+    "id": "nickel",
+    "nameZh": "鎳",
+    "nameEn": "Nickel",
+    "currency": "USD",
+    "unit": "公噸(MT)",
+    "worldBankColumn": "Nickel",
+    "fredSeriesCode": "PNICKUSDM",
+    "isLmeDerived": true,
+    "attributionNote": "資料提供：World Bank Pink Sheet；價格基準說明：LME金屬價格之月度彙整資料。"
+  },
+  {
+    "id": "iron_ore",
+    "nameZh": "鐵礦砂",
+    "nameEn": "Iron Ore",
+    "currency": "USD",
+    "unit": "公噸(MT)",
+    "worldBankColumn": "Iron ore",
+    "fredSeriesCode": "PIORECRUSDM",
+    "isLmeDerived": false,
+    "attributionNote": "資料提供：World Bank Pink Sheet（62%鐵含量到岸價格式）。"
+  },
+  {
+    "id": "crude_oil",
+    "nameZh": "原油",
+    "nameEn": "Crude Oil, Brent",
+    "currency": "USD",
+    "unit": "桶(bbl)",
+    "worldBankColumn": "Crude oil, Brent",
+    "fredSeriesCode": "MCOILBRENTEU",
+    "isLmeDerived": false,
+    "attributionNote": "資料提供：World Bank Pink Sheet（布蘭特原油Brent格式）。"
+  },
+  {
+    "id": "natural_gas",
+    "nameZh": "天然氣",
+    "nameEn": "Natural Gas, U.S.",
+    "currency": "USD",
+    "unit": "MMBtu",
+    "worldBankColumn": "Natural gas, U.S.",
+    "fredSeriesCode": "MHHNGSP",
+    "isLmeDerived": false,
+    "attributionNote": "資料提供：World Bank Pink Sheet（Henry Hub天然氣格式）。"
+  }
+]

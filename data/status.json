@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-29T06:50:00Z",
+  "dataMode": "DEMO_NOT_CONNECTED",
+  "worldBank": {
+    "status": "NOT_CONFIGURED",
+    "lastSuccessAt": null
+  },
+  "fred": {
+    "status": "NOT_CONFIGURED",
+    "lastSuccessAt": null
+  },
+  "isStale": true,
+  "warnings": [
+    "第二階段僅完成GitHub Pages靜態結構，尚未加入GitHub Actions與真實資料同步。"
+  ]
+}
