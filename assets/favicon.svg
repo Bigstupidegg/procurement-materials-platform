@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="International Materials">
+  <rect width="64" height="64" rx="14" fill="#0B5769"/>
+  <path d="M14 18h8v28h-8zM27 18h8l7 14 7-14h8v28h-8V31l-7 13-7-13v15h-8z" fill="#FFFFFF"/>
+  <path d="M14 50h43" stroke="#F2B33D" stroke-width="4" stroke-linecap="round"/>
+</svg>
