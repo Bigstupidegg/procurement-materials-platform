@@ -1,0 +1,80 @@
+name: Update World Bank Data
+
+on:
+  workflow_dispatch:
+
+  schedule:
+    - cron: "17 9 * * *"
+      timezone: "Asia/Taipei"
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  update-and-deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: scripts/requirements.txt
+
+      - name: Install dependencies
+        run: python -m pip install -r scripts/requirements.txt
+
+      - name: Run World Bank parser tests
+        run: python -m unittest discover -s tests -p "test_world_bank*.py" -v
+
+      - name: Sync World Bank Pink Sheet
+        run: python scripts/sync_world_bank.py
+
+      - name: Commit changed data
+        run: |
+          git config user.name "commodity-data-bot"
+          git config user.email "commodity-data-bot@users.noreply.github.com"
+          git add data/world-bank.json data/status.json
+          if git diff --cached --quiet; then
+            echo "World Bank data unchanged; no commit required."
+          else
+            git commit -m "Update World Bank commodity data"
+            git push
+          fi
+
+      # GITHUB_TOKEN所產生的push不會再觸發另一個workflow，
+      # 因此同一個workflow直接完成Pages部署。
+      - name: Prepare website files
+        run: |
+          mkdir -p _site
+          cp index.html _site/
+          cp -r assets _site/
+          cp -r data _site/
+          touch _site/.nojekyll
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+
+      - name: Deploy GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
