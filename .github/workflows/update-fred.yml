@@ -1,0 +1,116 @@
+name: Update FRED Comparison Data
+
+on:
+  workflow_dispatch:
+
+  schedule:
+    - cron: "47 9 * * *"
+      timezone: "Asia/Taipei"
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  update-and-deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Check FRED API key
+        env:
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+        run: |
+          if [ -z "$FRED_API_KEY" ]; then
+            echo "缺少Repository Secret：FRED_API_KEY"
+            exit 1
+          fi
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: scripts/requirements.txt
+
+      - name: Install dependencies
+        run: python -m pip install -r scripts/requirements.txt
+
+      - name: Run FRED and comparison tests
+        run: |
+          python -m unittest discover -s tests -p "test_fred*.py" -v
+          python -m unittest discover -s tests -p "test_comparison.py" -v
+
+      - name: Sync FRED monthly series
+        env:
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+        run: python scripts/sync_fred.py
+
+      - name: Build World Bank and FRED comparison
+        run: python scripts/build_comparison.py
+
+      - name: Commit changed data
+        run: |
+          git config user.name "commodity-data-bot"
+          git config user.email "commodity-data-bot@users.noreply.github.com"
+          git add data/fred.json data/comparison.json data/status.json
+          if git diff --cached --quiet; then
+            echo "FRED comparison data unchanged; no commit required."
+          else
+            git commit -m "Update FRED comparison data"
+            git push
+          fi
+
+      # GITHUB_TOKEN產生的push不會再觸發另一個workflow，
+      # 因此同一個workflow直接完成Pages部署。
+      - name: Prepare website files
+        run: |
+          mkdir -p _site
+          cp index.html _site/
+          cp -r assets _site/
+          cp -r data _site/
+          touch _site/.nojekyll
+          python - <<'PY'
+          from pathlib import Path
+          path = Path("_site/index.html")
+          html = path.read_text(encoding="utf-8")
+
+          favicon = '  <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">\n'
+          if './assets/favicon.svg' not in html:
+              if '</head>' not in html:
+                  raise SystemExit("找不到head結尾，無法加入favicon")
+              html = html.replace('</head>', favicon + '</head>', 1)
+
+          original = '<script src="./assets/app.js"></script>'
+          live = original + '\n<script src="./assets/world-bank-live.js"></script>'
+          if live not in html:
+              if original not in html:
+                  raise SystemExit("找不到app.js引用，無法加入World Bank前端")
+              html = html.replace(original, live, 1)
+
+          path.write_text(html, encoding="utf-8")
+          PY
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+
+      - name: Deploy GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
