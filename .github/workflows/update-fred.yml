@@ -3,10 +3,6 @@ name: Update FRED Comparison Data
 on:
   workflow_dispatch:
 
-  schedule:
-    - cron: "47 9 * * *"
-      timezone: "Asia/Taipei"
-
 permissions:
   contents: write
   pages: write
