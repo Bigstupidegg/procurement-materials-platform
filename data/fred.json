@@ -1,15 +1,17 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-04T02:12:51Z",
+  "generatedAt": "2026-08-04T02:38:53Z",
   "source": "FRED",
   "isRealData": true,
   "frequency": "monthly",
   "role": "INDEPENDENT_COMPARISON_ONLY",
   "dataset": {
     "name": "Federal Reserve Economic Data (FRED)",
-    "downloadMethod": "PUBLIC_GRAPH_CSV_EXPORT",
-    "graphCsvEndpoint": "https://fred.stlouisfed.org/graph/fredgraph.csv",
-    "apiKeyRequired": false,
+    "downloadMethod": "FRED_API_JSON",
+    "apiVersion": "v1",
+    "seriesEndpoint": "https://api.stlouisfed.org/fred/series",
+    "observationsEndpoint": "https://api.stlouisfed.org/fred/series/observations",
+    "apiKeyRequired": true,
     "seriesCount": 7,
     "latestCommonPeriod": "2026-06",
     "latestAvailablePeriod": "2026-06",
@@ -32,27 +34,18 @@
       "displayUnit": "公噸(MT)",
       "fredSeriesId": "PZINCUSDM",
       "fredSeriesUrl": "https://fred.stlouisfed.org/series/PZINCUSDM",
-      "retrievedVia": "FRED_PUBLIC_GRAPH_CSV_EXPORT",
-      "retrievedAt": "2026-08-04T02:12:51Z",
-      "title": "Zinc (PZINCUSDM)",
+      "retrievedVia": "FRED_API_JSON",
+      "retrievedAt": "2026-08-04T02:38:53Z",
+      "title": "Global price of Zinc",
       "frequency": "Monthly",
       "frequencyShort": "M",
       "units": "U.S. Dollars per Metric Ton",
-      "unitsShort": "USD/mt",
+      "unitsShort": "U.S. $ per Metric Ton",
       "seasonalAdjustment": "Not Seasonally Adjusted",
-      "lastUpdated": null,
-      "observationStart": "1992-01",
-      "observationEnd": "2026-06",
-      "notes": "觀測值取自FRED公開圖表CSV匯出；單位由專案設定保存並在比較前再次驗證。",
-      "download": {
-        "requestedUrl": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=PZINCUSDM&cosd=1960-01-01",
-        "finalUrl": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=PZINCUSDM&cosd=1960-01-01",
-        "httpStatus": 200,
-        "contentType": "application/csv",
-        "fileSizeBytes": 12384,
-        "etag": null,
-        "lastModified": null
-      },
+      "lastUpdated": "2026-07-13 10:40:15-05",
+      "observationStart": "1992-01-01",
+      "observationEnd": "2026-06-01",
+      "notes": "Value represents the benchmark prices which are representative of the global market. They are determined by the largest exporter of a given commodity. Prices are period averages in nominal U.S. dollars.\n\nCopyright © 2016, International Monetary Fund. Reprinted with permission. Complete terms of use and contact details are available at http://www.imf.org/external/terms.htm.",
       "observationCount": 414,
       "firstPeriod": "1992-01",
       "latestPeriod": "2026-06",
@@ -631,7 +624,7 @@
         },
         {
           "period": "2003-12",
-          "value": 976.7571428571428
+          "value": 976.7571428571429
         },
         {
           "period": "2004-01",
@@ -663,11 +656,11 @@
         },
         {
           "period": "2004-08",
-          "value": 976.7738095238096
+          "value": 976.7738095238095
         },
         {
           "period": "2004-09",
-          "value": 980.0022727272728
+          "value": 980.0022727272727
         },
         {
           "period": "2004-10",
@@ -755,7 +748,7 @@
         },
         {
           "period": "2006-07",
-          "value": 3320.7380952380954
+          "value": 3320.738095238095
         },
         {
           "period": "2006-08",
@@ -775,7 +768,7 @@
         },
         {
           "period": "2006-12",
-          "value": 4381.4473684210525
+          "value": 4381.447368421053
         },
         {
           "period": "2007-01",
@@ -795,19 +788,19 @@
         },
         {
           "period": "2007-05",
-          "value": 3847.5238095238096
+          "value": 3847.52380952381
         },
         {
           "period": "2007-06",
-          "value": 3628.6547619047615
+          "value": 3628.654761904762
         },
         {
           "period": "2007-07",
-          "value": 3546.2954545454554
+          "value": 3546.295454545455
         },
         {
           "period": "2007-08",
-          "value": 3244.1704545454554
+          "value": 3244.170454545455
         },
         {
           "period": "2007-09",
@@ -815,7 +808,7 @@
         },
         {
           "period": "2007-10",
-          "value": 2979.9891304347834
+          "value": 2979.989130434783
         },
         {
           "period": "2007-11",
@@ -851,7 +844,7 @@
         },
         {
           "period": "2008-07",
-          "value": 1856.4456521739128
+          "value": 1856.445652173913
         },
         {
           "period": "2008-08",
@@ -907,7 +900,7 @@
         },
         {
           "period": "2009-09",
-          "value": 1879.1477272727273
+          "value": 1879.147727272727
         },
         {
           "period": "2009-10",
@@ -915,7 +908,7 @@
         },
         {
           "period": "2009-11",
-          "value": 2196.5476190476193
+          "value": 2196.547619047619
         },
         {
           "period": "2009-12",
@@ -947,7 +940,7 @@
         },
         {
           "period": "2010-07",
-          "value": 1847.0272727272727
+          "value": 1847.027272727273
         },
         {
           "period": "2010-08",
@@ -959,11 +952,11 @@
         },
         {
           "period": "2010-10",
-          "value": 2373.5619047619048
+          "value": 2373.561904761905
         },
         {
           "period": "2010-11",
-          "value": 2283.2954545454554
+          "value": 2283.295454545455
         },
         {
           "period": "2010-12",
@@ -1007,7 +1000,7 @@
         },
         {
           "period": "2011-10",
-          "value": 1871.4166666666672
+          "value": 1871.416666666667
         },
         {
           "period": "2011-11",
@@ -1059,15 +1052,15 @@
         },
         {
           "period": "2012-11",
-          "value": 1912.3977272727273
+          "value": 1912.397727272727
         },
         {
           "period": "2012-12",
-          "value": 2040.4289473684207
+          "value": 2040.428947368421
         },
         {
           "period": "2013-01",
-          "value": 2031.4090909090912
+          "value": 2031.409090909091
         },
         {
           "period": "2013-02",
@@ -1083,7 +1076,7 @@
         },
         {
           "period": "2013-05",
-          "value": 1831.0119047619048
+          "value": 1831.011904761905
         },
         {
           "period": "2013-06",
@@ -1091,11 +1084,11 @@
         },
         {
           "period": "2013-07",
-          "value": 1837.6195652173913
+          "value": 1837.619565217391
         },
         {
           "period": "2013-08",
-          "value": 1896.3928571428569
+          "value": 1896.392857142857
         },
         {
           "period": "2013-09",
@@ -1103,11 +1096,11 @@
         },
         {
           "period": "2013-10",
-          "value": 1884.8369565217392
+          "value": 1884.836956521739
         },
         {
           "period": "2013-11",
-          "value": 1866.4166666666672
+          "value": 1866.416666666667
         },
         {
           "period": "2013-12",
@@ -1159,11 +1152,11 @@
         },
         {
           "period": "2014-12",
-          "value": 2175.7619047619046
+          "value": 2175.761904761905
         },
         {
           "period": "2015-01",
-          "value": 2113.0476190476193
+          "value": 2113.047619047619
         },
         {
           "period": "2015-02",
@@ -1171,7 +1164,7 @@
         },
         {
           "period": "2015-03",
-          "value": 2028.7272727272727
+          "value": 2028.727272727273
         },
         {
           "period": "2015-04",
@@ -1251,7 +1244,7 @@
         },
         {
           "period": "2016-11",
-          "value": 2566.2045454545446
+          "value": 2566.204545454545
         },
         {
           "period": "2016-12",
@@ -1259,7 +1252,7 @@
         },
         {
           "period": "2017-01",
-          "value": 2714.7976190476193
+          "value": 2714.797619047619
         },
         {
           "period": "2017-02",
@@ -1271,7 +1264,7 @@
         },
         {
           "period": "2017-04",
-          "value": 2614.9166666666674
+          "value": 2614.916666666667
         },
         {
           "period": "2017-05",
@@ -1351,11 +1344,11 @@
         },
         {
           "period": "2018-12",
-          "value": 2616.2894736842113
+          "value": 2616.289473684211
         },
         {
           "period": "2019-01",
-          "value": 2569.7045454545446
+          "value": 2569.704545454545
         },
         {
           "period": "2019-02",
@@ -1379,11 +1372,11 @@
         },
         {
           "period": "2019-07",
-          "value": 2446.5108695652166
+          "value": 2446.510869565217
         },
         {
           "period": "2019-08",
-          "value": 2273.0119047619046
+          "value": 2273.011904761905
         },
         {
           "period": "2019-09",
@@ -1419,11 +1412,11 @@
         },
         {
           "period": "2020-05",
-          "value": 1975.3226315789473
+          "value": 1975.322631578947
         },
         {
           "period": "2020-06",
-          "value": 2025.7145454545448
+          "value": 2025.714545454545
         },
         {
           "period": "2020-07",
@@ -1439,7 +1432,7 @@
         },
         {
           "period": "2020-10",
-          "value": 2440.6522727272727
+          "value": 2440.652272727273
         },
         {
           "period": "2020-11",
@@ -1447,7 +1440,7 @@
         },
         {
           "period": "2020-12",
-          "value": 2779.8514285714286
+          "value": 2779.851428571429
         },
         {
           "period": "2021-01",
@@ -1459,7 +1452,7 @@
         },
         {
           "period": "2021-03",
-          "value": 2791.9369565217394
+          "value": 2791.936956521739
         },
         {
           "period": "2021-04",
@@ -1479,7 +1472,7 @@
         },
         {
           "period": "2021-08",
-          "value": 2987.9471428571433
+          "value": 2987.947142857143
         },
         {
           "period": "2021-09",
@@ -1487,7 +1480,7 @@
         },
         {
           "period": "2021-10",
-          "value": 3359.9123809523808
+          "value": 3359.912380952381
         },
         {
           "period": "2021-11",
@@ -1539,7 +1532,7 @@
         },
         {
           "period": "2022-11",
-          "value": 2938.9204545454554
+          "value": 2938.920454545455
         },
         {
           "period": "2022-12",
@@ -1595,7 +1588,7 @@
         },
         {
           "period": "2024-01",
-          "value": 2520.9391304347832
+          "value": 2520.939130434783
         },
         {
           "period": "2024-02",
@@ -1607,11 +1600,11 @@
         },
         {
           "period": "2024-04",
-          "value": 2725.5595454545446
+          "value": 2725.559545454545
         },
         {
           "period": "2024-05",
-          "value": 2955.1882608695646
+          "value": 2955.188260869565
         },
         {
           "period": "2024-06",
@@ -1651,7 +1644,7 @@
         },
         {
           "period": "2025-03",
-          "value": 2886.7619047619046
+          "value": 2886.761904761905
         },
         {
           "period": "2025-04",
@@ -1699,7 +1692,7 @@
         },
         {
           "period": "2026-03",
-          "value": 3182.2609090909086
+          "value": 3182.260909090909
         },
         {
           "period": "2026-04",
@@ -1711,7 +1704,7 @@
         },
         {
           "period": "2026-06",
-          "value": 3538.7427272727273
+          "value": 3538.742727272727
         }
       ]
     },
@@ -1723,27 +1716,18 @@
       "displayUnit": "公噸(MT)",
       "fredSeriesId": "PCOPPUSDM",
       "fredSeriesUrl": "https://fred.stlouisfed.org/series/PCOPPUSDM",
-      "retrievedVia": "FRED_PUBLIC_GRAPH_CSV_EXPORT",
-      "retrievedAt": "2026-08-04T02:12:51Z",
-      "title": "Copper (PCOPPUSDM)",
+      "retrievedVia": "FRED_API_JSON",
+      "retrievedAt": "2026-08-04T02:38:53Z",
+      "title": "Global price of Copper",
       "frequency": "Monthly",
       "frequencyShort": "M",
       "units": "U.S. Dollars per Metric Ton",
-      "unitsShort": "USD/mt",
+      "unitsShort": "U.S. $ per Metric Ton",
       "seasonalAdjustment": "Not Seasonally Adjusted",
-      "lastUpdated": null,
-      "observationStart": "1992-01",
-      "observationEnd": "2026-06",
-      "notes": "觀測值取自FRED公開圖表CSV匯出；單位由專案設定保存並在比較前再次驗證。",
-      "download": {
-        "requestedUrl": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=PCOPPUSDM&cosd=1960-01-01",
-        "finalUrl": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=PCOPPUSDM&cosd=1960-01-01",
-        "httpStatus": 200,
-        "contentType": "application/csv",
-        "fileSizeBytes": 12046,
-        "etag": null,
-        "lastModified": null
-      },
+      "lastUpdated": "2026-07-13 10:40:26-05",
+      "observationStart": "1992-01-01",
+      "observationEnd": "2026-06-01",
+      "notes": "Value represents the benchmark prices which are representative of the global market. They are determined by the largest exporter of a given commodity. Prices are period averages in nominal U.S. dollars.\n\nCopyright © 2016, International Monetary Fund. Reprinted with permission. Complete terms of use and contact details are available at http://www.imf.org/external/terms.htm.",
       "observationCount": 414,
       "firstPeriod": "1992-01",
       "latestPeriod": "2026-06",
@@ -2682,7 +2666,7 @@
         },
         {
           "period": "2011-06",
-          "value": 9066.852272727272
+          "value": 9066.852272727274
         },
         {
           "period": "2011-07",
@@ -3174,7 +3158,7 @@
         },
         {
           "period": "2021-09",
-          "value": 9324.709545454543
+          "value": 9324.709545454545
         },
         {
           "period": "2021-10",
@@ -3206,7 +3190,7 @@
         },
         {
           "period": "2022-05",
-          "value": 9395.027272727271
+          "value": 9395.027272727273
         },
         {
           "period": "2022-06",
@@ -3310,7 +3294,7 @@
         },
         {
           "period": "2024-07",
-          "value": 9385.31304347826
+          "value": 9385.313043478262
         },
         {
           "period": "2024-08",
@@ -3326,7 +3310,7 @@
         },
         {
           "period": "2024-11",
-          "value": 9075.727142857144
+          "value": 9075.727142857142
         },
         {
           "period": "2024-12",
@@ -3342,7 +3326,7 @@
         },
         {
           "period": "2025-03",
-          "value": 9735.823333333332
+          "value": 9735.823333333334
         },
         {
           "period": "2025-04",
@@ -3414,27 +3398,18 @@
       "displayUnit": "公噸(MT)",
       "fredSeriesId": "PALUMUSDM",
       "fredSeriesUrl": "https://fred.stlouisfed.org/series/PALUMUSDM",
-      "retrievedVia": "FRED_PUBLIC_GRAPH_CSV_EXPORT",
-      "retrievedAt": "2026-08-04T02:12:51Z",
-      "title": "Aluminium (PALUMUSDM)",
+      "retrievedVia": "FRED_API_JSON",
+      "retrievedAt": "2026-08-04T02:38:53Z",
+      "title": "Global price of Aluminum",
       "frequency": "Monthly",
       "frequencyShort": "M",
       "units": "U.S. Dollars per Metric Ton",
-      "unitsShort": "USD/mt",
+      "unitsShort": "U.S. $ per Metric Ton",
       "seasonalAdjustment": "Not Seasonally Adjusted",
-      "lastUpdated": null,
-      "observationStart": "1992-01",
-      "observationEnd": "2026-06",
-      "notes": "觀測值取自FRED公開圖表CSV匯出；單位由專案設定保存並在比較前再次驗證。",
-      "download": {
-        "requestedUrl": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=PALUMUSDM&cosd=1960-01-01",
-        "finalUrl": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=PALUMUSDM&cosd=1960-01-01",
-        "httpStatus": 200,
-        "contentType": "application/csv",
-        "fileSizeBytes": 12033,
-        "etag": null,
-        "lastModified": null
-      },
+      "lastUpdated": "2026-07-13 10:40:32-05",
+      "observationStart": "1992-01-01",
+      "observationEnd": "2026-06-01",
+      "notes": "Value represents the benchmark prices which are representative of the global market. They are determined by the largest exporter of a given commodity. Prices are period averages in nominal U.S. dollars.\n\nCopyright © 2016, International Monetary Fund. Reprinted with permission. Complete terms of use and contact details are available at http://www.imf.org/external/terms.htm.",
       "observationCount": 414,
       "firstPeriod": "1992-01",
       "latestPeriod": "2026-06",
@@ -5105,27 +5080,18 @@
       "displayUnit": "公噸(MT)",
       "fredSeriesId": "PNICKUSDM",
       "fredSeriesUrl": "https://fred.stlouisfed.org/series/PNICKUSDM",
-      "retrievedVia": "FRED_PUBLIC_GRAPH_CSV_EXPORT",
-      "retrievedAt": "2026-08-04T02:12:51Z",
-      "title": "Nickel (PNICKUSDM)",
+      "retrievedVia": "FRED_API_JSON",
+      "retrievedAt": "2026-08-04T02:38:53Z",
+      "title": "Global price of Nickel",
       "frequency": "Monthly",
       "frequencyShort": "M",
       "units": "U.S. Dollars per Metric Ton",
-      "unitsShort": "USD/mt",
+      "unitsShort": "U.S. $ per Metric Ton",
       "seasonalAdjustment": "Not Seasonally Adjusted",
-      "lastUpdated": null,
-      "observationStart": "1992-01",
-      "observationEnd": "2026-06",
-      "notes": "觀測值取自FRED公開圖表CSV匯出；單位由專案設定保存並在比較前再次驗證。",
-      "download": {
-        "requestedUrl": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=PNICKUSDM&cosd=1960-01-01",
-        "finalUrl": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=PNICKUSDM&cosd=1960-01-01",
-        "httpStatus": 200,
-        "contentType": "application/csv",
-        "fileSizeBytes": 12292,
-        "etag": null,
-        "lastModified": null
-      },
+      "lastUpdated": "2026-07-13 10:40:22-05",
+      "observationStart": "1992-01-01",
+      "observationEnd": "2026-06-01",
+      "notes": "Value represents the benchmark prices which are representative of the global market. They are determined by the largest exporter of a given commodity. Prices are period averages in nominal U.S. dollars.\n\nCopyright © 2016, International Monetary Fund. Reprinted with permission. Complete terms of use and contact details are available at http://www.imf.org/external/terms.htm.",
       "observationCount": 414,
       "firstPeriod": "1992-01",
       "latestPeriod": "2026-06",
@@ -5692,7 +5658,7 @@
         },
         {
           "period": "2003-09",
-          "value": 9995.772727272728
+          "value": 9995.772727272726
         },
         {
           "period": "2003-10",
@@ -5816,7 +5782,7 @@
         },
         {
           "period": "2006-04",
-          "value": 18028.888888888887
+          "value": 18028.88888888889
         },
         {
           "period": "2006-05",
@@ -5828,7 +5794,7 @@
         },
         {
           "period": "2006-07",
-          "value": 26185.714285714286
+          "value": 26185.71428571429
         },
         {
           "period": "2006-08",
@@ -5864,7 +5830,7 @@
         },
         {
           "period": "2007-04",
-          "value": 49956.57894736841
+          "value": 49956.57894736842
         },
         {
           "period": "2007-05",
@@ -5900,7 +5866,7 @@
         },
         {
           "period": "2008-01",
-          "value": 27774.772727272728
+          "value": 27774.77272727273
         },
         {
           "period": "2008-02",
@@ -5956,7 +5922,7 @@
         },
         {
           "period": "2009-03",
-          "value": 9710.727272727272
+          "value": 9710.727272727274
         },
         {
           "period": "2009-04",
@@ -5984,7 +5950,7 @@
         },
         {
           "period": "2009-10",
-          "value": 18489.477272727272
+          "value": 18489.47727272727
         },
         {
           "period": "2009-11",
@@ -6020,11 +5986,11 @@
         },
         {
           "period": "2010-07",
-          "value": 19548.522727272728
+          "value": 19548.52272727273
         },
         {
           "period": "2010-08",
-          "value": 21448.785714285714
+          "value": 21448.78571428571
         },
         {
           "period": "2010-09",
@@ -6036,7 +6002,7 @@
         },
         {
           "period": "2010-11",
-          "value": 22836.227272727272
+          "value": 22836.22727272727
         },
         {
           "period": "2010-12",
@@ -6552,7 +6518,7 @@
         },
         {
           "period": "2021-08",
-          "value": 19141.296666666673
+          "value": 19141.29666666667
         },
         {
           "period": "2021-09",
@@ -6568,7 +6534,7 @@
         },
         {
           "period": "2021-12",
-          "value": 20015.548571428568
+          "value": 20015.54857142857
         },
         {
           "period": "2022-01",
@@ -6612,7 +6578,7 @@
         },
         {
           "period": "2022-11",
-          "value": 25562.697727272727
+          "value": 25562.69772727273
         },
         {
           "period": "2022-12",
@@ -6620,7 +6586,7 @@
         },
         {
           "period": "2023-01",
-          "value": 28271.490909090913
+          "value": 28271.49090909091
         },
         {
           "period": "2023-02",
@@ -6656,7 +6622,7 @@
         },
         {
           "period": "2023-10",
-          "value": 18264.035454545447
+          "value": 18264.03545454545
         },
         {
           "period": "2023-11",
@@ -6680,7 +6646,7 @@
         },
         {
           "period": "2024-04",
-          "value": 18132.364090909086
+          "value": 18132.36409090909
         },
         {
           "period": "2024-05",
@@ -6796,27 +6762,18 @@
       "displayUnit": "乾公噸單位(dmtu)",
       "fredSeriesId": "PIORECRUSDM",
       "fredSeriesUrl": "https://fred.stlouisfed.org/series/PIORECRUSDM",
-      "retrievedVia": "FRED_PUBLIC_GRAPH_CSV_EXPORT",
-      "retrievedAt": "2026-08-04T02:12:51Z",
-      "title": "Iron Ore, CFR Spot (PIORECRUSDM)",
+      "retrievedVia": "FRED_API_JSON",
+      "retrievedAt": "2026-08-04T02:38:53Z",
+      "title": "Global price of Iron Ore",
       "frequency": "Monthly",
       "frequencyShort": "M",
       "units": "U.S. Dollars per Metric Ton",
-      "unitsShort": "USD/mt",
+      "unitsShort": "U.S. $ per Metric Ton",
       "seasonalAdjustment": "Not Seasonally Adjusted",
-      "lastUpdated": null,
-      "observationStart": "1992-01",
-      "observationEnd": "2026-06",
-      "notes": "觀測值取自FRED公開圖表CSV匯出；單位由專案設定保存並在比較前再次驗證。",
-      "download": {
-        "requestedUrl": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=PIORECRUSDM&cosd=1960-01-01",
-        "finalUrl": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=PIORECRUSDM&cosd=1960-01-01",
-        "httpStatus": 200,
-        "contentType": "application/csv",
-        "fileSizeBytes": 12159,
-        "etag": null,
-        "lastModified": null
-      },
+      "lastUpdated": "2026-07-13 10:40:27-05",
+      "observationStart": "1992-01-01",
+      "observationEnd": "2026-06-01",
+      "notes": "Value represents the benchmark prices which are representative of the global market. They are determined by the largest exporter of a given commodity. Prices are period averages in nominal U.S. dollars.\n\nCopyright © 2016, International Monetary Fund. Reprinted with permission. Complete terms of use and contact details are available at http://www.imf.org/external/terms.htm.",
       "observationCount": 414,
       "firstPeriod": "1992-01",
       "latestPeriod": "2026-06",
@@ -7667,7 +7624,7 @@
         },
         {
           "period": "2009-08",
-          "value": 97.66666666666669
+          "value": 97.66666666666667
         },
         {
           "period": "2009-09",
@@ -7903,7 +7860,7 @@
         },
         {
           "period": "2014-07",
-          "value": 96.2608695652174
+          "value": 96.26086956521739
         },
         {
           "period": "2014-08",
@@ -8163,11 +8120,11 @@
         },
         {
           "period": "2019-12",
-          "value": 90.97727272727272
+          "value": 90.97727272727273
         },
         {
           "period": "2020-01",
-          "value": 95.21739130434784
+          "value": 95.21739130434783
         },
         {
           "period": "2020-02",
@@ -8183,7 +8140,7 @@
         },
         {
           "period": "2020-05",
-          "value": 91.33333333333331
+          "value": 91.33333333333333
         },
         {
           "period": "2020-06",
@@ -8239,7 +8196,7 @@
         },
         {
           "period": "2021-07",
-          "value": 214.34090909090912
+          "value": 214.3409090909091
         },
         {
           "period": "2021-08",
@@ -8427,7 +8384,7 @@
         },
         {
           "period": "2025-06",
-          "value": 96.16666666666669
+          "value": 96.16666666666667
         },
         {
           "period": "2025-07",
@@ -8487,27 +8444,18 @@
       "displayUnit": "桶(bbl)",
       "fredSeriesId": "MCOILBRENTEU",
       "fredSeriesUrl": "https://fred.stlouisfed.org/series/MCOILBRENTEU",
-      "retrievedVia": "FRED_PUBLIC_GRAPH_CSV_EXPORT",
-      "retrievedAt": "2026-08-04T02:12:51Z",
-      "title": "Crude Oil, Brent (MCOILBRENTEU)",
+      "retrievedVia": "FRED_API_JSON",
+      "retrievedAt": "2026-08-04T02:38:53Z",
+      "title": "Crude Oil Prices: Brent - Europe",
       "frequency": "Monthly",
       "frequencyShort": "M",
-      "units": "U.S. Dollars per Barrel",
-      "unitsShort": "USD/bbl",
+      "units": "Dollars per Barrel",
+      "unitsShort": "$ per Barrel",
       "seasonalAdjustment": "Not Seasonally Adjusted",
-      "lastUpdated": null,
-      "observationStart": "1987-05",
-      "observationEnd": "2026-06",
-      "notes": "觀測值取自FRED公開圖表CSV匯出；單位由專案設定保存並在比較前再次驗證。",
-      "download": {
-        "requestedUrl": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=MCOILBRENTEU&cosd=1960-01-01",
-        "finalUrl": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=MCOILBRENTEU&cosd=1960-01-01",
-        "httpStatus": 200,
-        "contentType": "application/csv",
-        "fileSizeBytes": 8076,
-        "etag": null,
-        "lastModified": null
-      },
+      "lastUpdated": "2026-07-08 12:18:24-05",
+      "observationStart": "1987-05-01",
+      "observationEnd": "2026-06-01",
+      "notes": "Definitions, Sources and Explanatory Notes:\nhttp://www.eia.doe.gov/dnav/pet/TblDefs/pet_pri_spt_tbldef2.asp",
       "observationCount": 470,
       "firstPeriod": "1987-05",
       "latestPeriod": "2026-06",
@@ -10402,27 +10350,18 @@
       "displayUnit": "MMBtu",
       "fredSeriesId": "MHHNGSP",
       "fredSeriesUrl": "https://fred.stlouisfed.org/series/MHHNGSP",
-      "retrievedVia": "FRED_PUBLIC_GRAPH_CSV_EXPORT",
-      "retrievedAt": "2026-08-04T02:12:51Z",
-      "title": "Natural Gas, US (MHHNGSP)",
+      "retrievedVia": "FRED_API_JSON",
+      "retrievedAt": "2026-08-04T02:38:53Z",
+      "title": "Henry Hub Natural Gas Spot Price",
       "frequency": "Monthly",
       "frequencyShort": "M",
-      "units": "U.S. Dollars per Million BTU",
-      "unitsShort": "USD/MMBtu",
+      "units": "Dollars per Million BTU",
+      "unitsShort": "$ Per Mil. BTU",
       "seasonalAdjustment": "Not Seasonally Adjusted",
-      "lastUpdated": null,
-      "observationStart": "1997-01",
-      "observationEnd": "2026-06",
-      "notes": "觀測值取自FRED公開圖表CSV匯出；單位由專案設定保存並在比較前再次驗證。",
-      "download": {
-        "requestedUrl": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=MHHNGSP&cosd=1960-01-01",
-        "finalUrl": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=MHHNGSP&cosd=1960-01-01",
-        "httpStatus": 200,
-        "contentType": "application/csv",
-        "fileSizeBytes": 5697,
-        "etag": null,
-        "lastModified": null
-      },
+      "lastUpdated": "2026-07-08 12:32:16-05",
+      "observationStart": "1997-01-01",
+      "observationEnd": "2026-06-01",
+      "notes": "More information about this series can be found at http://www.eia.gov/dnav/ng/TblDefs/ng_pri_fut_tbldef2.asp",
       "observationCount": 354,
       "firstPeriod": "1997-01",
       "latestPeriod": "2026-06",
