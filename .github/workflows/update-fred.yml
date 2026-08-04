@@ -32,6 +32,16 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
+      - name: Check FRED API key
+        env:
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+        run: |
+          if ! printf '%s' "$FRED_API_KEY" | grep -Eq '^[a-z0-9]{32}$'; then
+            echo "FRED_API_KEY不存在或格式錯誤；必須是32碼小寫英數字。"
+            exit 1
+          fi
+          echo "FRED_API_KEY已設定且格式正確。"
+
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
@@ -47,7 +57,9 @@ jobs:
           python -m unittest discover -s tests -p "test_fred*.py" -v
           python -m unittest discover -s tests -p "test_comparison.py" -v
 
-      - name: Sync FRED public monthly CSV series
+      - name: Sync FRED API monthly series
+        env:
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
         run: python scripts/sync_fred.py
 
       - name: Build World Bank and FRED comparison
@@ -61,7 +73,7 @@ jobs:
           if git diff --cached --quiet; then
             echo "FRED comparison data unchanged; no commit required."
           else
-            git commit -m "Update FRED comparison data"
+            git commit -m "Update FRED comparison data via API"
             git push
           fi
 
