@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "name": "Supplier Price Request Rationality Rules",
+  "isDecisionSupportOnly": true,
+  "thresholds": {
+    "modelMatchTolerancePercentagePoints": 0.5,
+    "requestEvidenceGapPercentagePoints": 1.5,
+    "highChallengeGapPercentagePoints": 3.0
+  },
+  "policy": {
+    "automaticAcceptance": false,
+    "automaticRejection": false,
+    "rawMaterialChangeEqualsFinishedPriceChange": false,
+    "worldBankRole": "PRIMARY_MARKET_INPUT_WHEN_LINKED",
+    "fredRole": "CORROBORATION_ONLY",
+    "note": "此分析僅比較使用者輸入的Should-Cost情境與供應商要求幅度，不代表供應商真實成本，也不會自動接受或拒絕調價。"
+  }
+}
