@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "primarySource": "WORLD_BANK_PINK_SHEET",
+  "comparisonSource": "FRED",
+  "policy": {
+    "worldBankDeterminesTrend": true,
+    "fredUsedForCorroborationOnly": true,
+    "automaticSupplierPriceDecision": false,
+    "note": "訊號僅反映原材料市場方向，不代表供應商實際成本；仍須檢查材料占比、採購落後期、庫存、匯率、運費與合約條件。"
+  },
+  "thresholds": {
+    "strongDecrease3MonthPercent": -8.0,
+    "decrease3MonthPercent": -3.0,
+    "decrease6MonthPercent": -5.0,
+    "strongIncrease3MonthPercent": 8.0,
+    "increase3MonthPercent": 3.0,
+    "increase6MonthPercent": 5.0,
+    "shortTermReversal1MonthPercent": 3.0,
+    "rangeLowPercentile": 20.0,
+    "rangeHighPercentile": 80.0,
+    "sourceHighMeanAbsoluteDifferencePercent": 1.0,
+    "sourceMediumMeanAbsoluteDifferencePercent": 3.0
+  }
+}
