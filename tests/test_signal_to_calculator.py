@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 import unittest
 from pathlib import Path
 
@@ -8,6 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SIGNALS_JS = ROOT / "assets" / "trend-signals.js"
 SIGNALS_CSS = ROOT / "assets" / "trend-signals.css"
 APP_JS = ROOT / "assets" / "app.js"
+INDEX_HTML = ROOT / "index.html"
 
 
 class SignalToCalculatorIntegrationTests(unittest.TestCase):
@@ -16,10 +16,12 @@ class SignalToCalculatorIntegrationTests(unittest.TestCase):
         cls.signals_js = SIGNALS_JS.read_text(encoding="utf-8")
         cls.signals_css = SIGNALS_CSS.read_text(encoding="utf-8")
         cls.app_js = APP_JS.read_text(encoding="utf-8")
+        cls.index_html = INDEX_HTML.read_text(encoding="utf-8")
 
     def test_existing_calculator_contract_is_present(self) -> None:
-        for token in ("f_matRate", "f_matRatio", "resetBtn", "validateAndCalc", "id=\"calc\""):
+        for token in ("f_matRate", "f_matRatio", "resetBtn", "validateAndCalc"):
             self.assertIn(token, self.app_js)
+        self.assertIn('id="calc"', self.index_html)
 
     def test_all_supported_market_windows_are_mapped(self) -> None:
         for key in (
