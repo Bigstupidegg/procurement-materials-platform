@@ -2,6 +2,13 @@ name: Update FRED Comparison Data
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - scripts/sync_fred.py
+      - tests/test_fred_sync.py
+      - .github/workflows/update-fred.yml
 
 permissions:
   contents: write
@@ -9,7 +16,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
+  group: fred-comparison-pages
   cancel-in-progress: false
 
 jobs:
@@ -24,15 +31,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
-
-      - name: Check FRED API key
-        env:
-          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
-        run: |
-          if [ -z "$FRED_API_KEY" ]; then
-            echo "缺少Repository Secret：FRED_API_KEY"
-            exit 1
-          fi
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -49,9 +47,7 @@ jobs:
           python -m unittest discover -s tests -p "test_fred*.py" -v
           python -m unittest discover -s tests -p "test_comparison.py" -v
 
-      - name: Sync FRED monthly series
-        env:
-          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+      - name: Sync FRED public monthly CSV series
         run: python scripts/sync_fred.py
 
       - name: Build World Bank and FRED comparison
