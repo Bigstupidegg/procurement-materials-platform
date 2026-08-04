@@ -2,13 +2,9 @@ name: Update FRED Comparison Data
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - scripts/sync_fred.py
-      - tests/test_fred_sync.py
-      - .github/workflows/update-fred.yml
+  schedule:
+    - cron: "47 9 * * *"
+      timezone: "Asia/Taipei"
 
 permissions:
   contents: write
@@ -16,7 +12,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: fred-comparison-pages
+  group: pages-deployment
   cancel-in-progress: false
 
 jobs:
@@ -24,7 +20,6 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -52,10 +47,11 @@ jobs:
       - name: Install dependencies
         run: python -m pip install -r scripts/requirements.txt
 
-      - name: Run FRED and comparison tests
+      - name: Run FRED, comparison and signal tests
         run: |
           python -m unittest discover -s tests -p "test_fred*.py" -v
           python -m unittest discover -s tests -p "test_comparison.py" -v
+          python -m unittest discover -s tests -p "test_signals.py" -v
 
       - name: Sync FRED API monthly series
         env:
@@ -65,53 +61,23 @@ jobs:
       - name: Build World Bank and FRED comparison
         run: python scripts/build_comparison.py
 
+      - name: Build procurement trend signals
+        run: python scripts/build_signals.py
+
       - name: Commit changed data
         run: |
           git config user.name "commodity-data-bot"
           git config user.email "commodity-data-bot@users.noreply.github.com"
-          git add data/fred.json data/comparison.json data/status.json
+          git add data/fred.json data/comparison.json data/signals.json data/status.json
           if git diff --cached --quiet; then
-            echo "FRED comparison data unchanged; no commit required."
+            echo "FRED comparison and signal data unchanged; no commit required."
           else
-            git commit -m "Update FRED comparison data via API"
+            git commit -m "Update FRED comparison and procurement signal data via API"
             git push
           fi
 
-      # GITHUB_TOKEN產生的push不會再觸發另一個workflow，
-      # 因此同一個workflow直接完成Pages部署。
       - name: Prepare website files
-        run: |
-          mkdir -p _site
-          cp index.html _site/
-          cp -r assets _site/
-          cp -r data _site/
-          touch _site/.nojekyll
-          python - <<'PY'
-          from pathlib import Path
-          path = Path("_site/index.html")
-          html = path.read_text(encoding="utf-8")
-
-          favicon = '  <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">\n'
-          comparison_css = '  <link rel="stylesheet" href="./assets/source-comparison.css">\n'
-          for marker in (favicon, comparison_css):
-              href = marker.split('href="', 1)[1].split('"', 1)[0]
-              if href not in html:
-                  if '</head>' not in html:
-                      raise SystemExit("找不到head結尾，無法加入網站資源")
-                  html = html.replace('</head>', marker + '</head>', 1)
-
-          original = '<script src="./assets/app.js"></script>'
-          live = '<script src="./assets/world-bank-live.js"></script>'
-          comparison = '<script src="./assets/source-comparison.js"></script>'
-          if live not in html:
-              if original not in html:
-                  raise SystemExit("找不到app.js引用，無法加入World Bank前端")
-              html = html.replace(original, original + '\n' + live, 1)
-          if comparison not in html:
-              html = html.replace(live, live + '\n' + comparison, 1)
-
-          path.write_text(html, encoding="utf-8")
-          PY
+        run: python scripts/prepare_site.py
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
