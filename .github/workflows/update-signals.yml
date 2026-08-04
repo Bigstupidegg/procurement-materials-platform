@@ -1,0 +1,114 @@
+name: Update Procurement Trend Signals
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - scripts/build_signals.py
+      - tests/test_signals.py
+      - config/signal-rules.json
+      - assets/trend-signals.css
+      - assets/trend-signals.js
+      - data/world-bank.json
+      - data/comparison.json
+      - .github/workflows/update-signals.yml
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages-deployment
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Run procurement signal tests
+        run: python -m unittest discover -s tests -p "test_signals.py" -v
+
+      - name: Build procurement trend signals
+        run: python scripts/build_signals.py
+
+      - name: Commit changed signal data
+        run: |
+          git config user.name "commodity-data-bot"
+          git config user.email "commodity-data-bot@users.noreply.github.com"
+          git add data/signals.json
+          if git diff --cached --quiet; then
+            echo "Procurement signal data unchanged; no commit required."
+          else
+            git commit -m "Update procurement trend signals"
+            git push
+          fi
+
+      - name: Prepare website files
+        run: |
+          mkdir -p _site
+          cp index.html _site/
+          cp -r assets _site/
+          cp -r data _site/
+          touch _site/.nojekyll
+          python - <<'PY'
+          from pathlib import Path
+          path = Path("_site/index.html")
+          html = path.read_text(encoding="utf-8")
+
+          stylesheets = [
+              '  <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">\n',
+              '  <link rel="stylesheet" href="./assets/source-comparison.css">\n',
+              '  <link rel="stylesheet" href="./assets/trend-signals.css">\n',
+          ]
+          for marker in stylesheets:
+              href = marker.split('href="', 1)[1].split('"', 1)[0]
+              if href not in html:
+                  if '</head>' not in html:
+                      raise SystemExit("找不到head結尾，無法加入網站資源")
+                  html = html.replace('</head>', marker + '</head>', 1)
+
+          original = '<script src="./assets/app.js"></script>'
+          scripts = [
+              '<script src="./assets/world-bank-live.js"></script>',
+              '<script src="./assets/source-comparison.js"></script>',
+              '<script src="./assets/trend-signals.js"></script>',
+          ]
+          if original not in html:
+              raise SystemExit("找不到app.js引用，無法加入正式前端")
+          anchor = original
+          for script in scripts:
+              if script not in html:
+                  html = html.replace(anchor, anchor + '\n' + script, 1)
+              anchor = script
+
+          path.write_text(html, encoding="utf-8")
+          PY
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+
+      - name: Deploy GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
