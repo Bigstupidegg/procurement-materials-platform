@@ -92,17 +92,23 @@ jobs:
           html = path.read_text(encoding="utf-8")
 
           favicon = '  <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">\n'
-          if './assets/favicon.svg' not in html:
-              if '</head>' not in html:
-                  raise SystemExit("找不到head結尾，無法加入favicon")
-              html = html.replace('</head>', favicon + '</head>', 1)
+          comparison_css = '  <link rel="stylesheet" href="./assets/source-comparison.css">\n'
+          for marker in (favicon, comparison_css):
+              href = marker.split('href="', 1)[1].split('"', 1)[0]
+              if href not in html:
+                  if '</head>' not in html:
+                      raise SystemExit("找不到head結尾，無法加入網站資源")
+                  html = html.replace('</head>', marker + '</head>', 1)
 
           original = '<script src="./assets/app.js"></script>'
-          live = original + '\n<script src="./assets/world-bank-live.js"></script>'
+          live = '<script src="./assets/world-bank-live.js"></script>'
+          comparison = '<script src="./assets/source-comparison.js"></script>'
           if live not in html:
               if original not in html:
                   raise SystemExit("找不到app.js引用，無法加入World Bank前端")
-              html = html.replace(original, live, 1)
+              html = html.replace(original, original + '\n' + live, 1)
+          if comparison not in html:
+              html = html.replace(live, live + '\n' + comparison, 1)
 
           path.write_text(html, encoding="utf-8")
           PY
