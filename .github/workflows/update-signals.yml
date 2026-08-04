@@ -9,6 +9,7 @@ on:
       - scripts/build_signals.py
       - scripts/prepare_site.py
       - tests/test_signals.py
+      - tests/test_signal_to_calculator.py
       - config/signal-rules.json
       - assets/trend-signals.css
       - assets/trend-signals.js
@@ -43,7 +44,12 @@ jobs:
           python-version: "3.12"
 
       - name: Run procurement signal tests
-        run: python -m unittest discover -s tests -p "test_signals.py" -v
+        run: |
+          python -m unittest discover -s tests -p "test_signals.py" -v
+          python -m unittest discover -s tests -p "test_signal_to_calculator.py" -v
+
+      - name: Check browser integration syntax
+        run: node --check assets/trend-signals.js
 
       - name: Build procurement trend signals
         run: python scripts/build_signals.py
