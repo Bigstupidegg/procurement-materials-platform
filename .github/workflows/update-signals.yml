@@ -7,6 +7,7 @@ on:
       - main
     paths:
       - scripts/build_signals.py
+      - scripts/prepare_site.py
       - tests/test_signals.py
       - config/signal-rules.json
       - assets/trend-signals.css
@@ -29,7 +30,6 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -61,45 +61,7 @@ jobs:
           fi
 
       - name: Prepare website files
-        run: |
-          mkdir -p _site
-          cp index.html _site/
-          cp -r assets _site/
-          cp -r data _site/
-          touch _site/.nojekyll
-          python - <<'PY'
-          from pathlib import Path
-          path = Path("_site/index.html")
-          html = path.read_text(encoding="utf-8")
-
-          stylesheets = [
-              '  <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">\n',
-              '  <link rel="stylesheet" href="./assets/source-comparison.css">\n',
-              '  <link rel="stylesheet" href="./assets/trend-signals.css">\n',
-          ]
-          for marker in stylesheets:
-              href = marker.split('href="', 1)[1].split('"', 1)[0]
-              if href not in html:
-                  if '</head>' not in html:
-                      raise SystemExit("找不到head結尾，無法加入網站資源")
-                  html = html.replace('</head>', marker + '</head>', 1)
-
-          original = '<script src="./assets/app.js"></script>'
-          scripts = [
-              '<script src="./assets/world-bank-live.js"></script>',
-              '<script src="./assets/source-comparison.js"></script>',
-              '<script src="./assets/trend-signals.js"></script>',
-          ]
-          if original not in html:
-              raise SystemExit("找不到app.js引用，無法加入正式前端")
-          anchor = original
-          for script in scripts:
-              if script not in html:
-                  html = html.replace(anchor, anchor + '\n' + script, 1)
-              anchor = script
-
-          path.write_text(html, encoding="utf-8")
-          PY
+        run: python scripts/prepare_site.py
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
