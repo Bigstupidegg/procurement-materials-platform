@@ -2,13 +2,9 @@ name: Update FRED Comparison Data
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - scripts/sync_fred.py
-      - tests/test_fred_sync.py
-      - .github/workflows/update-fred.yml
+  schedule:
+    - cron: "47 9 * * *"
+      timezone: "Asia/Taipei"
 
 permissions:
   contents: write
