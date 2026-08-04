@@ -14,7 +14,6 @@ REQUIRED_DATA = (
     "fred.json",
     "comparison.json",
     "status.json",
-    "signals.json",
 )
 STYLESHEETS = (
     '  <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">',
@@ -66,7 +65,8 @@ def prepare_site() -> None:
     site_index = SITE / "index.html"
     html = site_index.read_text(encoding="utf-8")
     site_index.write_text(inject_resources(html), encoding="utf-8")
-    print("Site preparation success: World Bank, FRED, comparison and trend signals included")
+    signal_state = "included" if (DATA / "signals.json").is_file() else "pending"
+    print(f"Site preparation success: trend signals={signal_state}")
 
 
 if __name__ == "__main__":
