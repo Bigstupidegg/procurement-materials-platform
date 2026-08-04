@@ -1,0 +1,435 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-08-04T03:45:07Z",
+  "isRealData": true,
+  "latestPeriod": "2026-06",
+  "primarySource": "WORLD_BANK_PINK_SHEET",
+  "comparisonSource": "FRED",
+  "signalPolicy": {
+    "worldBankDeterminesTrend": true,
+    "fredUsedForCorroborationOnly": true,
+    "automaticSupplierPriceDecision": false,
+    "note": "訊號僅反映原材料市場方向，不代表供應商實際成本；仍須檢查材料占比、採購落後期、庫存、匯率、運費與合約條件。"
+  },
+  "thresholds": {
+    "strongDecrease3MonthPercent": -8.0,
+    "decrease3MonthPercent": -3.0,
+    "decrease6MonthPercent": -5.0,
+    "strongIncrease3MonthPercent": 8.0,
+    "increase3MonthPercent": 3.0,
+    "increase6MonthPercent": 5.0,
+    "shortTermReversal1MonthPercent": 3.0,
+    "rangeLowPercentile": 20.0,
+    "rangeHighPercentile": 80.0,
+    "sourceHighMeanAbsoluteDifferencePercent": 1.0,
+    "sourceMediumMeanAbsoluteDifferencePercent": 3.0
+  },
+  "summary": {
+    "materialCount": 7,
+    "priorityCounts": {
+      "HIGH": 3,
+      "MEDIUM": 4,
+      "LOW": 0
+    },
+    "signalCounts": {
+      "VERIFY_STRONG_INCREASE": 2,
+      "VERIFY_INCREASE": 2,
+      "CHALLENGE_INCREASE": 2,
+      "NEGOTIATE_REDUCTION": 1
+    }
+  },
+  "materials": {
+    "zinc": {
+      "id": "zinc",
+      "nameZh": "鋅",
+      "nameEn": "Zinc",
+      "currency": "USD",
+      "displayUnit": "公噸(MT)",
+      "sourceUnit": "($/mt)",
+      "latestPeriod": "2026-06",
+      "latestValue": 3539,
+      "changes": {
+        "oneMonthPercent": 1.63699,
+        "threeMonthPercent": 11.219359,
+        "sixMonthPercent": 11.710859,
+        "twelveMonthPercent": 33.295669
+      },
+      "twelveMonthStatistics": {
+        "average": 3173.833333,
+        "high": 3539,
+        "low": 2763,
+        "latestVsAveragePercent": 11.50554,
+        "rangePositionPercent": 100,
+        "positionLabel": "近12月高檔",
+        "monthlyReturnVolatilityPercent": 3.083212
+      },
+      "trend": {
+        "code": "BROAD_UPTREND",
+        "label": "短中期同步上漲",
+        "summary": "一個月、三個月與六個月變化率皆為正值。"
+      },
+      "negotiationSignal": {
+        "code": "VERIFY_STRONG_INCREASE",
+        "label": "上漲壓力需核實",
+        "priority": "HIGH",
+        "marketInterpretation": "短中期市場價格明顯上升，可能形成成本壓力，但不等於供應商可按原料漲幅等比例調價。",
+        "recommendedAction": "要求供應商提供材料占比、實際採購月份、庫存週期及價格公式，計算原料變動對成品價格的合理傳導幅度。",
+        "supplierClaimCheck": "只承認與實際成本結構相符的影響；保留價格回落時對稱調降條款。"
+      },
+      "sourceCorroboration": {
+        "status": "HIGH_AGREEMENT",
+        "label": "兩來源高度一致",
+        "confidence": "HIGH",
+        "latestDifferencePercentVsWorldBank": -0.00727,
+        "recent12MonthMeanAbsoluteDifferencePercent": 0.083728,
+        "note": "FRED僅作交叉核對，不會改寫World Bank趨勢訊號。"
+      },
+      "evidence": [
+        "3個月變化 +11.22%",
+        "6個月變化 +11.71%",
+        "最新價相對近12月平均 +11.51%",
+        "目前位於近12月價格區間的 100.0% 位置"
+      ],
+      "limitations": [
+        "訊號只反映World Bank原材料月度價格方向，不等於供應商成品成本變動。",
+        "應另行核對材料成本占比、採購落後期、庫存、匯率、運費、加工與能源成本。"
+      ]
+    },
+    "copper": {
+      "id": "copper",
+      "nameZh": "銅",
+      "nameEn": "Copper",
+      "currency": "USD",
+      "displayUnit": "公噸(MT)",
+      "sourceUnit": "($/mt)",
+      "latestPeriod": "2026-06",
+      "latestValue": 13552,
+      "changes": {
+        "oneMonthPercent": 0.066455,
+        "threeMonthPercent": 8.165057,
+        "sixMonthPercent": 14.993636,
+        "twelveMonthPercent": 37.793594
+      },
+      "twelveMonthStatistics": {
+        "average": 11775,
+        "high": 13552,
+        "low": 9670,
+        "latestVsAveragePercent": 15.091295,
+        "rangePositionPercent": 100,
+        "positionLabel": "近12月高檔",
+        "monthlyReturnVolatilityPercent": 4.219821
+      },
+      "trend": {
+        "code": "BROAD_UPTREND",
+        "label": "短中期同步上漲",
+        "summary": "一個月、三個月與六個月變化率皆為正值。"
+      },
+      "negotiationSignal": {
+        "code": "VERIFY_STRONG_INCREASE",
+        "label": "上漲壓力需核實",
+        "priority": "HIGH",
+        "marketInterpretation": "短中期市場價格明顯上升，可能形成成本壓力，但不等於供應商可按原料漲幅等比例調價。",
+        "recommendedAction": "要求供應商提供材料占比、實際採購月份、庫存週期及價格公式，計算原料變動對成品價格的合理傳導幅度。",
+        "supplierClaimCheck": "只承認與實際成本結構相符的影響；保留價格回落時對稱調降條款。"
+      },
+      "sourceCorroboration": {
+        "status": "HIGH_AGREEMENT",
+        "label": "兩來源高度一致",
+        "confidence": "HIGH",
+        "latestDifferencePercentVsWorldBank": 0.000302,
+        "recent12MonthMeanAbsoluteDifferencePercent": 0.089758,
+        "note": "FRED僅作交叉核對，不會改寫World Bank趨勢訊號。"
+      },
+      "evidence": [
+        "3個月變化 +8.17%",
+        "6個月變化 +14.99%",
+        "最新價相對近12月平均 +15.09%",
+        "目前位於近12月價格區間的 100.0% 位置"
+      ],
+      "limitations": [
+        "訊號只反映World Bank原材料月度價格方向，不等於供應商成品成本變動。",
+        "應另行核對材料成本占比、採購落後期、庫存、匯率、運費、加工與能源成本。"
+      ]
+    },
+    "aluminium": {
+      "id": "aluminium",
+      "nameZh": "鋁",
+      "nameEn": "Aluminium",
+      "currency": "USD",
+      "displayUnit": "公噸(MT)",
+      "sourceUnit": "($/mt)",
+      "latestPeriod": "2026-06",
+      "latestValue": 3439,
+      "changes": {
+        "oneMonthPercent": -6.192035,
+        "threeMonthPercent": 1.956715,
+        "sixMonthPercent": 19.5758,
+        "twelveMonthPercent": 36.144101
+      },
+      "twelveMonthStatistics": {
+        "average": 3052.416667,
+        "high": 3666,
+        "low": 2597,
+        "latestVsAveragePercent": 12.664828,
+        "rangePositionPercent": 78.765201,
+        "positionLabel": "近12月中間區間",
+        "monthlyReturnVolatilityPercent": 4.663859
+      },
+      "trend": {
+        "code": "MIXED",
+        "label": "多空訊號交錯",
+        "summary": "不同觀察期間的方向不一致，需避免只引用單一月份。"
+      },
+      "negotiationSignal": {
+        "code": "VERIFY_INCREASE",
+        "label": "核實成本傳導",
+        "priority": "MEDIUM",
+        "marketInterpretation": "市場出現上行壓力，但仍須確認供應商是否已在既有價格中吸收或提前採購。",
+        "recommendedAction": "先核對成本結構與採購落後期，再討論暫時性附加費、分段調整或價格重議機制。",
+        "supplierClaimCheck": "避免直接套用市場漲幅；合理成品漲幅應為材料占比乘以可歸屬的材料變化率。"
+      },
+      "sourceCorroboration": {
+        "status": "HIGH_AGREEMENT",
+        "label": "兩來源高度一致",
+        "confidence": "HIGH",
+        "latestDifferencePercentVsWorldBank": -0.004441,
+        "recent12MonthMeanAbsoluteDifferencePercent": 0.065095,
+        "note": "FRED僅作交叉核對，不會改寫World Bank趨勢訊號。"
+      },
+      "evidence": [
+        "3個月變化 +1.96%",
+        "6個月變化 +19.58%",
+        "最新價相對近12月平均 +12.66%",
+        "目前位於近12月價格區間的 78.8% 位置"
+      ],
+      "limitations": [
+        "訊號只反映World Bank原材料月度價格方向，不等於供應商成品成本變動。",
+        "應另行核對材料成本占比、採購落後期、庫存、匯率、運費、加工與能源成本。"
+      ]
+    },
+    "nickel": {
+      "id": "nickel",
+      "nameZh": "鎳",
+      "nameEn": "Nickel",
+      "currency": "USD",
+      "displayUnit": "公噸(MT)",
+      "sourceUnit": "($/mt)",
+      "latestPeriod": "2026-06",
+      "latestValue": 17588,
+      "changes": {
+        "oneMonthPercent": -6.476656,
+        "threeMonthPercent": 2.99836,
+        "sixMonthPercent": 18.167159,
+        "twelveMonthPercent": 17.229887
+      },
+      "twelveMonthStatistics": {
+        "average": 16342.5,
+        "high": 18806,
+        "low": 14671,
+        "latestVsAveragePercent": 7.621233,
+        "rangePositionPercent": 70.544135,
+        "positionLabel": "近12月中間區間",
+        "monthlyReturnVolatilityPercent": 6.468967
+      },
+      "trend": {
+        "code": "MIXED",
+        "label": "多空訊號交錯",
+        "summary": "不同觀察期間的方向不一致，需避免只引用單一月份。"
+      },
+      "negotiationSignal": {
+        "code": "VERIFY_INCREASE",
+        "label": "核實成本傳導",
+        "priority": "MEDIUM",
+        "marketInterpretation": "市場出現上行壓力，但仍須確認供應商是否已在既有價格中吸收或提前採購。",
+        "recommendedAction": "先核對成本結構與採購落後期，再討論暫時性附加費、分段調整或價格重議機制。",
+        "supplierClaimCheck": "避免直接套用市場漲幅；合理成品漲幅應為材料占比乘以可歸屬的材料變化率。"
+      },
+      "sourceCorroboration": {
+        "status": "HIGH_AGREEMENT",
+        "label": "兩來源高度一致",
+        "confidence": "HIGH",
+        "latestDifferencePercentVsWorldBank": 0.001623,
+        "recent12MonthMeanAbsoluteDifferencePercent": 0.083574,
+        "note": "FRED僅作交叉核對，不會改寫World Bank趨勢訊號。"
+      },
+      "evidence": [
+        "3個月變化 +3.00%",
+        "6個月變化 +18.17%",
+        "最新價相對近12月平均 +7.62%",
+        "目前位於近12月價格區間的 70.5% 位置"
+      ],
+      "limitations": [
+        "訊號只反映World Bank原材料月度價格方向，不等於供應商成品成本變動。",
+        "應另行核對材料成本占比、採購落後期、庫存、匯率、運費、加工與能源成本。"
+      ]
+    },
+    "iron_ore": {
+      "id": "iron_ore",
+      "nameZh": "鐵礦砂",
+      "nameEn": "Iron Ore, CFR Spot",
+      "currency": "USD",
+      "displayUnit": "乾公噸單位(dmtu)",
+      "sourceUnit": "($/dmtu)",
+      "latestPeriod": "2026-06",
+      "latestValue": 100.8,
+      "changes": {
+        "oneMonthPercent": -7.18232,
+        "threeMonthPercent": -3.54067,
+        "sixMonthPercent": -3.632887,
+        "twelveMonthPercent": 9.209101
+      },
+      "twelveMonthStatistics": {
+        "average": 102.933333,
+        "high": 108.6,
+        "low": 97.3,
+        "latestVsAveragePercent": -2.072539,
+        "rangePositionPercent": 30.973451,
+        "positionLabel": "近12月中間區間",
+        "monthlyReturnVolatilityPercent": 3.770919
+      },
+      "trend": {
+        "code": "BROAD_DOWNTREND",
+        "label": "短中期同步下跌",
+        "summary": "一個月、三個月與六個月變化率皆為負值。"
+      },
+      "negotiationSignal": {
+        "code": "CHALLENGE_INCREASE",
+        "label": "挑戰漲價依據",
+        "priority": "MEDIUM",
+        "marketInterpretation": "市場方向偏弱或最新價格低於近12月平均，全面漲價的市場依據有限。",
+        "recommendedAction": "要求供應商拆分原料、加工、能源、匯率與運費影響，並以可驗證的基準期證明漲價幅度。",
+        "supplierClaimCheck": "不宜接受只寫『原料上漲』的概括理由；應核對實際材料占比及價格傳導時間。"
+      },
+      "sourceCorroboration": {
+        "status": "UNIT_NOT_COMPARABLE",
+        "label": "單位不可直接比較",
+        "confidence": "MEDIUM",
+        "latestDifferencePercentVsWorldBank": null,
+        "recent12MonthMeanAbsoluteDifferencePercent": null,
+        "note": "World Bank與FRED的鐵礦砂單位標示不同（dmtu與metric ton），未經正式換算規則確認前不計算差異。"
+      },
+      "evidence": [
+        "3個月變化 -3.54%",
+        "6個月變化 -3.63%",
+        "最新價相對近12月平均 -2.07%",
+        "目前位於近12月價格區間的 31.0% 位置"
+      ],
+      "limitations": [
+        "訊號只反映World Bank原材料月度價格方向，不等於供應商成品成本變動。",
+        "應另行核對材料成本占比、採購落後期、庫存、匯率、運費、加工與能源成本。"
+      ]
+    },
+    "crude_oil": {
+      "id": "crude_oil",
+      "nameZh": "原油",
+      "nameEn": "Crude Oil, Brent",
+      "currency": "USD",
+      "displayUnit": "桶(bbl)",
+      "sourceUnit": "($/bbl)",
+      "latestPeriod": "2026-06",
+      "latestValue": 85.4,
+      "changes": {
+        "oneMonthPercent": -20.55814,
+        "threeMonthPercent": -17.647059,
+        "sixMonthPercent": 36.204147,
+        "twelveMonthPercent": 19.440559
+      },
+      "twelveMonthStatistics": {
+        "average": 79.425,
+        "high": 120.4,
+        "low": 62.7,
+        "latestVsAveragePercent": 7.52282,
+        "rangePositionPercent": 39.341421,
+        "positionLabel": "近12月中間區間",
+        "monthlyReturnVolatilityPercent": 16.341308
+      },
+      "trend": {
+        "code": "MIXED",
+        "label": "多空訊號交錯",
+        "summary": "不同觀察期間的方向不一致，需避免只引用單一月份。"
+      },
+      "negotiationSignal": {
+        "code": "NEGOTIATE_REDUCTION",
+        "label": "降價議價機會",
+        "priority": "HIGH",
+        "marketInterpretation": "短中期市場價格明顯回落，供應商若仍沿用高價基期，應要求重新檢討。",
+        "recommendedAction": "要求供應商以相同材料、相同單位及相同基準月份重算，提出降價、折讓或價格回饋方案。",
+        "supplierClaimCheck": "若供應商提出漲價，應優先要求說明採購落後期、舊庫存消化及材料占比，不能只引用單月高點。"
+      },
+      "sourceCorroboration": {
+        "status": "HIGH_AGREEMENT",
+        "label": "兩來源高度一致",
+        "confidence": "HIGH",
+        "latestDifferencePercentVsWorldBank": 0,
+        "recent12MonthMeanAbsoluteDifferencePercent": 0.452852,
+        "note": "FRED僅作交叉核對，不會改寫World Bank趨勢訊號。"
+      },
+      "evidence": [
+        "3個月變化 -17.65%",
+        "6個月變化 +36.20%",
+        "最新價相對近12月平均 +7.52%",
+        "目前位於近12月價格區間的 39.3% 位置"
+      ],
+      "limitations": [
+        "訊號只反映World Bank原材料月度價格方向，不等於供應商成品成本變動。",
+        "應另行核對材料成本占比、採購落後期、庫存、匯率、運費、加工與能源成本。"
+      ]
+    },
+    "natural_gas": {
+      "id": "natural_gas",
+      "nameZh": "天然氣",
+      "nameEn": "Natural Gas, US",
+      "currency": "USD",
+      "displayUnit": "MMBtu",
+      "sourceUnit": "($/mmbtu)",
+      "latestPeriod": "2026-06",
+      "latestValue": 3.15,
+      "changes": {
+        "oneMonthPercent": 7.508532,
+        "threeMonthPercent": 2.941176,
+        "sixMonthPercent": -25.882353,
+        "twelveMonthPercent": 4.304636
+      },
+      "twelveMonthStatistics": {
+        "average": 3.6175,
+        "high": 7.58,
+        "low": 2.77,
+        "latestVsAveragePercent": -12.92329,
+        "rangePositionPercent": 7.900208,
+        "positionLabel": "近12月低檔",
+        "monthlyReturnVolatilityPercent": 29.739528
+      },
+      "trend": {
+        "code": "MIXED",
+        "label": "多空訊號交錯",
+        "summary": "不同觀察期間的方向不一致，需避免只引用單一月份。"
+      },
+      "negotiationSignal": {
+        "code": "CHALLENGE_INCREASE",
+        "label": "挑戰漲價依據",
+        "priority": "MEDIUM",
+        "marketInterpretation": "市場方向偏弱或最新價格低於近12月平均，全面漲價的市場依據有限。",
+        "recommendedAction": "要求供應商拆分原料、加工、能源、匯率與運費影響，並以可驗證的基準期證明漲價幅度。",
+        "supplierClaimCheck": "不宜接受只寫『原料上漲』的概括理由；應核對實際材料占比及價格傳導時間。"
+      },
+      "sourceCorroboration": {
+        "status": "HIGH_AGREEMENT",
+        "label": "兩來源高度一致",
+        "confidence": "HIGH",
+        "latestDifferencePercentVsWorldBank": 0,
+        "recent12MonthMeanAbsoluteDifferencePercent": 0.331678,
+        "note": "FRED僅作交叉核對，不會改寫World Bank趨勢訊號。"
+      },
+      "evidence": [
+        "3個月變化 +2.94%",
+        "6個月變化 -25.88%",
+        "最新價相對近12月平均 -12.92%",
+        "目前位於近12月價格區間的 7.9% 位置"
+      ],
+      "limitations": [
+        "訊號只反映World Bank原材料月度價格方向，不等於供應商成品成本變動。",
+        "應另行核對材料成本占比、採購落後期、庫存、匯率、運費、加工與能源成本。"
+      ]
+    }
+  }
+}
