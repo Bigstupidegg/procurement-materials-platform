@@ -1,0 +1,19 @@
+/* 3D-2B：供應商漲幅合理性比較 */
+.sra-panel{margin:14px 0;background:#fff;border:1px solid var(--border);border-top:4px solid var(--brand);border-radius:var(--radius);padding:14px;box-shadow:var(--shadow);}
+.sra-head{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;}
+.sra-head h3{margin:2px 0 3px;font-size:15px;}.sra-head p{margin:0;color:var(--text-2);font-size:11px;line-height:1.55;}
+.sra-eyebrow{font-family:var(--mono);font-size:9px;letter-spacing:.08em;color:var(--text-3);font-weight:700;}
+.sra-badge{display:inline-flex;align-items:center;justify-content:center;border-radius:20px;padding:5px 9px;font-size:10px;font-weight:700;white-space:nowrap;border:1px solid var(--border-strong);background:var(--surface-alt);color:var(--text-2);}
+.sra-badge.high{background:var(--up-bg);color:var(--up);border-color:#E9BDB6;}.sra-badge.medium{background:var(--warn-bg);color:var(--warn);border-color:var(--warn-border);}.sra-badge.balanced{background:var(--brand-tint);color:var(--brand-dark);border-color:#BFDCE1;}.sra-badge.favorable{background:#EAF6EF;color:var(--down);border-color:#BFDCC9;}.sra-badge.waiting{background:var(--surface-alt);color:var(--text-3);}
+.sra-status{margin:10px 0;padding:7px 9px;background:var(--surface-alt);border:1px solid var(--border);border-radius:5px;color:var(--text-2);font-size:10.5px;line-height:1.5;}
+.sra-metrics{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px;}
+.sra-metric{min-width:0;padding:9px;background:#fff;border:1px solid var(--border);border-radius:6px;}.sra-metric.emphasis{background:#F8FAFB;border-color:var(--border-strong);}
+.sra-metric span{display:block;color:var(--text-3);font-size:9.5px;}.sra-metric b{display:block;font-family:var(--mono);font-size:14px;margin:4px 0 2px;overflow-wrap:anywhere;}.sra-metric small{display:block;color:var(--text-3);font-size:9px;line-height:1.35;}
+.sra-panel .up{color:var(--up);}.sra-panel .down{color:var(--down);}.sra-panel .flat{color:var(--text-2);}
+.sra-verdict{margin-top:10px;padding:11px 12px;border-radius:6px;border:1px solid var(--border);background:var(--surface-alt);}
+.sra-verdict.high{background:var(--up-bg);border-color:#E9BDB6;}.sra-verdict.medium{background:var(--warn-bg);border-color:var(--warn-border);}.sra-verdict.balanced{background:var(--brand-tint);border-color:#BFDCE1;}.sra-verdict.favorable{background:#EAF6EF;border-color:#BFDCC9;}.sra-verdict.waiting{background:var(--surface-alt);}
+.sra-verdict-title{font-weight:700;font-size:13px;}.sra-verdict p{margin:4px 0 0;color:var(--text-2);font-size:11px;line-height:1.65;}.sra-verdict ul{margin:7px 0 0;padding-left:18px;color:var(--text-2);font-size:10.5px;line-height:1.65;}
+.sra-market-context{margin-top:9px;padding:8px 10px;border-left:3px solid var(--brand);background:#F7FAFB;color:var(--text-2);font-size:10.5px;line-height:1.6;}
+.sra-policy-note{margin-top:8px;color:var(--text-3);font-size:9.8px;line-height:1.55;}
+@media(max-width:1100px){.sra-metrics{grid-template-columns:repeat(2,minmax(0,1fr));}.sra-metric.emphasis{grid-column:1/-1;}}
+@media(max-width:620px){.sra-head{flex-direction:column;}.sra-metrics{grid-template-columns:1fr;}.sra-metric.emphasis{grid-column:auto;}}
