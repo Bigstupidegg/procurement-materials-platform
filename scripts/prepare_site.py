@@ -21,12 +21,14 @@ STYLESHEETS = (
     '  <link rel="stylesheet" href="./assets/source-comparison.css">',
     '  <link rel="stylesheet" href="./assets/trend-signals.css">',
     '  <link rel="stylesheet" href="./assets/supplier-rationality.css">',
+    '  <link rel="stylesheet" href="./assets/negotiation-report.css">',
 )
 SCRIPTS = (
     '<script src="./assets/world-bank-live.js"></script>',
     '<script src="./assets/source-comparison.js"></script>',
     '<script src="./assets/trend-signals.js"></script>',
     '<script src="./assets/supplier-rationality.js"></script>',
+    '<script src="./assets/negotiation-report.js"></script>',
 )
 APP_SCRIPT = '<script src="./assets/app.js"></script>'
 
@@ -69,7 +71,7 @@ def prepare_site() -> None:
     html = site_index.read_text(encoding="utf-8")
     site_index.write_text(inject_resources(html), encoding="utf-8")
     signal_state = "included" if (DATA / "signals.json").is_file() else "pending"
-    print(f"Site preparation success: trend signals={signal_state}, supplier rationality=included")
+    print(f"Site preparation success: trend signals={signal_state}, supplier rationality=included, negotiation report=included")
 
 
 if __name__ == "__main__":
