@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-04T04:33:13Z",
+  "generatedAt": "2026-08-05T04:31:24Z",
   "dataMode": "WORLD_BANK_PRIMARY",
   "worldBank": {
     "status": "SUCCESS",
-    "lastAttemptAt": "2026-08-04T04:33:13Z",
-    "lastSuccessAt": "2026-08-04T04:33:13Z",
-    "latestPeriod": "2026-06",
-    "sourceUpdatedOn": "2026-07-02",
-    "sourceSha256": "8d51e9ac53037684a43cf00075dd3619517563ef17c7327ef9f09074e312ed95",
+    "lastAttemptAt": "2026-08-05T04:31:24Z",
+    "lastSuccessAt": "2026-08-05T04:31:24Z",
+    "latestPeriod": "2026-07",
+    "sourceUpdatedOn": "2026-08-04",
+    "sourceSha256": "7902a77505ebdc5d202ce65f666c2ee1b04b626f042d7738ed3e6f7d112c8433",
     "sourceUrl": "https://thedocs.worldbank.org/en/doc/74e8be41ceb20fa0da750cda2f6b9e4e-0050012026/related/CMO-Historical-Data-Monthly.xlsx"
   },
   "fred": {

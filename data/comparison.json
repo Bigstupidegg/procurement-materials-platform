@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-04T04:33:14Z",
+  "generatedAt": "2026-08-05T04:31:25Z",
   "isRealData": true,
   "primarySource": "WORLD_BANK_PINK_SHEET",
   "comparisonSource": "FRED",
@@ -16,7 +16,7 @@
       "nameZh": "鋅",
       "nameEn": "Zinc",
       "worldBank": {
-        "latestPeriod": "2026-06",
+        "latestPeriod": "2026-07",
         "displayUnit": "公噸(MT)",
         "sourceUnit": "($/mt)"
       },
@@ -2942,7 +2942,7 @@
       "nameZh": "銅",
       "nameEn": "Copper",
       "worldBank": {
-        "latestPeriod": "2026-06",
+        "latestPeriod": "2026-07",
         "displayUnit": "公噸(MT)",
         "sourceUnit": "($/mt)"
       },
@@ -5868,7 +5868,7 @@
       "nameZh": "鋁",
       "nameEn": "Aluminium",
       "worldBank": {
-        "latestPeriod": "2026-06",
+        "latestPeriod": "2026-07",
         "displayUnit": "公噸(MT)",
         "sourceUnit": "($/mt)"
       },
@@ -8794,7 +8794,7 @@
       "nameZh": "鎳",
       "nameEn": "Nickel",
       "worldBank": {
-        "latestPeriod": "2026-06",
+        "latestPeriod": "2026-07",
         "displayUnit": "公噸(MT)",
         "sourceUnit": "($/mt)"
       },
@@ -11720,7 +11720,7 @@
       "nameZh": "鐵礦砂",
       "nameEn": "Iron Ore, CFR Spot",
       "worldBank": {
-        "latestPeriod": "2026-06",
+        "latestPeriod": "2026-07",
         "displayUnit": "乾公噸單位(dmtu)",
         "sourceUnit": "($/dmtu)"
       },
@@ -11744,7 +11744,7 @@
       "nameZh": "原油",
       "nameEn": "Crude Oil, Brent",
       "worldBank": {
-        "latestPeriod": "2026-06",
+        "latestPeriod": "2026-07",
         "displayUnit": "桶(bbl)",
         "sourceUnit": "($/bbl)"
       },
@@ -15062,7 +15062,7 @@
       "nameZh": "天然氣",
       "nameEn": "Natural Gas, US",
       "worldBank": {
-        "latestPeriod": "2026-06",
+        "latestPeriod": "2026-07",
         "displayUnit": "MMBtu",
         "sourceUnit": "($/mmbtu)"
       },
