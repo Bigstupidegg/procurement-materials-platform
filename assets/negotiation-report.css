@@ -1,0 +1,40 @@
+/* 3D-2C：議價分析摘要與匯出 */
+.nr-panel{margin-top:14px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);box-shadow:var(--shadow);overflow:hidden;}
+.nr-panel-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;padding:14px;border-bottom:1px solid var(--border);background:linear-gradient(135deg,#F7FBFC,#EEF6F8);}
+.nr-panel-head h3{margin:2px 0 4px;font-size:16px;}.nr-panel-head p{margin:0;color:var(--text-2);font-size:11.5px;line-height:1.55;}
+.nr-eyebrow{font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:.08em;color:var(--brand-dark);}
+.nr-state{white-space:nowrap;border:1px solid var(--border-strong);border-radius:20px;padding:4px 9px;font-size:10px;font-weight:700;background:var(--surface-alt);color:var(--text-2);}
+.nr-state.ready{background:var(--down-bg);border-color:#A9D8C2;color:var(--down);}.nr-state.waiting{background:var(--warn-bg);border-color:var(--warn-border);color:var(--warn);}
+.nr-form{padding:14px;border-bottom:1px solid var(--border);}.nr-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;}
+.nr-form label{display:block;min-width:0;}.nr-form label>span{display:block;font-size:10.5px;color:var(--text-2);font-weight:700;margin-bottom:4px;}
+.nr-form input,.nr-form textarea,.nr-form select{width:100%;box-sizing:border-box;border:1px solid var(--border-strong);border-radius:5px;background:#fff;color:var(--text-1);font:inherit;font-size:12px;padding:8px;}
+.nr-form textarea{resize:vertical;line-height:1.55;}.nr-form input:focus,.nr-form textarea:focus,.nr-form select:focus{outline:2px solid #B9DCE2;outline-offset:1px;border-color:var(--brand);}
+.nr-textareas{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px;}.nr-conclusion-row{display:grid;grid-template-columns:2fr 1fr;gap:10px;margin-top:10px;}
+.nr-note-field{margin-top:10px;}.nr-input-unit{display:flex;align-items:center;border:1px solid var(--border-strong);border-radius:5px;background:#fff;overflow:hidden;}.nr-input-unit input{border:0;border-radius:0;}.nr-input-unit span{padding:0 9px;color:var(--text-2);font-size:11px;}
+.nr-privacy{margin-top:8px;color:var(--text-3);font-size:10px;}
+.nr-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:11px 14px;border-bottom:1px solid var(--border);background:var(--surface-alt);}.nr-actions button:disabled{opacity:.45;cursor:not-allowed;}.nr-actions span{margin-left:auto;color:var(--text-2);font-size:10.5px;}
+.nr-report{padding:16px;background:#fff;color:#172126;}.nr-report-header{display:flex;justify-content:space-between;gap:20px;align-items:flex-start;padding-bottom:12px;border-bottom:2px solid #0B5769;}
+.nr-report-header h2{margin:2px 0 0;font-size:20px;}.nr-report-kicker{font-family:var(--mono);font-size:8.5px;letter-spacing:.08em;color:#0B5769;font-weight:700;}.nr-report-time{text-align:right;font-size:10px;color:#607078;}.nr-report-time span,.nr-report-time b{display:block;}.nr-report-time b{margin-top:3px;color:#172126;}
+.nr-report-section{margin-top:15px;}.nr-report-section h3{font-size:13px;margin:0 0 8px;color:#0B5769;}.nr-report-grid,.nr-summary-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;}
+.nr-report-grid>div,.nr-summary-grid>div{border:1px solid #D8E2E5;border-radius:5px;padding:8px;background:#FAFCFC;min-width:0;}.nr-report-grid span,.nr-summary-grid span{display:block;font-size:9px;color:#6B7A81;}.nr-report-grid b,.nr-summary-grid b{display:block;margin-top:3px;font-size:11.5px;overflow-wrap:anywhere;}
+.nr-source{padding:8px 9px;border-left:4px solid #0B5769;background:#F0F7F8;font-size:10.5px;line-height:1.55;margin-bottom:8px;}
+.nr-cost-table{width:100%;border-collapse:collapse;margin-top:9px;font-size:10.5px;}.nr-cost-table th,.nr-cost-table td{border:1px solid #D8E2E5;padding:6px 7px;text-align:right;}.nr-cost-table th:first-child,.nr-cost-table td:first-child{text-align:left;}.nr-cost-table th{background:#EEF5F6;color:#42545C;}
+.nr-verdict{border:1px solid #D8E2E5;border-radius:6px;padding:10px;background:#FAFCFC;}.nr-verdict span{display:inline-block;border-radius:20px;padding:3px 8px;background:#E7F2F4;color:#0B5769;font-size:9.5px;font-weight:700;}.nr-verdict b{display:block;margin-top:6px;font-size:13px;}.nr-verdict p{margin:4px 0 0;font-size:10.8px;color:#4E5E65;line-height:1.6;}.nr-evidence{margin:7px 0 0;padding-left:18px;font-size:10.5px;color:#4E5E65;line-height:1.6;}
+.nr-two-column{display:grid;grid-template-columns:1fr 1fr;gap:12px;}.nr-two-column>div{border:1px solid #D8E2E5;border-radius:6px;padding:10px;}.nr-two-column dl{margin:0;}.nr-two-column dt{font-size:9.5px;color:#6B7A81;font-weight:700;margin-top:8px;}.nr-two-column dt:first-child{margin-top:0;}.nr-two-column dd{margin:3px 0 0;font-size:10.8px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere;}
+.nr-report-footer{margin-top:15px;padding-top:9px;border-top:1px solid #D8E2E5;color:#66777E;font-size:8.8px;line-height:1.55;}
+@media(max-width:980px){.nr-fields{grid-template-columns:repeat(2,minmax(0,1fr));}.nr-report-grid,.nr-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
+@media(max-width:650px){.nr-panel-head{flex-direction:column;}.nr-fields,.nr-textareas,.nr-conclusion-row,.nr-two-column{grid-template-columns:1fr;}.nr-actions span{margin-left:0;width:100%;}.nr-report-header{flex-direction:column;}.nr-report-time{text-align:left;}.nr-report-grid,.nr-summary-grid{grid-template-columns:1fr;}.nr-cost-table{font-size:9px;}}
+@media print{
+  @page{size:A4;margin:12mm;}
+  body.negotiation-report-printing *{visibility:hidden!important;}
+  body.negotiation-report-printing #negotiationReportPanel,
+  body.negotiation-report-printing #negotiationReportPanel *{visibility:visible!important;}
+  body.negotiation-report-printing #negotiationReportPanel{position:absolute;left:0;top:0;width:100%;margin:0;border:0;box-shadow:none;overflow:visible;background:#fff;}
+  body.negotiation-report-printing .nr-panel-head,
+  body.negotiation-report-printing .nr-form,
+  body.negotiation-report-printing .nr-actions{display:none!important;}
+  body.negotiation-report-printing .nr-report{padding:0;font-size:10pt;}
+  body.negotiation-report-printing .nr-report-section{break-inside:avoid;page-break-inside:avoid;}
+  body.negotiation-report-printing .nr-cost-table tr{break-inside:avoid;page-break-inside:avoid;}
+  body.negotiation-report-printing .nr-report-header{margin-top:0;}
+}

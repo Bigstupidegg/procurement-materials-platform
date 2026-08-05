@@ -26,10 +26,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Run supplier rationality integration tests
+      - name: Run procurement reporting integration tests
         run: |
           python -m unittest discover -s tests -p "test_supplier_rationality.py" -v
+          python -m unittest discover -s tests -p "test_negotiation_report.py" -v
           node --check assets/supplier-rationality.js
+          node --check assets/negotiation-report.js
 
       - name: Prepare website files
         run: python scripts/prepare_site.py
