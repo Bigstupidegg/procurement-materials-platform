@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-05T04:49:29Z",
+  "generatedAt": "2026-08-06T04:49:47Z",
   "source": "FRED",
   "isRealData": true,
   "frequency": "monthly",
@@ -14,15 +14,15 @@
     "apiKeyRequired": true,
     "seriesCount": 7,
     "latestCommonPeriod": "2026-06",
-    "latestAvailablePeriod": "2026-06",
+    "latestAvailablePeriod": "2026-07",
     "latestPeriods": {
       "zinc": "2026-06",
       "copper": "2026-06",
       "aluminium": "2026-06",
       "nickel": "2026-06",
       "iron_ore": "2026-06",
-      "crude_oil": "2026-06",
-      "natural_gas": "2026-06"
+      "crude_oil": "2026-07",
+      "natural_gas": "2026-07"
     }
   },
   "series": {
@@ -35,7 +35,7 @@
       "fredSeriesId": "PZINCUSDM",
       "fredSeriesUrl": "https://fred.stlouisfed.org/series/PZINCUSDM",
       "retrievedVia": "FRED_API_JSON",
-      "retrievedAt": "2026-08-05T04:49:29Z",
+      "retrievedAt": "2026-08-06T04:49:47Z",
       "title": "Global price of Zinc",
       "frequency": "Monthly",
       "frequencyShort": "M",
@@ -1717,7 +1717,7 @@
       "fredSeriesId": "PCOPPUSDM",
       "fredSeriesUrl": "https://fred.stlouisfed.org/series/PCOPPUSDM",
       "retrievedVia": "FRED_API_JSON",
-      "retrievedAt": "2026-08-05T04:49:29Z",
+      "retrievedAt": "2026-08-06T04:49:47Z",
       "title": "Global price of Copper",
       "frequency": "Monthly",
       "frequencyShort": "M",
@@ -3399,7 +3399,7 @@
       "fredSeriesId": "PALUMUSDM",
       "fredSeriesUrl": "https://fred.stlouisfed.org/series/PALUMUSDM",
       "retrievedVia": "FRED_API_JSON",
-      "retrievedAt": "2026-08-05T04:49:29Z",
+      "retrievedAt": "2026-08-06T04:49:47Z",
       "title": "Global price of Aluminum",
       "frequency": "Monthly",
       "frequencyShort": "M",
@@ -5081,7 +5081,7 @@
       "fredSeriesId": "PNICKUSDM",
       "fredSeriesUrl": "https://fred.stlouisfed.org/series/PNICKUSDM",
       "retrievedVia": "FRED_API_JSON",
-      "retrievedAt": "2026-08-05T04:49:29Z",
+      "retrievedAt": "2026-08-06T04:49:47Z",
       "title": "Global price of Nickel",
       "frequency": "Monthly",
       "frequencyShort": "M",
@@ -6763,7 +6763,7 @@
       "fredSeriesId": "PIORECRUSDM",
       "fredSeriesUrl": "https://fred.stlouisfed.org/series/PIORECRUSDM",
       "retrievedVia": "FRED_API_JSON",
-      "retrievedAt": "2026-08-05T04:49:29Z",
+      "retrievedAt": "2026-08-06T04:49:47Z",
       "title": "Global price of Iron Ore",
       "frequency": "Monthly",
       "frequencyShort": "M",
@@ -8445,20 +8445,20 @@
       "fredSeriesId": "MCOILBRENTEU",
       "fredSeriesUrl": "https://fred.stlouisfed.org/series/MCOILBRENTEU",
       "retrievedVia": "FRED_API_JSON",
-      "retrievedAt": "2026-08-05T04:49:29Z",
+      "retrievedAt": "2026-08-06T04:49:47Z",
       "title": "Crude Oil Prices: Brent - Europe",
       "frequency": "Monthly",
       "frequencyShort": "M",
       "units": "Dollars per Barrel",
       "unitsShort": "$ per Barrel",
       "seasonalAdjustment": "Not Seasonally Adjusted",
-      "lastUpdated": "2026-07-08 12:18:24-05",
+      "lastUpdated": "2026-08-05 12:18:13-05",
       "observationStart": "1987-05-01",
-      "observationEnd": "2026-06-01",
+      "observationEnd": "2026-07-01",
       "notes": "Definitions, Sources and Explanatory Notes:\nhttp://www.eia.doe.gov/dnav/pet/TblDefs/pet_pri_spt_tbldef2.asp",
-      "observationCount": 470,
+      "observationCount": 471,
       "firstPeriod": "1987-05",
-      "latestPeriod": "2026-06",
+      "latestPeriod": "2026-07",
       "observations": [
         {
           "period": "1987-05",
@@ -10339,6 +10339,10 @@
         {
           "period": "2026-06",
           "value": 85.4
+        },
+        {
+          "period": "2026-07",
+          "value": 83.76
         }
       ]
     },
@@ -10351,20 +10355,20 @@
       "fredSeriesId": "MHHNGSP",
       "fredSeriesUrl": "https://fred.stlouisfed.org/series/MHHNGSP",
       "retrievedVia": "FRED_API_JSON",
-      "retrievedAt": "2026-08-05T04:49:29Z",
+      "retrievedAt": "2026-08-06T04:49:47Z",
       "title": "Henry Hub Natural Gas Spot Price",
       "frequency": "Monthly",
       "frequencyShort": "M",
       "units": "Dollars per Million BTU",
       "unitsShort": "$ Per Mil. BTU",
       "seasonalAdjustment": "Not Seasonally Adjusted",
-      "lastUpdated": "2026-07-08 12:32:16-05",
+      "lastUpdated": "2026-08-05 12:32:19-05",
       "observationStart": "1997-01-01",
-      "observationEnd": "2026-06-01",
+      "observationEnd": "2026-07-01",
       "notes": "More information about this series can be found at http://www.eia.gov/dnav/ng/TblDefs/ng_pri_fut_tbldef2.asp",
-      "observationCount": 354,
+      "observationCount": 355,
       "firstPeriod": "1997-01",
-      "latestPeriod": "2026-06",
+      "latestPeriod": "2026-07",
       "observations": [
         {
           "period": "1997-01",
@@ -11781,6 +11785,10 @@
         {
           "period": "2026-06",
           "value": 3.15
+        },
+        {
+          "period": "2026-07",
+          "value": 2.89
         }
       ]
     }
