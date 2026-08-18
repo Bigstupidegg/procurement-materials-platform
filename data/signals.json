@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-18T02:30:03Z",
+  "generatedAt": "2026-08-18T02:42:37Z",
   "isRealData": true,
   "latestPeriod": "2026-07",
   "primarySource": "WORLD_BANK_PINK_SHEET",
@@ -80,8 +80,8 @@
         "status": "HIGH_AGREEMENT",
         "label": "兩來源高度一致",
         "confidence": "HIGH",
-        "latestDifferencePercentVsWorldBank": -0.00727,
-        "recent12MonthMeanAbsoluteDifferencePercent": 0.083728,
+        "latestDifferencePercentVsWorldBank": -0.145179,
+        "recent12MonthMeanAbsoluteDifferencePercent": 0.09451,
         "note": "FRED僅作交叉核對，不會改寫World Bank趨勢訊號。"
       },
       "evidence": [
@@ -136,8 +136,8 @@
         "status": "HIGH_AGREEMENT",
         "label": "兩來源高度一致",
         "confidence": "HIGH",
-        "latestDifferencePercentVsWorldBank": 0.000302,
-        "recent12MonthMeanAbsoluteDifferencePercent": 0.089758,
+        "latestDifferencePercentVsWorldBank": -0.001323,
+        "recent12MonthMeanAbsoluteDifferencePercent": 0.089511,
         "note": "FRED僅作交叉核對，不會改寫World Bank趨勢訊號。"
       },
       "evidence": [
@@ -192,8 +192,8 @@
         "status": "HIGH_AGREEMENT",
         "label": "兩來源高度一致",
         "confidence": "HIGH",
-        "latestDifferencePercentVsWorldBank": -0.004441,
-        "recent12MonthMeanAbsoluteDifferencePercent": 0.065095,
+        "latestDifferencePercentVsWorldBank": -0.086523,
+        "recent12MonthMeanAbsoluteDifferencePercent": 0.07112,
         "note": "FRED僅作交叉核對，不會改寫World Bank趨勢訊號。"
       },
       "evidence": [
@@ -248,8 +248,8 @@
         "status": "HIGH_AGREEMENT",
         "label": "兩來源高度一致",
         "confidence": "HIGH",
-        "latestDifferencePercentVsWorldBank": 0.001623,
-        "recent12MonthMeanAbsoluteDifferencePercent": 0.083574,
+        "latestDifferencePercentVsWorldBank": -0.111937,
+        "recent12MonthMeanAbsoluteDifferencePercent": 0.092891,
         "note": "FRED僅作交叉核對，不會改寫World Bank趨勢訊號。"
       },
       "evidence": [

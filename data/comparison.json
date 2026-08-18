@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-18T02:30:03Z",
+  "generatedAt": "2026-08-18T02:42:37Z",
   "isRealData": true,
   "primarySource": "WORLD_BANK_PINK_SHEET",
   "comparisonSource": "FRED",
@@ -22,19 +22,19 @@
       },
       "fred": {
         "seriesId": "PZINCUSDM",
-        "latestPeriod": "2026-06",
+        "latestPeriod": "2026-07",
         "displayUnit": "公噸(MT)",
         "sourceUnits": "U.S. Dollars per Metric Ton"
       },
-      "overlapCount": 414,
+      "overlapCount": 415,
       "firstOverlapPeriod": "1992-01",
-      "latestOverlapPeriod": "2026-06",
+      "latestOverlapPeriod": "2026-07",
       "comparisonAvailable": true,
       "comparisonReason": null,
-      "latestWorldBankValue": 3539,
-      "latestFredValue": 3538.742727,
-      "latestDifferencePercentVsWorldBank": -0.00727,
-      "recent12MonthMeanAbsoluteDifferencePercent": 0.083728,
+      "latestWorldBankValue": 3599,
+      "latestFredValue": 3593.775,
+      "latestDifferencePercentVsWorldBank": -0.145179,
+      "recent12MonthMeanAbsoluteDifferencePercent": 0.09451,
       "recent12MonthMaxAbsoluteDifferencePercent": 0.27897,
       "observations": [
         {
@@ -2934,6 +2934,13 @@
           "fredValue": 3538.742727,
           "differenceFredMinusWorldBank": -0.257273,
           "differencePercentVsWorldBank": -0.00727
+        },
+        {
+          "period": "2026-07",
+          "worldBankValue": 3599,
+          "fredValue": 3593.775,
+          "differenceFredMinusWorldBank": -5.225,
+          "differencePercentVsWorldBank": -0.145179
         }
       ]
     },
@@ -2948,19 +2955,19 @@
       },
       "fred": {
         "seriesId": "PCOPPUSDM",
-        "latestPeriod": "2026-06",
+        "latestPeriod": "2026-07",
         "displayUnit": "公噸(MT)",
         "sourceUnits": "U.S. Dollars per Metric Ton"
       },
-      "overlapCount": 414,
+      "overlapCount": 415,
       "firstOverlapPeriod": "1992-01",
-      "latestOverlapPeriod": "2026-06",
+      "latestOverlapPeriod": "2026-07",
       "comparisonAvailable": true,
       "comparisonReason": null,
-      "latestWorldBankValue": 13552,
-      "latestFredValue": 13552.040909,
-      "latestDifferencePercentVsWorldBank": 0.000302,
-      "recent12MonthMeanAbsoluteDifferencePercent": 0.089758,
+      "latestWorldBankValue": 13543,
+      "latestFredValue": 13542.82087,
+      "latestDifferencePercentVsWorldBank": -0.001323,
+      "recent12MonthMeanAbsoluteDifferencePercent": 0.089511,
       "recent12MonthMaxAbsoluteDifferencePercent": 0.465696,
       "observations": [
         {
@@ -5860,6 +5867,13 @@
           "fredValue": 13552.040909,
           "differenceFredMinusWorldBank": 0.040909,
           "differencePercentVsWorldBank": 0.000302
+        },
+        {
+          "period": "2026-07",
+          "worldBankValue": 13543,
+          "fredValue": 13542.82087,
+          "differenceFredMinusWorldBank": -0.17913,
+          "differencePercentVsWorldBank": -0.001323
         }
       ]
     },
@@ -5874,19 +5888,19 @@
       },
       "fred": {
         "seriesId": "PALUMUSDM",
-        "latestPeriod": "2026-06",
+        "latestPeriod": "2026-07",
         "displayUnit": "公噸(MT)",
         "sourceUnits": "U.S. Dollars per Metric Ton"
       },
-      "overlapCount": 414,
+      "overlapCount": 415,
       "firstOverlapPeriod": "1992-01",
-      "latestOverlapPeriod": "2026-06",
+      "latestOverlapPeriod": "2026-07",
       "comparisonAvailable": true,
       "comparisonReason": null,
-      "latestWorldBankValue": 3439,
-      "latestFredValue": 3438.847273,
-      "latestDifferencePercentVsWorldBank": -0.004441,
-      "recent12MonthMeanAbsoluteDifferencePercent": 0.065095,
+      "latestWorldBankValue": 3161,
+      "latestFredValue": 3158.265,
+      "latestDifferencePercentVsWorldBank": -0.086523,
+      "recent12MonthMeanAbsoluteDifferencePercent": 0.07112,
       "recent12MonthMaxAbsoluteDifferencePercent": 0.255165,
       "observations": [
         {
@@ -8786,6 +8800,13 @@
           "fredValue": 3438.847273,
           "differenceFredMinusWorldBank": -0.152727,
           "differencePercentVsWorldBank": -0.004441
+        },
+        {
+          "period": "2026-07",
+          "worldBankValue": 3161,
+          "fredValue": 3158.265,
+          "differenceFredMinusWorldBank": -2.735,
+          "differencePercentVsWorldBank": -0.086523
         }
       ]
     },
@@ -8800,19 +8821,19 @@
       },
       "fred": {
         "seriesId": "PNICKUSDM",
-        "latestPeriod": "2026-06",
+        "latestPeriod": "2026-07",
         "displayUnit": "公噸(MT)",
         "sourceUnits": "U.S. Dollars per Metric Ton"
       },
-      "overlapCount": 414,
+      "overlapCount": 415,
       "firstOverlapPeriod": "1992-01",
-      "latestOverlapPeriod": "2026-06",
+      "latestOverlapPeriod": "2026-07",
       "comparisonAvailable": true,
       "comparisonReason": null,
-      "latestWorldBankValue": 17588,
-      "latestFredValue": 17588.285455,
-      "latestDifferencePercentVsWorldBank": 0.001623,
-      "recent12MonthMeanAbsoluteDifferencePercent": 0.083574,
+      "latestWorldBankValue": 16651,
+      "latestFredValue": 16632.361364,
+      "latestDifferencePercentVsWorldBank": -0.111937,
+      "recent12MonthMeanAbsoluteDifferencePercent": 0.092891,
       "recent12MonthMaxAbsoluteDifferencePercent": 0.540495,
       "observations": [
         {
@@ -11712,6 +11733,13 @@
           "fredValue": 17588.285455,
           "differenceFredMinusWorldBank": 0.285455,
           "differencePercentVsWorldBank": 0.001623
+        },
+        {
+          "period": "2026-07",
+          "worldBankValue": 16651,
+          "fredValue": 16632.361364,
+          "differenceFredMinusWorldBank": -18.638636,
+          "differencePercentVsWorldBank": -0.111937
         }
       ]
     },
@@ -11726,17 +11754,17 @@
       },
       "fred": {
         "seriesId": "PIORECRUSDM",
-        "latestPeriod": "2026-06",
+        "latestPeriod": "2026-07",
         "displayUnit": "乾公噸單位(dmtu)",
         "sourceUnits": "U.S. Dollars per Metric Ton"
       },
-      "overlapCount": 414,
+      "overlapCount": 415,
       "firstOverlapPeriod": "1992-01",
-      "latestOverlapPeriod": "2026-06",
+      "latestOverlapPeriod": "2026-07",
       "comparisonAvailable": false,
       "comparisonReason": "World Bank與FRED的鐵礦砂單位標示不同（dmtu與metric ton），未經正式換算規則確認前不計算差異。",
-      "latestWorldBankValue": 100.8,
-      "latestFredValue": 103.790909,
+      "latestWorldBankValue": 98.2,
+      "latestFredValue": 101.595652,
       "observations": []
     },
     "crude_oil": {

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-18T02:30:02Z",
+  "generatedAt": "2026-08-18T02:42:33Z",
   "dataMode": "WORLD_BANK_PRIMARY",
   "worldBank": {
     "status": "SUCCESS",
@@ -14,16 +14,16 @@
   "fred": {
     "status": "SUCCESS",
     "role": "INDEPENDENT_COMPARISON_ONLY",
-    "lastAttemptAt": "2026-08-17T02:47:23Z",
-    "lastSuccessAt": "2026-08-17T02:47:23Z",
-    "latestCommonPeriod": "2026-06",
+    "lastAttemptAt": "2026-08-18T02:42:33Z",
+    "lastSuccessAt": "2026-08-18T02:42:33Z",
+    "latestCommonPeriod": "2026-07",
     "latestAvailablePeriod": "2026-07",
     "latestPeriods": {
-      "zinc": "2026-06",
-      "copper": "2026-06",
-      "aluminium": "2026-06",
-      "nickel": "2026-06",
-      "iron_ore": "2026-06",
+      "zinc": "2026-07",
+      "copper": "2026-07",
+      "aluminium": "2026-07",
+      "nickel": "2026-07",
+      "iron_ore": "2026-07",
       "crude_oil": "2026-07",
       "natural_gas": "2026-07"
     },
