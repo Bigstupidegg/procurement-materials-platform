@@ -49,21 +49,22 @@ Goal: keep the public GitHub Pages market-analysis layer separate from the priva
 
 #### C3.1 — Collector hardening and practical workbook acceptance
 
-Status: code + actual workbook-layout contract implemented; live-source dry-run remains before operational cutover.
+Status: code + authoritative single-sheet workbook contract implemented; company-PC live-source dry-run remains before operational cutover.
 
 - [x] Replace fixed LME column indexing with semantic `OFFER` header lookup.
 - [x] Treat LME Copper Cash OFFER as the primary operational copper quote.
 - [x] Select SMM electrolytic-copper `均價` semantically.
 - [x] Match the existing monthly Sheet day row exactly and fail on ambiguous/missing dates.
-- [x] Validate the actual company main-sheet A1:L4 layout before a write.
-- [x] Validate the `行情統計表資料來源` source registry before a write.
-- [x] Align Oil / Silver / Gold with company-required 鉅亨 sources instead of Yahoo Finance.
+- [x] Treat the current `大宗材料 行情統計表` worksheet as the authoritative operational workbook layout.
+- [x] Validate authoritative A1:L4 material / unit / source / term labels before every write.
+- [x] Remove the obsolete requirement for a second `行情統計表資料來源` worksheet.
+- [x] Preserve company-defined unit labels exactly, including current D2 `USD / TONNE` and J2 `USD / DRUM`.
+- [x] Keep source-native quote units separately in the local audit metadata instead of silently rewriting the company Sheet.
+- [x] Align Oil / Silver / Gold collection with company-required 鉅亨 sources instead of Yahoo Finance.
 - [x] Make Google Sheet writes opt-in via `ALLOW_GOOGLE_SHEET_WRITE=1`; default is dry-run.
 - [x] Prevent partial full-row writes: all 11 quotes must succeed before A:L update.
 - [x] Keep service-account credentials, Sheet IDs, operational audit data, inventory, supplier/PO data and buy/no-buy decisions out of the public repository.
-- [x] Validate the uploaded workbook row mapping: 2026-08-26 resolves to row 16.
-- [ ] Correct/approve SMM unit label (current D2 says USD/TONNE while raw SMM is CNY/MT).
-- [ ] Correct/approve Brent unit label (recommend USD/BBL instead of USD/DRUM).
+- [x] Validate the authoritative workbook row mapping: 2026-08-26 resolves to row 16.
 - [ ] Run one company-PC Selenium dry-run and compare all 11 values with the same-day Sheet row.
 - [ ] Enable `ALLOW_GOOGLE_SHEET_WRITE=1` only after value-by-value acceptance.
 
