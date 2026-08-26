@@ -6,7 +6,7 @@ This policy governs external market data used by the platform.
 
 ### Primary source
 
-World Bank Pink Sheet is the current primary market source for the seven core commodities.
+World Bank Pink Sheet is the current primary market source for the seven core commodities on the public GitHub Pages site.
 
 A primary source may determine market trend and derived procurement signals only after:
 
@@ -35,12 +35,13 @@ Each production dataset should preserve, where available:
 
 ```text
 source identifier
-source URL
+source URL / instrument code
 series code / workbook column
 currency
 unit
 frequency
 generated timestamp
+observation timestamp
 latest period
 source update date
 source hash
@@ -51,10 +52,12 @@ sync status
 
 If a production source fails validation or synchronization:
 
-- keep the last known valid dataset
+- keep the last known valid dataset where appropriate
 - mark status / warning clearly
 - do not replace production data with demo data without an explicit Demo Mode indicator
 - do not present an unverified newest value as valid
+
+For the private company daily collector, a required quote failure must stop the operational full-row write.
 
 ## 4. Unit and currency rules
 
@@ -73,9 +76,37 @@ Before raw-price comparison, confirm:
 
 When units differ, use normalized index comparison where appropriate.
 
-## 5. Source additions
+## 5. Private company daily source contract
 
-Potential future sources include JPC, LME-related references, FX, freight, wage, CPI, and other macroeconomic datasets.
+The private Google Sheet workflow is separate from the public World Bank/FRED layer. Its verified source contract comes from the original `update_prices_v5.py` implementation and the current C3.1 hardening work.
+
+| Google Sheet field | Source | Instrument / rule |
+|---|---|---|
+| Copper Cash | LME | Copper Cash `OFFER` |
+| Copper 3M | LME | Copper `3-month` `OFFER` |
+| Electrolytic Copper | SMM | `1#电解铜`, explicit average / `均價` |
+| Aluminium | LME | Cash `OFFER` |
+| Lead | LME | Cash `OFFER` |
+| Nickel | LME | Cash `OFFER` |
+| Tin | LME | Cash `OFFER` |
+| Zinc | LME | Cash `OFFER` |
+| Brent | yfinance | `BZ=F`, latest available `Close` |
+| Silver | yfinance | `SI=F`, latest available `Close × 100` |
+| Gold | yfinance | `GC=F`, latest available `Close` |
+
+Operational notes:
+
+- LME and SMM are retrieved through Selenium/browser automation.
+- C3.1 identifies the LME `OFFER` column semantically rather than by fixed HTML position.
+- C3.1 selects SMM electrolytic-copper average explicitly.
+- yfinance is used for J/K/L exactly because the original Python script uses it for those three market references.
+- `BZ=F`, `SI=F`, and `GC=F` are futures references, not spot prices.
+- LME Copper Cash OFFER is the primary daily copper market reference for purchasing decision support.
+- Private Google Sheet data is not a public GitHub Pages dataset.
+
+## 6. Source additions
+
+Potential future sources include JPC, additional LME-related references, FX, freight, wage, CPI, and other macroeconomic datasets.
 
 Before adding a new source:
 
@@ -88,7 +119,7 @@ Before adding a new source:
 7. Update `CALCULATION_RULES.md` if the source affects formulas.
 8. Add tests.
 
-## 6. Procurement interpretation
+## 7. Procurement interpretation
 
 Market data is evidence, not supplier cost truth.
 
@@ -105,8 +136,8 @@ Negotiation decision
 
 These categories should not be merged into one unexplained number.
 
-## 7. Security
+## 8. Security
 
-API keys must remain in GitHub Actions secrets or equivalent protected CI configuration. They must not be committed to repository files, generated JSON, browser JavaScript, commit messages, or logs.
+API keys and company credentials must remain in protected local/CI configuration. They must not be committed to repository files, generated public JSON, browser JavaScript, commit messages, or logs.
 
-Browser code should read prepared same-origin data files rather than directly exposing protected source credentials.
+Browser code should read prepared same-origin public data files rather than exposing protected source credentials. The company Google service-account credential and Sheet ID must remain outside the public repository.
