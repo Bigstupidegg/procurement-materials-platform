@@ -20,6 +20,47 @@ class PrepareSiteV23Tests(unittest.TestCase):
         self.assertNotIn("未連接任何外部市場資料來源", result)
         self.assertNotIn("介面原型 v1.2.1", result)
 
+    def test_build_production_core_strips_demo_market_engine(self):
+        original_site = prepare_site.SITE
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                prepare_site.SITE = Path(tmp)
+                asset_dir = prepare_site.SITE / "assets"
+                asset_dir.mkdir(parents=True)
+                source = asset_dir / "app.js"
+                source.write_text(
+                    "(function(){\n'use strict';\n"
+                    "function mulberry32(seed){ return seed; }\n"
+                    "const MATERIALS = [1];\n"
+                    "function genSeries(){ return []; }\n"
+                    + prepare_site.CALCULATOR_MARKER
+                    + "\nfunction validateAndCalc(){}\n"
+                    + "function switchTab(target){\n"
+                    + "  if(target==='chart' && priceChart){ setTimeout(function(){ try{ priceChart.resize(); }catch(e){} },50); }\n"
+                    + "}\n})();\n",
+                    encoding="utf-8",
+                )
+
+                target = prepare_site.build_production_core()
+                result = target.read_text(encoding="utf-8")
+
+                self.assertTrue(target.is_file())
+                self.assertFalse(source.exists())
+                self.assertIn("validateAndCalc", result)
+                self.assertIn("procurement:chart-visible", result)
+                self.assertNotIn("mulberry32", result)
+                self.assertNotIn("const MATERIALS = [", result)
+                self.assertNotIn("genSeries(", result)
+        finally:
+            prepare_site.SITE = original_site
+
+    def test_inject_resources_switches_to_production_core(self):
+        html = "<html><head></head><body>" + prepare_site.SOURCE_APP_SCRIPT + "</body></html>"
+        result = prepare_site.inject_resources(html)
+        self.assertIn(prepare_site.PRODUCTION_APP_SCRIPT, result)
+        self.assertNotIn(prepare_site.SOURCE_APP_SCRIPT, result)
+        self.assertIn("world-bank-live.js", result)
+
     def test_normalize_live_asset_identity_uses_release_version(self):
         original_site = prepare_site.SITE
         try:

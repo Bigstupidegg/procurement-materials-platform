@@ -33,9 +33,23 @@ jobs:
           python -m unittest discover -s tests -p "test_prepare_site.py" -v
           node --check assets/supplier-rationality.js
           node --check assets/negotiation-report.js
+          node --check assets/world-bank-live.js
 
       - name: Prepare website files
         run: python scripts/prepare_site.py
+
+      - name: Verify production real-data app core
+        run: |
+          node --check _site/assets/app-core.js
+          grep -q './assets/app-core.js' _site/index.html
+          if grep -q './assets/app.js' _site/index.html || test -f _site/assets/app.js; then
+            echo "Legacy demo app leaked into production deployment"
+            exit 1
+          fi
+          if grep -Eq 'mulberry32|Seeded Random Walk|const MATERIALS = \[|genSeries\(' _site/assets/app-core.js; then
+            echo "Demo market engine leaked into production app core"
+            exit 1
+          fi
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5

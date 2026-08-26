@@ -36,6 +36,14 @@ v2.3 不以增加大量新功能為優先，而是把現有成果整理成可長
 - `assets/supplier-rationality.js`：供應商調價合理性。
 - `assets/negotiation-report.js`：議價報告。
 
+### Production Real Data Path
+
+- Repository 的 `assets/app.js` 保留舊版 Demo/UI fixture，方便回歸原型行為。
+- 正式建置時 `scripts/prepare_site.py` 會從舊程式只抽出 Should-Cost 與導覽共用邏輯，產生 `_site/assets/app-core.js`。
+- `_site/assets/app.js` 會被移除，正式頁面不會載入 Seeded Random Walk。
+- 市場卡片、Chart、Tooltip、統計與 CSV 由 `assets/world-bank-live.js` 的已驗證 World Bank 資料路徑負責。
+- CI 與 Pages 部署會拒絕任何 Demo engine 洩漏進 production core。
+
 ### Automation
 
 - `.github/workflows/update-world-bank.yml`
@@ -100,11 +108,11 @@ Negotiation Gap
 
 ```text
 /
-├─ assets/          # 前端顯示與分析模組
+├─ assets/          # 前端顯示、Demo fixture 與分析模組
 ├─ config/          # 材料、資料來源與 release metadata
 ├─ data/            # 市場資料、比較資料、訊號與規則
-├─ scripts/         # 同步、驗證、衍生計算、網站組裝
-├─ tests/           # 解析、採購分析與 release identity 測試
+├─ scripts/         # 同步、驗證、衍生計算、production build
+├─ tests/           # 解析、採購分析、production path 與 release identity 測試
 ├─ docs/            # 架構、知識底稿、資料政策、公式、Roadmap、Changelog
 └─ .github/workflows/
 ```
@@ -121,7 +129,7 @@ Negotiation Gap
 
 ## 目前技術債
 
-舊版 `assets/app.js` 仍保留 v1.2.1 Seeded Random Walk 模擬資料，正式部署再由 real-data 模組載入市場資料。v2.3 後續工作會將 Demo Mode 與 Real Data Mode 明確分離，避免初始化、Chart、CSV、Tooltip 或 UI 文案出現資料來源不一致。
+Production runtime 已與舊 Demo market engine 分離，但 source tree 仍保留歷史名稱 `assets/app.js`。後續會再把這個 Demo fixture 正式改名／重構，並補瀏覽器層級的 cards / chart / tooltip / CSV 資料來源一致性測試。
 
 ## 開發原則
 

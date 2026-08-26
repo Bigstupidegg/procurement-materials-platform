@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - main
+      - v2.3-project-foundation
   workflow_dispatch:
 
 permissions:
@@ -38,10 +39,24 @@ jobs:
       - name: Build GitHub Pages payload
         run: python scripts/prepare_site.py
 
-      - name: Verify v2.3 release identity
+      - name: Verify production real-data path
         run: |
+          node --check _site/assets/app-core.js
           grep -q "v2.3.0" _site/index.html
           grep -q "World Bank 月度資料版 v2.3.0" _site/assets/world-bank-live.js
+          grep -q './assets/app-core.js' _site/index.html
+          if grep -q './assets/app.js' _site/index.html; then
+            echo "Legacy demo app.js is still referenced by production index"
+            exit 1
+          fi
+          if test -f _site/assets/app.js; then
+            echo "Legacy demo app.js leaked into production assets"
+            exit 1
+          fi
+          if grep -Eq 'mulberry32|Seeded Random Walk|const MATERIALS = \[|genSeries\(' _site/assets/app-core.js; then
+            echo "Demo market engine leaked into production app-core.js"
+            exit 1
+          fi
           if grep -q "未連接任何外部市場資料來源" _site/index.html; then
             echo "Obsolete demo-only claim found in built site"
             exit 1
