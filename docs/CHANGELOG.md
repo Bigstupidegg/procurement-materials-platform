@@ -13,36 +13,39 @@ All notable platform changes should be recorded here. Dates use Asia/Taipei cale
 - `docs/CALCULATION_RULES.md` for market, Should-Cost, supplier-gap, and auditability formulas.
 - `docs/DATA_SOURCE_POLICY.md` for source roles, provenance, staleness, units, and security policy.
 - `docs/ROADMAP.md` for v2.3 through v3.x planning.
-- `tests/test_prepare_site.py` release-identity and production-path regression tests.
+- Source-level `assets/app-core.js` containing Should-Cost and navigation only.
+- Source-level `assets/demo-market.js` as an explicit Development Demo market fixture.
+- `assets/data-freshness.js` showing latest market period, World Bank synchronization, source update date, FRED corroboration status, and stale state from `data/status.json`.
+- `tests/test_prepare_site.py` coverage for release identity, source boundary, production stripping, and freshness status.
 - `.github/workflows/quality-check.yml` for pull-request tests, JS syntax checks, site build, release identity, and Demo-leakage guards.
-- Generated production-only `_site/assets/app-core.js`, containing calculator/navigation logic without the seeded market simulator.
 
 ### Changed
 
 - README rewritten to reflect the repository's real implementation rather than the obsolete Phase 2 seed-data state.
 - Project positioning changed from `v1.2.1 Prototype / Demo Data` to `v2.3 Real Data + Procurement Decision Support`.
-- `scripts/prepare_site.py` now reads release metadata and normalizes the built site to the v2.3 identity.
-- Production build now replaces the legacy `assets/app.js` reference with `assets/app-core.js` and removes `_site/assets/app.js`.
-- Market cards, chart, tooltip, statistics, and CSV in production are owned by the validated World Bank real-data module rather than the seeded Demo engine.
+- `assets/app.js` is now a Development Demo bootstrap only; it no longer contains market simulation, Should-Cost, or navigation business logic.
+- `scripts/prepare_site.py` now uses source-level `app-core.js` directly instead of extracting a production core from the legacy monolithic app at build time.
+- Production build replaces the development bootstrap reference with `app-core.js` and removes both `_site/assets/app.js` and `_site/assets/demo-market.js`.
+- Market cards, chart, tooltip, statistics, and CSV in production are owned by the validated World Bank real-data module.
 - Built `world-bank-live.js` release wording is normalized from legacy v1.3.0 text to the active release version.
-- Pages deployment now rejects a build if the seeded Demo engine appears in the production core or production HTML.
-- World Bank documented as the primary market source.
-- FRED documented as independent corroboration only.
-- Supplier price analysis documented as decision support, not automatic acceptance/rejection.
+- Pages deployment rejects a build if Development Demo code appears in the production core or production HTML.
+- Existing calculator integration tests now treat `assets/app-core.js` as the formal Should-Cost contract.
+- World Bank remains the primary market source; FRED remains independent corroboration only.
+- Supplier price analysis remains decision support, not automatic acceptance/rejection.
 
-### Known technical debt
+### Remaining v2.3 technical debt
 
-- Source `assets/app.js` still contains the original v1.2.1 seeded random-walk demo engine and retains an ambiguous production-sounding filename; it is no longer part of the built production runtime.
-- Source `assets/world-bank-live.js` still contains a legacy v1.3.0 literal; the v2.3 build currently normalizes the copied deployment asset through `prepare_site.py`.
+- Source `assets/world-bank-live.js` still contains a legacy v1.3.0 literal; the v2.3 build normalizes the copied deployment asset through `prepare_site.py`.
 - Browser-level source-consistency tests for cards/chart/tooltip/CSV are still pending.
-- Production UI should expose latest-period / synchronization freshness more prominently.
+- Visual regression coverage for loading, success, stale, and fail-closed states is still pending.
+- Rule/config threshold consolidation is still pending.
 
 ### Planned before v2.3 completion
 
-- rename/restructure the legacy Demo fixture at source level
 - add browser-level cards/chart/tooltip/CSV source-consistency coverage
-- more prominent latest-period / sync-status UI
+- add visual/status regression coverage
 - consolidate duplicated rule/config thresholds where applicable
+- add schema-version enforcement for derived JSON
 - Supplier Case foundation for TTP Radiator and Bushing
 
 ## [2.2.x] - historical implementation state

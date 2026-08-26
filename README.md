@@ -11,7 +11,7 @@ GitHub Pages：`https://bigstupidegg.github.io/procurement-materials-platform/`
 v2.3 不以增加大量新功能為優先，而是把現有成果整理成可長期開發與維護的正式基線：
 
 - 統一專案版本、架構與文件。
-- 明確區分 Real Data 與舊版 Demo Prototype。
+- 明確區分 Real Data 與 Development Demo。
 - 將資料來源、公式、訊號規則與限制文件化。
 - 建立 Supplier Case / TTP Radiator / Bushing 等後續擴充的資料基礎。
 - 保持所有分析可追溯，避免「原料漲幅 = 成品漲幅」的錯誤推論。
@@ -36,13 +36,24 @@ v2.3 不以增加大量新功能為優先，而是把現有成果整理成可長
 - `assets/supplier-rationality.js`：供應商調價合理性。
 - `assets/negotiation-report.js`：議價報告。
 
-### Production Real Data Path
+### Runtime Boundary
 
-- Repository 的 `assets/app.js` 保留舊版 Demo/UI fixture，方便回歸原型行為。
-- 正式建置時 `scripts/prepare_site.py` 會從舊程式只抽出 Should-Cost 與導覽共用邏輯，產生 `_site/assets/app-core.js`。
-- `_site/assets/app.js` 會被移除，正式頁面不會載入 Seeded Random Walk。
-- 市場卡片、Chart、Tooltip、統計與 CSV 由 `assets/world-bank-live.js` 的已驗證 World Bank 資料路徑負責。
-- CI 與 Pages 部署會拒絕任何 Demo engine 洩漏進 production core。
+Source tree 已正式拆分：
+
+- `assets/app-core.js`：Should-Cost、共用格式化與導覽；正式與開發共用。
+- `assets/demo-market.js`：Development Demo 行情、卡片、圖表與 CSV；僅供本機／Repository UI 開發。
+- `assets/app.js`：Development Demo bootstrap，只負責依序載入 `app-core.js` 與 `demo-market.js`，不含商業邏輯。
+- `assets/world-bank-live.js`：正式市場卡片、Chart、Tooltip、統計與 CSV，使用已驗證 World Bank/status JSON。
+- `assets/data-freshness.js`：顯示最新市場月份、World Bank 最後同步、來源更新日、FRED 核對與 stale 狀態。
+
+正式 `scripts/prepare_site.py` 建置時：
+
+1. 將 `index.html` 的 development bootstrap 改成 `app-core.js`。
+2. 注入 World Bank、freshness、來源比較、趨勢訊號、合理性與議價報告模組。
+3. 從 `_site` 移除 `app.js` 與 `demo-market.js`。
+4. 驗證正式 core 不含 Demo market tokens。
+
+因此 production runtime 不會先顯示假資料，也不會把 Demo fixture 打包進 GitHub Pages artifact。
 
 ### Automation
 
@@ -108,11 +119,11 @@ Negotiation Gap
 
 ```text
 /
-├─ assets/          # 前端顯示、Demo fixture 與分析模組
+├─ assets/          # app core、Development Demo、Real Data 與分析模組
 ├─ config/          # 材料、資料來源與 release metadata
 ├─ data/            # 市場資料、比較資料、訊號與規則
 ├─ scripts/         # 同步、驗證、衍生計算、production build
-├─ tests/           # 解析、採購分析、production path 與 release identity 測試
+├─ tests/           # 解析、採購分析、runtime boundary 與 release identity 測試
 ├─ docs/            # 架構、知識底稿、資料政策、公式、Roadmap、Changelog
 └─ .github/workflows/
 ```
@@ -129,7 +140,7 @@ Negotiation Gap
 
 ## 目前技術債
 
-Production runtime 已與舊 Demo market engine 分離，但 source tree 仍保留歷史名稱 `assets/app.js`。後續會再把這個 Demo fixture 正式改名／重構，並補瀏覽器層級的 cards / chart / tooltip / CSV 資料來源一致性測試。
+Production 與 Development Demo 已在 source tree 與 build artifact 兩層分離。Phase C 剩餘重點是補瀏覽器層級的 cards / chart / tooltip / CSV 資料來源一致性回歸測試，並進一步把 freshness / source status 與各分析模組的狀態呈現整合。
 
 ## 開發原則
 

@@ -9,7 +9,7 @@ JS = ROOT / "assets" / "supplier-rationality.js"
 CSS = ROOT / "assets" / "supplier-rationality.css"
 RULES = ROOT / "data" / "should-cost-rules.json"
 PREPARE = ROOT / "scripts" / "prepare_site.py"
-APP = ROOT / "assets" / "app.js"
+APP_CORE = ROOT / "assets" / "app-core.js"
 INDEX = ROOT / "index.html"
 
 
@@ -20,19 +20,13 @@ class SupplierRationalityTests(unittest.TestCase):
         cls.css = CSS.read_text(encoding="utf-8")
         cls.rules = json.loads(RULES.read_text(encoding="utf-8"))
         cls.prepare = PREPARE.read_text(encoding="utf-8")
-        cls.app = APP.read_text(encoding="utf-8")
+        cls.app_core = APP_CORE.read_text(encoding="utf-8")
         cls.index = INDEX.read_text(encoding="utf-8")
 
     def test_rules_are_ordered_and_never_auto_decide(self) -> None:
         thresholds = self.rules["thresholds"]
-        self.assertLess(
-            thresholds["modelMatchTolerancePercentagePoints"],
-            thresholds["requestEvidenceGapPercentagePoints"],
-        )
-        self.assertLess(
-            thresholds["requestEvidenceGapPercentagePoints"],
-            thresholds["highChallengeGapPercentagePoints"],
-        )
+        self.assertLess(thresholds["modelMatchTolerancePercentagePoints"], thresholds["requestEvidenceGapPercentagePoints"])
+        self.assertLess(thresholds["requestEvidenceGapPercentagePoints"], thresholds["highChallengeGapPercentagePoints"])
         policy = self.rules["policy"]
         self.assertFalse(policy["automaticAcceptance"])
         self.assertFalse(policy["automaticRejection"])
@@ -52,19 +46,14 @@ class SupplierRationalityTests(unittest.TestCase):
 
     def test_existing_calculator_contract_is_unchanged(self) -> None:
         for token in ("validateAndCalc", "f_supplierAsk", "f_matRatio", "f_matRate", "cmpGap"):
-            self.assertIn(token, self.app + self.index)
-        self.assertNotIn("supplier-rationality", self.app)
+            self.assertIn(token, self.app_core + self.index)
+        self.assertNotIn("supplier-rationality", self.app_core)
 
     def test_recommendations_cover_required_procurement_actions(self) -> None:
         for token in (
-            "REQUEST_REDUCTION",
-            "REQUEST_DEEPER_REDUCTION",
-            "CHALLENGE_INCREASE",
-            "HIGH_CHALLENGE",
-            "REQUEST_EVIDENCE",
-            "CONDITIONAL_REVIEW",
-            "SUPPLIER_BELOW_MODEL",
-            "不自動接受或拒絕",
+            "REQUEST_REDUCTION", "REQUEST_DEEPER_REDUCTION", "CHALLENGE_INCREASE",
+            "HIGH_CHALLENGE", "REQUEST_EVIDENCE", "CONDITIONAL_REVIEW",
+            "SUPPLIER_BELOW_MODEL", "不自動接受或拒絕",
         ):
             self.assertIn(token, self.js)
 
@@ -76,23 +65,13 @@ class SupplierRationalityTests(unittest.TestCase):
 
     def test_panel_and_styles_are_present(self) -> None:
         for token in (
-            "supplierRationalityPanel",
-            "sraMaterialImpact",
-            "sraOtherImpact",
-            "sraGap",
-            "sraVerdictTitle",
-            ".sra-panel",
-            ".sra-metrics",
-            ".sra-verdict",
+            "supplierRationalityPanel", "sraMaterialImpact", "sraOtherImpact",
+            "sraGap", "sraVerdictTitle", ".sra-panel", ".sra-metrics", ".sra-verdict",
         ):
             self.assertIn(token, self.js + self.css)
 
     def test_pages_packaging_includes_rules_and_resources(self) -> None:
-        for token in (
-            "should-cost-rules.json",
-            "supplier-rationality.css",
-            "supplier-rationality.js",
-        ):
+        for token in ("should-cost-rules.json", "supplier-rationality.css", "supplier-rationality.js"):
             self.assertIn(token, self.prepare)
 
 

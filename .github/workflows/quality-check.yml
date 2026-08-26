@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - v2.3-project-foundation
+      - v2.3-real-data-path
   workflow_dispatch:
 
 permissions:
@@ -30,7 +31,10 @@ jobs:
         run: |
           python -m unittest discover -s tests -v
           node --check assets/app.js
+          node --check assets/app-core.js
+          node --check assets/demo-market.js
           node --check assets/world-bank-live.js
+          node --check assets/data-freshness.js
           node --check assets/source-comparison.js
           node --check assets/trend-signals.js
           node --check assets/supplier-rationality.js
@@ -39,22 +43,28 @@ jobs:
       - name: Build GitHub Pages payload
         run: python scripts/prepare_site.py
 
-      - name: Verify production real-data path
+      - name: Verify production source boundary
         run: |
           node --check _site/assets/app-core.js
+          node --check _site/assets/data-freshness.js
           grep -q "v2.3.0" _site/index.html
           grep -q "World Bank 月度資料版 v2.3.0" _site/assets/world-bank-live.js
           grep -q './assets/app-core.js' _site/index.html
-          if grep -q './assets/app.js' _site/index.html; then
-            echo "Legacy demo app.js is still referenced by production index"
+          grep -q './assets/data-freshness.js' _site/index.html
+          if grep -q './assets/app.js' _site/index.html || test -f _site/assets/app.js; then
+            echo "Development bootstrap app.js leaked into production"
             exit 1
           fi
-          if test -f _site/assets/app.js; then
-            echo "Legacy demo app.js leaked into production assets"
+          if grep -q 'demo-market.js' _site/index.html || test -f _site/assets/demo-market.js; then
+            echo "Development Demo market fixture leaked into production"
             exit 1
           fi
-          if grep -Eq 'mulberry32|Seeded Random Walk|const MATERIALS = \[|genSeries\(' _site/assets/app-core.js; then
-            echo "Demo market engine leaked into production app-core.js"
+          if grep -Eq 'mulberry32|Seeded Random Walk|const MATERIALS|Development Demo fixture' _site/assets/app-core.js; then
+            echo "Demo market code leaked into production app-core.js"
+            exit 1
+          fi
+          if grep -Eq 'validateAndCalc|f_supplierAsk|cmpGap' assets/demo-market.js; then
+            echo "Should-Cost code leaked into demo-market.js"
             exit 1
           fi
           if grep -q "未連接任何外部市場資料來源" _site/index.html; then
