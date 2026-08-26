@@ -42,9 +42,10 @@ v2.3 不以增加大量新功能為優先，而是把現有成果整理成可長
 - `.github/workflows/update-fred.yml`
 - `.github/workflows/update-signals.yml`
 - `.github/workflows/inspect-world-bank.yml`
+- `.github/workflows/quality-check.yml`
 - `.github/workflows/deploy-pages.yml`
 
-GitHub Pages 部署前會執行採購分析相關測試，再由 `scripts/prepare_site.py` 組裝正式網站內容。
+Pull Request 會先執行 Quality Check；GitHub Pages 部署前也會執行採購分析相關測試，再由 `scripts/prepare_site.py` 組裝正式網站內容。
 
 ## 七項核心材料
 
@@ -64,6 +65,7 @@ GitHub Pages 部署前會執行採購分析相關測試，再由 `scripts/prepar
 - **FRED**：Independent comparison / corroboration only，不覆寫 World Bank 趨勢。
 - 市場價格只代表市場方向，不代表供應商實際成本。
 - 供應商合理成品調價必須另外考慮材料占比、採購落後期、庫存、匯率、能源、加工、運費與合約條件。
+- 完整規範見 `docs/DATA_SOURCE_POLICY.md`。
 
 ## Should-Cost 核心原則
 
@@ -99,11 +101,11 @@ Negotiation Gap
 ```text
 /
 ├─ assets/          # 前端顯示與分析模組
-├─ config/          # 材料與資料來源設定
+├─ config/          # 材料、資料來源與 release metadata
 ├─ data/            # 市場資料、比較資料、訊號與規則
 ├─ scripts/         # 同步、驗證、衍生計算、網站組裝
-├─ tests/           # 解析與採購分析測試
-├─ docs/            # 架構、知識底稿、公式、Roadmap、Changelog
+├─ tests/           # 解析、採購分析與 release identity 測試
+├─ docs/            # 架構、知識底稿、資料政策、公式、Roadmap、Changelog
 └─ .github/workflows/
 ```
 
@@ -112,6 +114,7 @@ Negotiation Gap
 - `docs/PROJECT_KNOWLEDGE_BASE.md`：專案目的、歷史脈絡、實際採購案例與設計原則。
 - `docs/DATA_DICTIONARY.md`：核心 JSON 與欄位定義。
 - `docs/CALCULATION_RULES.md`：市場變化、Should-Cost、議價差距與訊號規則。
+- `docs/DATA_SOURCE_POLICY.md`：資料來源角色、驗證、staleness、單位與安全政策。
 - `docs/ROADMAP.md`：v2.3 與後續 Supplier Case / ERP 整合方向。
 - `docs/CHANGELOG.md`：版本變更紀錄。
 - `docs/github-pages-static-architecture.md`：原始靜態資料架構規劃。
