@@ -18,6 +18,7 @@ REQUIRED_DATA = (
     "status.json",
     "should-cost-rules.json",
 )
+
 STYLESHEETS = (
     '  <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">',
     '  <link rel="stylesheet" href="./assets/source-comparison.css">',
@@ -25,47 +26,18 @@ STYLESHEETS = (
     '  <link rel="stylesheet" href="./assets/supplier-rationality.css">',
     '  <link rel="stylesheet" href="./assets/negotiation-report.css">',
 )
+
 SCRIPTS = (
     '<script src="./assets/world-bank-live.js"></script>',
+    '<script src="./assets/data-freshness.js"></script>',
     '<script src="./assets/source-comparison.js"></script>',
     '<script src="./assets/trend-signals.js"></script>',
     '<script src="./assets/supplier-rationality.js"></script>',
     '<script src="./assets/negotiation-report.js"></script>',
 )
-SOURCE_APP_SCRIPT = '<script src="./assets/app.js"></script>'
-PRODUCTION_APP_SCRIPT = '<script src="./assets/app-core.js"></script>'
-CALCULATOR_MARKER = """/* ========================================================================
-   採購成本影響試算器（F-01／F-04／F-05）
-   ======================================================================== */"""
-LEGACY_RESIZE_LINE = "if(target==='chart' && priceChart){ setTimeout(function(){ try{ priceChart.resize(); }catch(e){} },50); }"
-PRODUCTION_RESIZE_LINE = "if(target==='chart'){ setTimeout(function(){ window.dispatchEvent(new CustomEvent('procurement:chart-visible')); },50); }"
 
-PRODUCTION_CORE_PREFIX = """(function(){
-'use strict';
-
-/* v2.3 production core: shared calculator/navigation helpers only.
-   Market cards, chart and CSV are owned by the validated real-data module. */
-function fmtNum(n, decimals){
-  if(n===null||n===undefined||!isFinite(n)) return '—';
-  const dec = decimals!==undefined? decimals : (Math.abs(n)<10?2:0);
-  return n.toLocaleString('zh-Hant-TW',{minimumFractionDigits:dec, maximumFractionDigits:dec});
-}
-function formatSigned(pct, decimals){
-  const dec = decimals===undefined?2:decimals;
-  if(pct===null||pct===undefined||!isFinite(pct)) return '—';
-  const rounded = Number(pct.toFixed(dec));
-  if(rounded>0) return '▲ +'+rounded.toFixed(dec)+'%';
-  if(rounded<0) return '▼ '+rounded.toFixed(dec)+'%';
-  return '— 0.00%';
-}
-function signColorClass(pct){
-  if(pct===null||pct===undefined||!isFinite(pct)) return 'flat';
-  if(pct>0.0005) return 'up';
-  if(pct<-0.0005) return 'down';
-  return 'flat';
-}
-
-"""
+SOURCE_BOOTSTRAP_SCRIPT = '<script src="./assets/app.js"></script>'
+PRODUCTION_CORE_SCRIPT = '<script src="./assets/app-core.js"></script>'
 
 
 def load_release() -> dict:
@@ -100,44 +72,48 @@ def normalize_index_identity(html: str, version: str) -> str:
     return html
 
 
-def build_production_core() -> Path:
-    source = SITE / "assets" / "app.js"
-    target = SITE / "assets" / "app-core.js"
-    if not source.is_file():
-        raise RuntimeError("找不到 assets/app.js，無法建立正式 production core")
+def validate_source_boundary() -> None:
+    core = ASSETS / "app-core.js"
+    demo = ASSETS / "demo-market.js"
+    bootstrap = ASSETS / "app.js"
+    freshness = ASSETS / "data-freshness.js"
+    for path in (core, demo, bootstrap, freshness):
+        if not path.is_file():
+            raise RuntimeError(f"缺少必要前端檔案：{path.relative_to(ROOT)}")
 
-    text = source.read_text(encoding="utf-8")
-    if CALCULATOR_MARKER not in text:
-        raise RuntimeError("app.js 找不到採購成本試算器邊界，拒絕產生 production core")
+    core_text = core.read_text(encoding="utf-8")
+    demo_text = demo.read_text(encoding="utf-8")
+    bootstrap_text = bootstrap.read_text(encoding="utf-8")
 
-    tail = text.split(CALCULATOR_MARKER, 1)[1]
-    core = PRODUCTION_CORE_PREFIX + CALCULATOR_MARKER + tail
-
-    if LEGACY_RESIZE_LINE not in core:
-        raise RuntimeError("app.js 導覽 resize 邏輯已變更，需人工檢查 production core 產生規則")
-    core = core.replace(LEGACY_RESIZE_LINE, PRODUCTION_RESIZE_LINE, 1)
-
-    forbidden = (
+    forbidden_in_core = (
         "mulberry32",
         "Seeded Random Walk",
-        "const MATERIALS = [",
+        "const MATERIALS",
         "genSeries(",
+        "Development Demo fixture",
         "window._csvExport",
-        "示範資料（模擬",
     )
-    leaked = [token for token in forbidden if token in core]
+    leaked = [token for token in forbidden_in_core if token in core_text]
     if leaked:
-        raise RuntimeError("production core 仍含 Demo market 邏輯：" + ", ".join(leaked))
+        raise RuntimeError("app-core.js 混入 Demo market 邏輯：" + ", ".join(leaked))
 
-    target.write_text(core, encoding="utf-8")
-    source.unlink()
-    return target
+    for token in ("validateAndCalc", "f_supplierAsk", "switchTab"):
+        if token not in core_text:
+            raise RuntimeError(f"app-core.js 缺少正式共用契約：{token}")
+
+    forbidden_in_demo = ("validateAndCalc", "f_supplierAsk", "impMat", "cmpGap")
+    leaked_demo = [token for token in forbidden_in_demo if token in demo_text]
+    if leaked_demo:
+        raise RuntimeError("demo-market.js 混入 Should-Cost 邏輯：" + ", ".join(leaked_demo))
+
+    if "app-core.js" not in bootstrap_text or "demo-market.js" not in bootstrap_text:
+        raise RuntimeError("app.js 不再是正確的 Development Demo bootstrap")
 
 
 def normalize_live_asset_identity(version: str) -> None:
     live_asset = SITE / "assets" / "world-bank-live.js"
     if not live_asset.is_file():
-        raise RuntimeError("找不到 world-bank-live.js，無法套用 v2.3 正式版本識別")
+        raise RuntimeError("找不到 world-bank-live.js，無法套用正式版本識別")
     text = live_asset.read_text(encoding="utf-8")
     text = text.replace(
         "International Raw Materials Procurement Analytics（World Bank 月度資料版 v1.3.0）",
@@ -154,9 +130,9 @@ def inject_resources(html: str) -> str:
     if "</head>" not in html:
         raise RuntimeError("找不到head結尾，無法加入網站資源")
 
-    if SOURCE_APP_SCRIPT in html:
-        html = html.replace(SOURCE_APP_SCRIPT, PRODUCTION_APP_SCRIPT, 1)
-    elif PRODUCTION_APP_SCRIPT not in html:
+    if SOURCE_BOOTSTRAP_SCRIPT in html:
+        html = html.replace(SOURCE_BOOTSTRAP_SCRIPT, PRODUCTION_CORE_SCRIPT, 1)
+    elif PRODUCTION_CORE_SCRIPT not in html:
         raise RuntimeError("找不到 app.js 或 app-core.js 引用，無法建立正式前端")
 
     for marker in STYLESHEETS:
@@ -164,12 +140,40 @@ def inject_resources(html: str) -> str:
         if href not in html:
             html = html.replace("</head>", marker + "\n</head>", 1)
 
-    anchor = PRODUCTION_APP_SCRIPT
+    anchor = PRODUCTION_CORE_SCRIPT
     for script in SCRIPTS:
         if script not in html:
             html = html.replace(anchor, anchor + "\n" + script, 1)
         anchor = script
     return html
+
+
+def remove_development_assets() -> None:
+    for name in ("app.js", "demo-market.js"):
+        path = SITE / "assets" / name
+        if path.exists():
+            path.unlink()
+
+
+def verify_production_boundary() -> None:
+    core = SITE / "assets" / "app-core.js"
+    index = SITE / "index.html"
+    if not core.is_file():
+        raise RuntimeError("正式網站缺少 app-core.js")
+    if (SITE / "assets" / "app.js").exists():
+        raise RuntimeError("正式網站不應包含 Development bootstrap app.js")
+    if (SITE / "assets" / "demo-market.js").exists():
+        raise RuntimeError("正式網站不應包含 demo-market.js")
+
+    core_text = core.read_text(encoding="utf-8")
+    html = index.read_text(encoding="utf-8")
+    for token in ("Development Demo fixture", "const MATERIALS", "mulberry32"):
+        if token in core_text:
+            raise RuntimeError(f"正式 app-core.js 發現 Demo token：{token}")
+    if SOURCE_BOOTSTRAP_SCRIPT in html or "demo-market.js" in html:
+        raise RuntimeError("正式 index.html 仍引用 Development Demo 資源")
+    if PRODUCTION_CORE_SCRIPT not in html:
+        raise RuntimeError("正式 index.html 未載入 app-core.js")
 
 
 def prepare_site() -> None:
@@ -179,6 +183,7 @@ def prepare_site() -> None:
     if missing:
         raise RuntimeError("缺少正式網站資料檔：" + ", ".join(missing))
 
+    validate_source_boundary()
     release = load_release()
     version = str(release["version"])
 
@@ -190,20 +195,21 @@ def prepare_site() -> None:
     shutil.copytree(DATA, SITE / "data")
     (SITE / ".nojekyll").touch()
 
-    build_production_core()
-
     site_index = SITE / "index.html"
     html = site_index.read_text(encoding="utf-8")
     html = normalize_index_identity(html, version)
     html = inject_resources(html)
     site_index.write_text(html, encoding="utf-8")
+
+    remove_development_assets()
     normalize_live_asset_identity(version)
+    verify_production_boundary()
 
     signal_state = "included" if (DATA / "signals.json").is_file() else "pending"
     print(
         f"Site preparation success: version={version}, mode=real-data-only, "
-        f"trend signals={signal_state}, supplier rationality=included, "
-        "negotiation report=included"
+        f"trend signals={signal_state}, freshness=included, "
+        "supplier rationality=included, negotiation report=included"
     )
 
 

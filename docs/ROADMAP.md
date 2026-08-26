@@ -18,31 +18,41 @@ Status: complete for initial v2.3 baseline
 
 ### Phase B — Version and deployment identity
 
+Status: complete for v2.3 baseline
+
 - [x] Establish a machine-readable release metadata file.
 - [x] Make the built GitHub Pages payload identify itself as v2.3.0.
 - [x] Remove inaccurate deployed-page claims that the site has no external market data.
 - [x] Keep clear decision-support disclaimers.
 - [x] Add PR Quality Check for tests, JS syntax, site build, and release identity.
-- [ ] Show latest market period / synchronization status from `data/status.json` more prominently in the UI.
+- [x] Show latest market period / synchronization status from `data/status.json` prominently through the freshness panel.
 
-### Phase C — Demo Mode / Real Data Mode separation
+### Phase C — Development Demo / Production Real Data separation
 
-Status: production-path separation implemented; source-level cleanup remains.
+Status: source and production runtime boundaries implemented; browser-level regression coverage remains.
 
 - [x] Remove seeded random-walk generation from the built production core path.
-- [x] Keep the repository `assets/app.js` as an explicit legacy Demo/UI fixture while the production build generates `assets/app-core.js` without market simulation code.
-- [x] Ensure production cards, chart, tooltip, statistics, and CSV are owned by the validated World Bank real-data module rather than the legacy Demo engine.
-- [x] Add regression tests and CI guards that reject Demo engine leakage into `_site/assets/app-core.js` or the production HTML.
-- [x] Keep a visible fail-closed state when required World Bank/status data cannot be loaded or validated.
-- [ ] Rename/restructure the legacy Demo fixture at source level so `assets/app.js` no longer has an ambiguous production-sounding name.
+- [x] Create source-level `assets/app-core.js` for Should-Cost and navigation only.
+- [x] Create source-level `assets/demo-market.js` as an explicit Development Demo fixture.
+- [x] Reduce `assets/app.js` to a Development Demo bootstrap with no business logic.
+- [x] Ensure production cards, chart, tooltip, statistics, and CSV are owned by the validated World Bank real-data module.
+- [x] Remove `app.js` and `demo-market.js` from the built `_site` artifact.
+- [x] Add regression tests and CI guards that reject Demo leakage into production.
+- [x] Keep a fail-closed state when required World Bank/status data cannot be loaded or validated.
+- [x] Add a freshness/status panel backed by same-origin `data/status.json`.
 - [ ] Add browser-level regression coverage for cards/chart/tooltip/CSV source consistency.
+- [ ] Add visual regression coverage for loading, success, stale, and fail-closed states.
 
 ### Phase D — Rule/config consolidation
+
+Next target after Phase C browser regression coverage.
 
 - [ ] Keep supplier-rationality thresholds in configuration.
 - [ ] Audit UI modules for duplicated hard-coded thresholds.
 - [ ] Document signal thresholds and confidence rules.
 - [ ] Add schema-version checks for derived JSON.
+- [ ] Centralize source-role constants where duplicated across UI modules.
+- [ ] Add tests proving UI decisions use configured thresholds rather than shadow constants.
 
 ### Phase E — Supplier Case foundation
 

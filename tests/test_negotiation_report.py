@@ -20,17 +20,9 @@ class NegotiationReportTests(unittest.TestCase):
 
     def test_case_and_procurement_fields_exist(self) -> None:
         for field_id in (
-            "nr_supplier",
-            "nr_product",
-            "nr_quote_ref",
-            "nr_quote_date",
-            "nr_buyer",
-            "nr_price_unit",
-            "nr_supplier_reason",
-            "nr_evidence_received",
-            "nr_conclusion",
-            "nr_target_rate",
-            "nr_note",
+            "nr_supplier", "nr_product", "nr_quote_ref", "nr_quote_date",
+            "nr_buyer", "nr_price_unit", "nr_supplier_reason", "nr_evidence_received",
+            "nr_conclusion", "nr_target_rate", "nr_note",
         ):
             self.assertIn(field_id, self.js)
 
@@ -46,14 +38,8 @@ class NegotiationReportTests(unittest.TestCase):
             self.assertIn(token, self.js)
 
     def test_module_does_not_write_calculator_inputs(self) -> None:
-        self.assertNotRegex(
-            self.js,
-            r"getElementById\(['\"]f_[^'\"]+['\"]\)\.value\s*=",
-        )
-        self.assertNotRegex(
-            self.js,
-            r"querySelector\(['\"]#f_[^'\"]+['\"]\)\.value\s*=",
-        )
+        self.assertNotRegex(self.js, r"getElementById\(['\"]f_[^'\"]+['\"]\)\.value\s*=")
+        self.assertNotRegex(self.js, r"querySelector\(['\"]#f_[^'\"]+['\"]\)\.value\s*=")
 
     def test_csv_export_has_bom_and_formula_injection_guard(self) -> None:
         self.assertIn("'\\uFEFF'+rows.map", self.js)
@@ -62,12 +48,7 @@ class NegotiationReportTests(unittest.TestCase):
         self.assertIn("議價分析_", self.js)
 
     def test_print_and_pdf_mode_exist(self) -> None:
-        for token in (
-            "window.print()",
-            "afterprint",
-            "negotiation-report-printing",
-            "列印／另存PDF",
-        ):
+        for token in ("window.print()", "afterprint", "negotiation-report-printing", "列印／另存PDF"):
             self.assertIn(token, self.js)
         self.assertIn("@media print", self.css)
         self.assertIn("body.negotiation-report-printing", self.css)
@@ -96,6 +77,8 @@ class NegotiationReportTests(unittest.TestCase):
         once = module.inject_resources(base)
         twice = module.inject_resources(once)
         self.assertEqual(once, twice)
+        self.assertIn('app-core.js', once)
+        self.assertNotIn('src="./assets/app.js"', once)
         self.assertEqual(once.count("negotiation-report.css"), 1)
         self.assertEqual(once.count("negotiation-report.js"), 1)
 
