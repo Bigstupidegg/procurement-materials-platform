@@ -18,6 +18,11 @@ All notable platform changes should be recorded here. Dates use Asia/Taipei cale
 - `assets/data-freshness.js` showing latest market period, World Bank synchronization, source update date, FRED corroboration status, and stale state from `data/status.json`.
 - `tests/test_prepare_site.py` coverage for release identity, source boundary, production stripping, and freshness status.
 - `.github/workflows/quality-check.yml` for pull-request tests, JS syntax checks, site build, release identity, and Demo-leakage guards.
+- Phase C3.1 company daily-market collector foundation: `scripts/company_market_core.py` and `scripts/company_market_collector.py`.
+- `tests/test_company_market_core.py` covering semantic OFFER extraction, SMM average selection, safe Sheet row matching, and critical-quote fail-closed behavior.
+- `docs/COMPANY_MARKET_DATA_POLICY.md` defining the public GitHub Pages / private Google Sheets / Python collector boundary.
+- `config/company-market.env.example` and `scripts/company-market-requirements.txt` for private/local collector configuration.
+- `.gitignore` protections for Google credentials, local audit snapshots, and company operational data.
 
 ### Changed
 
@@ -32,6 +37,13 @@ All notable platform changes should be recorded here. Dates use Asia/Taipei cale
 - Existing calculator integration tests now treat `assets/app-core.js` as the formal Should-Cost contract.
 - World Bank remains the primary market source; FRED remains independent corroboration only.
 - Supplier price analysis remains decision support, not automatic acceptance/rejection.
+- The company daily copper workflow now treats LME Copper Cash OFFER as an operationally critical quote and refuses Google Sheet writes when that quote cannot be proven.
+- LME parsing is based on the semantic `OFFER` header instead of a fixed third-cell position.
+- SMM electrolytic copper parsing targets the explicit average-price column instead of the first large numeric cell.
+- Google Sheet row selection matches the actual target date/day and fails closed on missing or ambiguous rows; the previous arbitrary-row fallback is not carried forward.
+- Google Sheet ID and service-account file location are no longer hard-coded in the new collector.
+- Company collector outputs a local `INTERNAL_OPERATIONAL` audit snapshot rather than committing operational data to this public repository.
+- Quality Check now syntax-validates the company market collector modules in addition to the existing platform tests.
 
 ### Remaining v2.3 technical debt
 
@@ -39,9 +51,12 @@ All notable platform changes should be recorded here. Dates use Asia/Taipei cale
 - Browser-level source-consistency tests for cards/chart/tooltip/CSV are still pending.
 - Visual regression coverage for loading, success, stale, and fail-closed states is still pending.
 - Rule/config threshold consolidation is still pending.
+- Phase C3.1 still requires validation against the company's actual Google Sheet layout and current live LME/SMM HTML before replacing the operational `update_prices_v5.py`.
 
 ### Planned before v2.3 completion
 
+- validate C3.1 collector against live LME/SMM and the company Sheet layout
+- add C3.2 copper daily analytics (DoD, 5D/20D averages, 60D percentile, Cash/3M spread, World Bank benchmark comparison)
 - add browser-level cards/chart/tooltip/CSV source-consistency coverage
 - add visual/status regression coverage
 - consolidate duplicated rule/config thresholds where applicable
