@@ -10,6 +10,16 @@ function taipei(iso){
 }
 function period(v){return /^\d{4}-\d{2}$/.test(String(v||''))?String(v).replace('-','/'):String(v||'—');}
 
+function releaseFromDom(){
+  const sub=document.querySelector('.brand .sub');
+  const candidates=[sub&&sub.textContent,document.title];
+  for(const text of candidates){
+    const match=String(text||'').match(/v(\d+\.\d+\.\d+)/);
+    if(match)return{version:match[1],source:'DOM_BUILD_IDENTITY'};
+  }
+  return{version:'',source:'UNRESOLVED'};
+}
+
 function ownReleaseIdentity(release){
   const version=String(release&&release.version||'').trim();
   if(!version)return;
@@ -62,9 +72,22 @@ async function json(path){
   return response.json();
 }
 
+async function loadReleaseIdentity(){
+  try{
+    return await json('./config/release.json');
+  }catch(error){
+    const fallback=releaseFromDom();
+    if(fallback.version){
+      console.warn('release metadata unavailable; using built DOM identity',error);
+      return fallback;
+    }
+    throw error;
+  }
+}
+
 async function init(){
   try{
-    const pair=await Promise.all([json('./config/release.json'),json('./data/status.json')]);
+    const pair=await Promise.all([loadReleaseIdentity(),json('./data/status.json')]);
     ownReleaseIdentity(pair[0]);
     render(pair[1]);
   }catch(error){
