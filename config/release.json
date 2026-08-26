@@ -1,0 +1,14 @@
+{
+  "version": "2.3.0",
+  "releaseLine": "v2.3",
+  "stage": "PROJECT_FOUNDATION",
+  "dataMode": "REAL_DATA_DECISION_SUPPORT",
+  "displayName": "Real Data + Procurement Decision Support",
+  "decisionSupportOnly": true,
+  "primaryMarketSource": "WORLD_BANK_PINK_SHEET",
+  "comparisonSource": "FRED",
+  "notes": [
+    "The platform is procurement decision support and does not automatically accept or reject supplier price requests.",
+    "Legacy demo data remains in assets/app.js during the v2.3 migration and must be separated from the production data path."
+  ]
+}
