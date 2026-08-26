@@ -6,7 +6,6 @@ import unittest
 from scripts.company_market_core import (
     DataContractError,
     MarketQuote,
-    extract_first_table_value,
     extract_table_value,
     find_sheet_row,
     require_success,
@@ -16,9 +15,9 @@ from scripts.company_market_core import (
 
 AUTHORITATIVE_MAIN_LAYOUT = [
     ["日期", "銅 COPPER", "銅 COPPER", "電解銅 Copper Cathode", "鋁 ALUMINIUM", "鉛 LEAD", "鎳 NICKEL", "錫 TIN", "鋅 ZINC", "油", "銀", "黃金"],
-    ["", "USD / TONNE", "USD / TONNE", "USD / TONNE", "USD / TONNE", "USD / TONNE", "USD / TONNE", "USD / TONNE", "USD / TONNE", "USD / DRUM", "CENT / OUNCE", "USD / OUNCE"],
-    ["資料來源", "LME OFFER", "LME OFFER", "SMM", "LME", "LME", "LME", "LME", "LME", "鉅亨 倫敦布蘭特", "鉅亨 紐約白銀", "鉅亨 紐約黃金"],
-    ["", "現貨", "期貨(3月)", "現貨", "現貨", "現貨", "現貨", "現貨", "現貨", "現貨", "現貨", "現貨"],
+    ["", "USD / TONNE", "USD / TONNE", "CNY / TONNE", "USD / TONNE", "USD / TONNE", "USD / TONNE", "USD / TONNE", "USD / TONNE", "USD / BBL", "CENT / OUNCE", "USD / OUNCE"],
+    ["資料來源", "LME OFFER", "LME OFFER", "SMM", "LME", "LME", "LME", "LME", "LME", "yfinance BZ=F", "yfinance SI=F", "yfinance GC=F"],
+    ["", "現貨", "期貨(3月)", "現貨", "現貨", "現貨", "現貨", "現貨", "現貨", "期貨", "期貨", "期貨"],
 ]
 
 EXPECTED_MAIN_LAYOUT = [
@@ -66,20 +65,6 @@ class CompanyMarketCoreTests(unittest.TestCase):
         )
         self.assertEqual(value, 108600.0)
 
-    def test_cnyes_close_selects_close_header(self) -> None:
-        headers = ["日期", "收盤價", "漲跌", "漲%", "開盤價"]
-        rows = [
-            ["20260826", "69.235", "+1.2", "+1.76", "68.100"],
-            ["20260825", "68.682", "-0.1", "-0.14", "68.900"],
-        ]
-        value = extract_first_table_value(
-            headers,
-            rows,
-            value_headers=("收盤價", "close"),
-            minimum=1,
-        )
-        self.assertEqual(value, 69.235)
-
     def test_sheet_row_matches_exact_day_in_existing_monthly_sheet(self) -> None:
         values = ["日期", "24", "25", "26", "27"]
         self.assertEqual(find_sheet_row(values, date(2026, 8, 26)), 4)
@@ -108,15 +93,21 @@ class CompanyMarketCoreTests(unittest.TestCase):
         with self.assertRaises(DataContractError):
             validate_sheet_layout(actual, EXPECTED_MAIN_LAYOUT)
 
-    def test_sheet_layout_fails_if_authoritative_smm_unit_changes(self) -> None:
+    def test_sheet_layout_fails_if_smm_unit_changes(self) -> None:
         actual = [row[:] for row in AUTHORITATIVE_MAIN_LAYOUT]
-        actual[1][3] = "CNY / TONNE"
+        actual[1][3] = "USD / TONNE"
         with self.assertRaises(DataContractError):
             validate_sheet_layout(actual, EXPECTED_MAIN_LAYOUT)
 
-    def test_sheet_layout_fails_if_authoritative_brent_unit_changes(self) -> None:
+    def test_sheet_layout_fails_if_brent_source_changes(self) -> None:
         actual = [row[:] for row in AUTHORITATIVE_MAIN_LAYOUT]
-        actual[1][9] = "USD / BBL"
+        actual[2][9] = "鉅亨 倫敦布蘭特"
+        with self.assertRaises(DataContractError):
+            validate_sheet_layout(actual, EXPECTED_MAIN_LAYOUT)
+
+    def test_sheet_layout_fails_if_yfinance_is_mislabeled_as_spot(self) -> None:
+        actual = [row[:] for row in AUTHORITATIVE_MAIN_LAYOUT]
+        actual[3][9] = "現貨"
         with self.assertRaises(DataContractError):
             validate_sheet_layout(actual, EXPECTED_MAIN_LAYOUT)
 
