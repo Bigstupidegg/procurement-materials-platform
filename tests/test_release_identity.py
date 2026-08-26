@@ -19,12 +19,21 @@ class ReleaseIdentityTests(unittest.TestCase):
         self.assertEqual(self.release["version"], "2.3.0")
         self.assertEqual(self.release["releaseLine"], "v2.3")
 
-    def test_runtime_identity_comes_from_release_metadata(self) -> None:
+    def test_runtime_identity_prefers_release_metadata(self) -> None:
         for token in (
             "./config/release.json",
-            "release.version",
+            "loadReleaseIdentity",
             "Real Data + Procurement Decision Support v",
             "document.documentElement.dataset.releaseVersion",
+        ):
+            self.assertIn(token, self.freshness)
+
+    def test_runtime_identity_falls_back_to_built_dom_version(self) -> None:
+        for token in (
+            "releaseFromDom",
+            "DOM_BUILD_IDENTITY",
+            "match(/v(\\d+\\.\\d+\\.\\d+)/)",
+            "using built DOM identity",
         ):
             self.assertIn(token, self.freshness)
 
