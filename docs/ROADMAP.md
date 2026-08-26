@@ -6,23 +6,24 @@ Goal: turn the existing real-data and procurement-analysis implementation into a
 
 ### Phase A — Documentation baseline
 
-Status: in progress
+Status: complete for initial v2.3 baseline
 
 - [x] Refresh README to reflect actual repository state.
 - [x] Add Project Knowledge Base.
 - [x] Add Data Dictionary.
 - [x] Add Calculation Rules.
+- [x] Add explicit Data Source Policy.
 - [x] Add Roadmap.
 - [x] Add Changelog.
-- [ ] Add explicit data-source policy document if new external sources are introduced.
 
 ### Phase B — Version and deployment identity
 
-- [ ] Establish a machine-readable release metadata file.
-- [ ] Make the deployed page identify itself as v2.3.
-- [ ] Remove inaccurate claims that the deployed site has no external market data.
-- [ ] Keep clear decision-support disclaimers.
-- [ ] Show latest market period / synchronization status from `data/status.json` in the UI.
+- [x] Establish a machine-readable release metadata file.
+- [x] Make the built GitHub Pages payload identify itself as v2.3.0.
+- [x] Remove inaccurate deployed-page claims that the site has no external market data.
+- [x] Keep clear decision-support disclaimers.
+- [x] Add PR Quality Check for tests, JS syntax, site build, and release identity.
+- [ ] Show latest market period / synchronization status from `data/status.json` more prominently in the UI.
 
 ### Phase C — Demo Mode / Real Data Mode separation
 
