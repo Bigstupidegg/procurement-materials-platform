@@ -43,9 +43,49 @@ Status: source and production runtime boundaries implemented; browser-level regr
 - [ ] Add browser-level regression coverage for cards/chart/tooltip/CSV source consistency.
 - [ ] Add visual regression coverage for loading, success, stale, and fail-closed states.
 
+### Phase C3 — Company daily market data layer
+
+Purpose: keep the public market-analysis website and the private daily purchasing workflow separated while sharing a hardened Python data-engineering layer.
+
+#### C3.1 — Collector hardening
+
+Status: implementation in progress.
+
+- [x] Add semantic LME OFFER-column parsing instead of a fixed cell index.
+- [x] Add explicit SMM electrolytic-copper average-price parsing.
+- [x] Add safe Google Sheet date-row matching with fail-closed ambiguity handling.
+- [x] Require successful LME Copper Cash OFFER before writing the operational Google Sheet row.
+- [x] Add source / instrument / term / quote type / currency / unit / timestamps to the quote contract.
+- [x] Move Google Sheet ID and credential path to environment variables.
+- [x] Add local audit snapshots and keep them outside Git.
+- [x] Add `.gitignore` protections for service-account credentials and company operational data.
+- [x] Keep company collector dependencies separate from the public-site build dependencies.
+- [ ] Validate the collector against the company's actual Google Sheet layout and live LME/SMM pages before production replacement of the existing script.
+
+#### C3.2 — Copper daily analytics
+
+- [ ] Calculate day-over-day change.
+- [ ] Calculate 5-day and 20-day averages.
+- [ ] Calculate 60-day price percentile.
+- [ ] Calculate LME Cash vs 3-Month spread.
+- [ ] Compare daily LME Cash OFFER with the latest World Bank monthly Copper benchmark.
+- [ ] Produce decision-support labels such as `FAVORABLE`, `NEUTRAL`, and `UNFAVORABLE` without creating automatic purchase orders.
+
+#### C3.3 — Public-safe market snapshot (optional)
+
+- [ ] Decide whether public daily LME/SMM market references add enough value to the GitHub Pages site.
+- [ ] If enabled, export only public market quotes, timestamps, and derived public statistics.
+- [ ] Explicitly prohibit inventory, demand, supplier, PO, target-price, and buy/no-buy records from the public repository.
+
+#### C3.4 — Private procurement context
+
+- [ ] Define internal inventory / safety-stock / incoming-order / demand inputs.
+- [ ] Keep private purchasing context in Google Sheets or another internal/private store.
+- [ ] Define a future internal-only decision model before considering database migration.
+
 ### Phase D — Rule/config consolidation
 
-Next target after Phase C browser regression coverage.
+Next target after C3.1/C3.2 establishes the daily market-data contract.
 
 - [ ] Keep supplier-rationality thresholds in configuration.
 - [ ] Audit UI modules for duplicated hard-coded thresholds.
