@@ -14,6 +14,21 @@ from scripts.company_market_core import (
 )
 
 
+AUTHORITATIVE_MAIN_LAYOUT = [
+    ["日期", "銅 COPPER", "銅 COPPER", "電解銅 Copper Cathode", "鋁 ALUMINIUM", "鉛 LEAD", "鎳 NICKEL", "錫 TIN", "鋅 ZINC", "油", "銀", "黃金"],
+    ["", "USD / TONNE", "USD / TONNE", "USD / TONNE", "USD / TONNE", "USD / TONNE", "USD / TONNE", "USD / TONNE", "USD / TONNE", "USD / DRUM", "CENT / OUNCE", "USD / OUNCE"],
+    ["資料來源", "LME OFFER", "LME OFFER", "SMM", "LME", "LME", "LME", "LME", "LME", "鉅亨 倫敦布蘭特", "鉅亨 紐約白銀", "鉅亨 紐約黃金"],
+    ["", "現貨", "期貨(3月)", "現貨", "現貨", "現貨", "現貨", "現貨", "現貨", "現貨", "現貨", "現貨"],
+]
+
+EXPECTED_MAIN_LAYOUT = [
+    AUTHORITATIVE_MAIN_LAYOUT[0],
+    [None] + AUTHORITATIVE_MAIN_LAYOUT[1][1:],
+    AUTHORITATIVE_MAIN_LAYOUT[2],
+    [None] + AUTHORITATIVE_MAIN_LAYOUT[3][1:],
+]
+
+
 class CompanyMarketCoreTests(unittest.TestCase):
     def test_lme_offer_uses_header_name_not_fixed_position(self) -> None:
         headers = ["Contract", "Open", "Bid", "Offer", "Change"]
@@ -69,9 +84,7 @@ class CompanyMarketCoreTests(unittest.TestCase):
         values = ["日期", "24", "25", "26", "27"]
         self.assertEqual(find_sheet_row(values, date(2026, 8, 26)), 4)
 
-    def test_sheet_row_matches_actual_uploaded_layout(self) -> None:
-        # A1:A16 from the supplied company workbook: four header rows followed by
-        # business-day rows.  The 26th is row 16, not row 17.
+    def test_sheet_row_matches_authoritative_uploaded_layout(self) -> None:
         values = [
             "日期", "", "資料來源", "",
             11, 12, 13, 14, 17, 18, 19, 20, 21, 24, 25, "26",
@@ -86,36 +99,26 @@ class CompanyMarketCoreTests(unittest.TestCase):
         with self.assertRaises(DataContractError):
             find_sheet_row(["日期", "26", "26"], date(2026, 8, 26))
 
-    def test_actual_company_sheet_layout_contract_passes(self) -> None:
-        actual = [
-            ["日期", "銅 COPPER", "銅 COPPER", "電解銅 Copper Cathode", "鋁 ALUMINIUM", "鉛 LEAD", "鎳 NICKEL", "錫 TIN", "鋅 ZINC", "油", "銀", "黃金"],
-            ["", "USD / TONNE", "USD / TONNE", "USD / TONNE", "USD / TONNE", "USD / TONNE", "USD / TONNE", "USD / TONNE", "USD / TONNE", "USD / DRUM", "CENT / OUNCE", "USD / OUNCE"],
-            ["資料來源", "LME OFFER", "LME OFFER", "SMM", "LME", "LME", "LME", "LME", "LME", "鉅亨 倫敦布蘭特", "鉅亨 紐約白銀", "鉅亨 紐約黃金"],
-            ["", "現貨", "期貨(3月)", "現貨", "現貨", "現貨", "現貨", "現貨", "現貨", "現貨", "現貨", "現貨"],
-        ]
-        expected = [
-            actual[0],
-            [None, "USD / TONNE", "USD / TONNE", None, "USD / TONNE", "USD / TONNE", "USD / TONNE", "USD / TONNE", "USD / TONNE", None, "CENT / OUNCE", "USD / OUNCE"],
-            actual[2],
-            [None] + actual[3][1:],
-        ]
-        validate_sheet_layout(actual, expected)
+    def test_authoritative_company_sheet_layout_contract_passes(self) -> None:
+        validate_sheet_layout(AUTHORITATIVE_MAIN_LAYOUT, EXPECTED_MAIN_LAYOUT)
 
     def test_sheet_layout_fails_if_copper_source_column_shifts(self) -> None:
-        actual = [
-            ["日期", "銅 COPPER", "銅 COPPER"],
-            ["", "USD / TONNE", "USD / TONNE"],
-            ["資料來源", "LME", "LME OFFER"],
-            ["", "現貨", "期貨(3月)"],
-        ]
-        expected = [
-            ["日期", "銅 COPPER", "銅 COPPER"],
-            [None, "USD / TONNE", "USD / TONNE"],
-            ["資料來源", "LME OFFER", "LME OFFER"],
-            [None, "現貨", "期貨(3月)"],
-        ]
+        actual = [row[:] for row in AUTHORITATIVE_MAIN_LAYOUT]
+        actual[2][1] = "LME"
         with self.assertRaises(DataContractError):
-            validate_sheet_layout(actual, expected)
+            validate_sheet_layout(actual, EXPECTED_MAIN_LAYOUT)
+
+    def test_sheet_layout_fails_if_authoritative_smm_unit_changes(self) -> None:
+        actual = [row[:] for row in AUTHORITATIVE_MAIN_LAYOUT]
+        actual[1][3] = "CNY / TONNE"
+        with self.assertRaises(DataContractError):
+            validate_sheet_layout(actual, EXPECTED_MAIN_LAYOUT)
+
+    def test_sheet_layout_fails_if_authoritative_brent_unit_changes(self) -> None:
+        actual = [row[:] for row in AUTHORITATIVE_MAIN_LAYOUT]
+        actual[1][9] = "USD / BBL"
+        with self.assertRaises(DataContractError):
+            validate_sheet_layout(actual, EXPECTED_MAIN_LAYOUT)
 
     def test_required_copper_cash_must_succeed(self) -> None:
         quote = MarketQuote(
