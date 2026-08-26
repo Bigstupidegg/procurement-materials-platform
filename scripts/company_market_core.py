@@ -75,6 +75,74 @@ def extract_table_value(
     )
 
 
+def extract_first_table_value(
+    headers: Sequence[object],
+    rows: Sequence[Sequence[object]],
+    *,
+    value_headers: Iterable[str],
+    minimum: float | None = None,
+    maximum: float | None = None,
+) -> float:
+    """Return the first valid numeric value under a semantic table header.
+
+    This is used for pages such as Cnyes where the first data row is the latest
+    observation and the required value is identified by a header such as 收盤價.
+    """
+
+    value_index = find_header_index(headers, value_headers)
+    for row in rows:
+        if value_index >= len(row):
+            continue
+        try:
+            value = parse_numeric(row[value_index])
+        except DataContractError:
+            continue
+        if minimum is not None and value < minimum:
+            continue
+        if maximum is not None and value > maximum:
+            continue
+        return value
+    raise DataContractError(
+        "找不到可用數值欄：" + ", ".join(str(label) for label in value_headers)
+    )
+
+
+def validate_sheet_layout(
+    actual_rows: Sequence[Sequence[object]],
+    expected_rows: Sequence[Sequence[object | None]],
+) -> None:
+    """Validate the company sheet's structural contract before any write.
+
+    ``None`` in expected_rows means that the cell is intentionally not enforced.
+    All other cells are compared after whitespace/case normalization.  This catches
+    shifted columns or renamed source/term labels before a market value can be
+    written into the wrong material column.
+    """
+
+    if len(actual_rows) < len(expected_rows):
+        raise DataContractError(
+            f"公司 Sheet 表頭只有 {len(actual_rows)} 列，預期至少 {len(expected_rows)} 列"
+        )
+
+    for row_index, expected_row in enumerate(expected_rows):
+        actual_row = actual_rows[row_index]
+        if len(actual_row) < len(expected_row):
+            raise DataContractError(
+                f"公司 Sheet 第 {row_index + 1} 列只有 {len(actual_row)} 欄，"
+                f"預期至少 {len(expected_row)} 欄"
+            )
+        for col_index, expected in enumerate(expected_row):
+            if expected is None:
+                continue
+            actual = actual_row[col_index]
+            if normalize_text(actual) != normalize_text(expected):
+                col_letter = chr(ord("A") + col_index)
+                raise DataContractError(
+                    f"公司 Sheet 版型不符：{col_letter}{row_index + 1} "
+                    f"預期 {expected!r}，實際 {actual!r}"
+                )
+
+
 def _parse_full_date(text: str) -> date | None:
     text = text.strip()
     for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%Y.%m.%d"):
