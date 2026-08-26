@@ -83,11 +83,7 @@ def extract_first_table_value(
     minimum: float | None = None,
     maximum: float | None = None,
 ) -> float:
-    """Return the first valid numeric value under a semantic table header.
-
-    This is used for pages such as Cnyes where the first data row is the latest
-    observation and the required value is identified by a header such as 收盤價.
-    """
+    """Return the first valid numeric value under a semantic table header."""
 
     value_index = find_header_index(headers, value_headers)
     for row in rows:
@@ -111,13 +107,7 @@ def validate_sheet_layout(
     actual_rows: Sequence[Sequence[object]],
     expected_rows: Sequence[Sequence[object | None]],
 ) -> None:
-    """Validate the company sheet's structural contract before any write.
-
-    ``None`` in expected_rows means that the cell is intentionally not enforced.
-    All other cells are compared after whitespace/case normalization.  This catches
-    shifted columns or renamed source/term labels before a market value can be
-    written into the wrong material column.
-    """
+    """Validate the company sheet's structural contract before any write."""
 
     if len(actual_rows) < len(expected_rows):
         raise DataContractError(
@@ -144,39 +134,36 @@ def validate_sheet_layout(
 
 
 def _parse_full_date(text: str) -> date | None:
+    """Parse only the authoritative company date format: yyyy/mm/dd."""
+
     text = text.strip()
-    for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%Y.%m.%d"):
-        try:
-            return datetime.strptime(text, fmt).date()
-        except ValueError:
-            pass
-    return None
+    if not re.fullmatch(r"\d{4}/\d{2}/\d{2}", text):
+        return None
+    try:
+        return datetime.strptime(text, "%Y/%m/%d").date()
+    except ValueError:
+        return None
 
 
 def find_sheet_row(col_values: Sequence[object], target_date: date) -> int | None:
-    """Return the actual 1-based Google Sheet row for target_date.
+    """Return the 1-based row whose A-cell exactly represents target_date.
 
-    Full ISO-style dates take precedence. For backward compatibility with the
-    company's current monthly sheet, a single day-of-month value (1..31) is also
-    accepted. Ambiguous day-only matches fail closed.
+    C3.1 intentionally accepts only complete ``yyyy/mm/dd`` dates. Legacy day-only
+    values such as ``26`` are rejected by omission rather than guessed, preventing
+    cross-month writes to the wrong row.
     """
 
+    matches: list[int] = []
     for row_index, raw in enumerate(col_values, start=1):
         parsed = _parse_full_date(str(raw or ""))
         if parsed == target_date:
-            return row_index
+            matches.append(row_index)
 
-    day_matches: list[int] = []
-    for row_index, raw in enumerate(col_values, start=1):
-        text = str(raw or "").strip()
-        if re.fullmatch(r"\d{1,2}", text) and int(text) == target_date.day:
-            day_matches.append(row_index)
-
-    if len(day_matches) > 1:
+    if len(matches) > 1:
         raise DataContractError(
-            f"日期欄位中找到多個 {target_date.day} 號，無法判定應寫入哪一列"
+            f"日期欄位中找到多個 {target_date.strftime('%Y/%m/%d')}，無法判定應寫入哪一列"
         )
-    return day_matches[0] if day_matches else None
+    return matches[0] if matches else None
 
 
 @dataclass(frozen=True)
