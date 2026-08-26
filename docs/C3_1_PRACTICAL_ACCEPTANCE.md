@@ -50,7 +50,14 @@ The original `update_prices_v5.py` uses yfinance for J/K/L:
 - Silver: `SI=F`, latest available `Close` multiplied by 100, stored as US cents/oz.
 - Gold: `GC=F`, latest available `Close`, USD/oz.
 
-These are futures references, not spot prices. The Google Sheet labels have therefore been corrected from the prior `鉅亨` / `現貨` wording to explicit yfinance symbols / `期貨`.
+These are futures references, not spot prices.
+
+The current Google Sheet A1:L4 metadata has been corrected to match those actual source semantics:
+
+- D2: `CNY / TONNE`
+- J2: `USD / BBL`
+- J3:L3: `yfinance BZ=F / SI=F / GC=F`
+- J4:L4: `期貨`
 
 ## 3. Live Dry Run definition
 
@@ -76,7 +83,7 @@ Before any A:L update, C3.1 requires:
 4. LME Copper Cash OFFER is specifically required as the primary daily copper reference.
 5. `ALLOW_GOOGLE_SHEET_WRITE=1` is explicitly enabled.
 
-Default remains dry-run.
+Default remains Live Dry Run.
 
 ## 5. Acceptance status
 
@@ -85,10 +92,10 @@ Default remains dry-run.
 - Single-sheet workbook contract confirmed.
 - Day 26 resolves to row 16.
 - LME / SMM / yfinance source responsibilities reconciled with the original Python script.
-- Sheet metadata corrected to match actual source semantics.
+- Google Sheet metadata corrected to match actual source semantics.
 - Fail-closed row, source, and layout validation implemented.
 - Full-row partial-write protection implemented.
-- Dry-run safety gate implemented.
+- Live Dry Run safety gate implemented.
 
 ### Remaining before replacing the operational v5 script
 
