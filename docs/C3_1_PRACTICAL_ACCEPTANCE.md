@@ -1,97 +1,102 @@
 # C3.1 Practical Acceptance — Company Daily Market Workbook
 
-Validation basis: current authoritative workbook / Google Sheet `大宗材料 行情統計表`, confirmed on 2026-08-26.
+Validation basis: current authoritative workbook / Google Sheet `大宗材料 行情統計表`, revalidated on 2026-08-26 against the original `update_prices_v5.py` source behavior.
 
 ## 1. Authoritative workbook scope
 
-C3.1 now treats the current workbook as the single operational source of layout truth.
-
 Worksheet: `大宗材料 行情統計表`
 
-There is no required second `行情統計表資料來源` worksheet in the authoritative version.
-
-The operational table uses four header rows and daily business-day rows starting at row 5.
+There is one required operational worksheet. The table uses four header rows and daily business-day rows starting at row 5.
 
 ```text
 A: 日期
 B: 銅 COPPER — USD / TONNE — LME OFFER — 現貨
 C: 銅 COPPER — USD / TONNE — LME OFFER — 期貨(3月)
-D: 電解銅 Copper Cathode — USD / TONNE — SMM — 現貨
+D: 電解銅 Copper Cathode — CNY / TONNE — SMM — 現貨
 E: 鋁 ALUMINIUM — USD / TONNE — LME — 現貨
 F: 鉛 LEAD — USD / TONNE — LME — 現貨
 G: 鎳 NICKEL — USD / TONNE — LME — 現貨
 H: 錫 TIN — USD / TONNE — LME — 現貨
 I: 鋅 ZINC — USD / TONNE — LME — 現貨
-J: 油 — USD / DRUM — 鉅亨 倫敦布蘭特 — 現貨
-K: 銀 — CENT / OUNCE — 鉅亨 紐約白銀 — 現貨
-L: 黃金 — USD / OUNCE — 鉅亨 紐約黃金 — 現貨
+J: 油 — USD / BBL — yfinance BZ=F — 期貨
+K: 銀 — CENT / OUNCE — yfinance SI=F — 期貨
+L: 黃金 — USD / OUNCE — yfinance GC=F — 期貨
 ```
 
-For the current 2026-08 snapshot, day `26` is at **row 16**.
+For the current 2026-08 snapshot, day `26` is at row 16.
 
-The legacy `update_prices_v5.py` scan can resolve the row incorrectly because it offsets the enumerated column-A index. C3.1 now returns the actual one-based worksheet row and resolves day 26 to row 16.
+## 2. Verified source contract
 
-## 2. Source policy derived from the authoritative main sheet
+The source-of-truth for how prices are fetched is the original Python collector behavior, not stale text labels in the Sheet.
 
-The A1:L4 contract itself defines the company-facing source identity:
+### LME
 
-- Copper Cash: LME OFFER / 現貨
-- Copper 3-month: LME OFFER / 期貨(3月)
-- Electrolytic Copper: SMM / 現貨
-- Aluminium / Lead / Nickel / Tin / Zinc: LME / 現貨
-- Oil: 鉅亨 倫敦布蘭特 / 現貨
-- Silver: 鉅亨 紐約白銀 / 現貨
-- Gold: 鉅亨 紐約黃金 / 現貨
+- Copper Cash: LME Copper Cash OFFER.
+- Copper 3-month: LME Copper 3-month OFFER.
+- Aluminium / Lead / Nickel / Tin / Zinc: LME Cash OFFER.
+- C3.1 improves the original fixed `cells[2]` selection by locating the semantic `OFFER` header and failing closed if it cannot be proven.
 
-The collector keeps its fetch URLs in code, but no longer requires a second workbook tab to validate them.
+### SMM
 
-## 3. Unit policy
+- Electrolytic Copper: SMM `1#电解铜` / electrolytic copper.
+- C3.1 selects the explicit average-price (`均價`) column instead of returning the first large numeric value.
+- Raw operational value is retained as CNY per tonne; no implicit FX conversion is performed.
 
-The current company workbook is authoritative for operational Sheet labels.
+### yfinance
 
-Therefore C3.1 validates the current labels exactly, including:
+The original `update_prices_v5.py` uses yfinance for J/K/L:
 
-```text
-D2 = USD / TONNE
-J2 = USD / DRUM
-```
+- Brent: `BZ=F`, latest available `Close`, USD/bbl.
+- Silver: `SI=F`, latest available `Close` multiplied by 100, stored as US cents/oz.
+- Gold: `GC=F`, latest available `Close`, USD/oz.
 
-The collector must not silently rewrite these labels or block the workbook because of a model-side preference.
+These are futures references, not spot prices. The Google Sheet labels have therefore been corrected from the prior `鉅亨` / `現貨` wording to explicit yfinance symbols / `期貨`.
 
-Separately, source-native unit metadata is preserved in the local audit snapshot so later analytics can distinguish source metadata from company workbook labels. No automatic unit conversion is performed during the A:L operational write.
+## 3. Live Dry Run definition
+
+A Live Dry Run uses the real company execution path without modifying the Sheet:
+
+1. Launch the real Selenium browser on the company PC.
+2. Fetch current LME and SMM values.
+3. Call yfinance for BZ=F / SI=F / GC=F.
+4. Authenticate to the real Google Sheet.
+5. Validate A1:L4 and resolve today's target row.
+6. Print the exact A:L row that would be written.
+7. Stop because `ALLOW_GOOGLE_SHEET_WRITE=0`.
+
+It is "live" because all external systems are real, and "dry" because no operational cell is changed.
 
 ## 4. Write safety
 
-Before any A:L row update, C3.1 requires:
+Before any A:L update, C3.1 requires:
 
-1. Main sheet A1:L4 matches the authoritative material / unit / source / term contract.
+1. A1:L4 matches the authoritative material / unit / source / term contract.
 2. Today's day-of-month row exists exactly once.
-3. Every one of the 11 market values is successful before a full-row write.
-4. `ALLOW_GOOGLE_SHEET_WRITE=1` is explicitly enabled.
+3. All 11 required market values succeed before a full-row write.
+4. LME Copper Cash OFFER is specifically required as the primary daily copper reference.
+5. `ALLOW_GOOGLE_SHEET_WRITE=1` is explicitly enabled.
 
-The default is dry-run. Missing/ambiguous rows, shifted columns, changed authoritative labels, missing OFFER headers, or incomplete full-row data stop the write.
+Default remains dry-run.
 
 ## 5. Acceptance status
 
 ### Passed
 
-- Current Google Sheet and uploaded workbook agree on A1:L16.
-- Workbook contains one required worksheet: `大宗材料 行情統計表`.
-- A1:L4 authoritative layout contract captured.
+- Single-sheet workbook contract confirmed.
 - Day 26 resolves to row 16.
-- B:L column order and material identity validated.
-- Copper LME Cash / 3-month source-term identity validated.
-- Company-defined D2 / J2 unit labels are preserved as authoritative workbook labels.
-- Fail-closed row and layout validation implemented.
+- LME / SMM / yfinance source responsibilities reconciled with the original Python script.
+- Sheet metadata corrected to match actual source semantics.
+- Fail-closed row, source, and layout validation implemented.
+- Full-row partial-write protection implemented.
 - Dry-run safety gate implemented.
-- J/K/L collection remains aligned with company-facing 鉅亨 source labels.
 
 ### Remaining before replacing the operational v5 script
 
-- Run Selenium in the company Windows environment and confirm LME `OFFER` is found by semantic header.
-- Confirm 鉅亨 pages expose `收盤價` to Selenium for Brent / Silver / Gold.
-- Confirm SMM `均價` is found on the live page.
-- Execute one dry-run and compare all 11 generated values to the same-day workbook row.
-- Only after a value-by-value match, set `ALLOW_GOOGLE_SHEET_WRITE=1`.
+- Run one Live Dry Run on the company Windows PC.
+- Confirm LME `OFFER` header is found live for Cash and 3-month.
+- Confirm SMM `均價` is found live.
+- Confirm yfinance returns BZ=F / SI=F / GC=F values.
+- Compare all 11 generated values with the same-day expected market observations.
+- Only after value-by-value acceptance, set `ALLOW_GOOGLE_SHEET_WRITE=1`.
 
-C3.1 remains decision-data infrastructure only. It does not produce an automatic copper purchase order or automatic buy/no-buy decision.
+C3.1 is decision-data infrastructure only. It does not issue an automatic purchase order or automatic buy/no-buy decision.
