@@ -22,7 +22,6 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_AUDIT_PATH = ROOT / "runtime" / "company-market" / "latest.json"
 
 MAIN_SHEET_DEFAULT = "大宗材料 行情統計表"
-SOURCE_SHEET_DEFAULT = "行情統計表資料來源"
 
 LME_URLS = {
     "copper_lme_cash": ("銅 COPPER", "https://www.lme.com/metals/non-ferrous/lme-copper#Trading+summary", "Cash"),
@@ -80,9 +79,9 @@ SHEET_COLUMNS = (
     "gold_cnyes",
 )
 
-# Actual A1:L4 contract observed in the company's 2026-08 sheet.
-# D2 and J2 are intentionally not enforced here because the workbook currently
-# contains known unit-label inconsistencies documented in C3.1 acceptance notes.
+# Authoritative A1:L4 contract from the current company workbook / Google Sheet.
+# The collector validates these labels exactly and never rewrites or "corrects"
+# company-defined unit labels during an operational write.
 COMPANY_MAIN_LAYOUT = (
     (
         "日期", "銅 COPPER", "銅 COPPER", "電解銅 Copper Cathode",
@@ -90,9 +89,9 @@ COMPANY_MAIN_LAYOUT = (
         "油", "銀", "黃金",
     ),
     (
-        None, "USD / TONNE", "USD / TONNE", None,
+        None, "USD / TONNE", "USD / TONNE", "USD / TONNE",
         "USD / TONNE", "USD / TONNE", "USD / TONNE", "USD / TONNE",
-        "USD / TONNE", None, "CENT / OUNCE", "USD / OUNCE",
+        "USD / TONNE", "USD / DRUM", "CENT / OUNCE", "USD / OUNCE",
     ),
     (
         "資料來源", "LME OFFER", "LME OFFER", "SMM", "LME", "LME", "LME",
@@ -104,20 +103,19 @@ COMPANY_MAIN_LAYOUT = (
     ),
 )
 
-COMPANY_SOURCE_REGISTRY = (
-    ("材料", "單位", "來源", "網頁關鍵字", "網址"),
-    ("銅 COPPER", "USD / TONNE", "LME OFFER", "Cash", LME_URLS["copper_lme_cash"][1]),
-    ("銅 COPPER", "USD / TONNE", "LME OFFER", "3-month", LME_URLS["copper_lme_3m"][1]),
-    ("電解銅 Copper Cathode", "USD / TONNE", "SMM", "Cash", SMM_URL),
-    ("鋁 ALUMINIUM", "USD / TONNE", "LME", "Cash", LME_URLS["aluminium_lme_cash"][1]),
-    ("鉛 LEAD", "USD / TONNE", "LME", "Cash", LME_URLS["lead_lme_cash"][1]),
-    ("鎳 NICKEL", "USD / TONNE", "LME", "Cash", LME_URLS["nickel_lme_cash"][1]),
-    ("錫 TIN", "USD / TONNE", "LME", "Cash", LME_URLS["tin_lme_cash"][1]),
-    ("鋅 ZINC", "USD / TONNE", "LME", "Cash", LME_URLS["zinc_lme_cash"][1]),
-    ("油", "USD / DRUM", "鉅亨 倫敦布蘭特-收盤價", "收盤價", CNYES_URLS["brent_cnyes"][1]),
-    ("銀", "CENT / OUNCE", "鉅亨 紐約白銀-收盤價", "收盤價", CNYES_URLS["silver_cnyes"][1]),
-    ("黃金", "USD / OUNCE", "鉅亨 紐約黃金-收盤價", "收盤價", CNYES_URLS["gold_cnyes"][1]),
-)
+SHEET_UNIT_LABELS = {
+    "copper_lme_cash": "USD / TONNE",
+    "copper_lme_3m": "USD / TONNE",
+    "smm_electrolytic_copper": "USD / TONNE",
+    "aluminium_lme_cash": "USD / TONNE",
+    "lead_lme_cash": "USD / TONNE",
+    "nickel_lme_cash": "USD / TONNE",
+    "tin_lme_cash": "USD / TONNE",
+    "zinc_lme_cash": "USD / TONNE",
+    "brent_cnyes": "USD / DRUM",
+    "silver_cnyes": "CENT / OUNCE",
+    "gold_cnyes": "USD / OUNCE",
+}
 
 
 def now_taipei() -> datetime:
@@ -387,13 +385,20 @@ def write_audit_snapshot(quotes: dict[str, MarketQuote]) -> Path:
     output = Path(os.getenv("COMPANY_MARKET_AUDIT_PATH", str(DEFAULT_AUDIT_PATH)))
     output.parent.mkdir(parents=True, exist_ok=True)
     payload = {
-        "schemaVersion": 2,
+        "schemaVersion": 3,
         "classification": "INTERNAL_OPERATIONAL",
         "generatedAt": iso_now(),
         "decisionPolicy": {
             "copperDailyPrimary": "LME_CASH_OFFER",
             "automaticBuyDecision": False,
             "publicGitHubStorage": False,
+        },
+        "workbookContract": {
+            "authority": "AUTHORITATIVE_COMPANY_WORKBOOK",
+            "worksheet": os.getenv("GOOGLE_SHEET_WORKSHEET", MAIN_SHEET_DEFAULT).strip(),
+            "layoutRange": "A1:L4",
+            "unitPolicy": "PRESERVE_WORKBOOK_LABELS_NO_AUTOMATIC_CONVERSION",
+            "sheetUnitLabels": SHEET_UNIT_LABELS,
         },
         "quotes": {key: quote.to_dict() for key, quote in quotes.items()},
     }
@@ -403,33 +408,16 @@ def write_audit_snapshot(quotes: dict[str, MarketQuote]) -> Path:
 
 def validate_company_workbook(book):
     main_name = os.getenv("GOOGLE_SHEET_WORKSHEET", MAIN_SHEET_DEFAULT).strip()
-    source_name = os.getenv("GOOGLE_SOURCE_WORKSHEET", SOURCE_SHEET_DEFAULT).strip()
     main_sheet = book.worksheet(main_name)
-    source_sheet = book.worksheet(source_name)
-
     validate_sheet_layout(main_sheet.get("A1:L4"), COMPANY_MAIN_LAYOUT)
-    validate_sheet_layout(source_sheet.get("A1:E12"), COMPANY_SOURCE_REGISTRY)
-
-    # Known metadata issues in the supplied workbook. These are not used to select
-    # columns, but they must remain visible until the company sheet is corrected.
-    units = main_sheet.get("A2:L2")[0]
-    warnings: list[str] = []
-    if len(units) >= 4 and str(units[3]).strip().upper() == "USD / TONNE":
-        warnings.append(
-            "D2 電解銅標示為 USD / TONNE，但 SMM collector 保留原始 CNY/MT；"
-            "建議公司表修正為 CNY / TONNE，或另定義正式匯率換算規則。"
-        )
-    if len(units) >= 10 and str(units[9]).strip().upper() == "USD / DRUM":
-        warnings.append(
-            "J2 原油標示為 USD / DRUM；鉅亨布蘭特期貨實務上建議標示 USD / BBL。"
-        )
-    return main_sheet, warnings
+    return main_sheet
 
 
 def update_google_sheet(quotes: dict[str, MarketQuote]) -> None:
     import gspread
 
-    # A full-row write must never blank out existing cells because one source failed.
+    # Full A:L updates are atomic from the collector's perspective: if any source
+    # failed, do not erase an existing company value with a blank cell.
     require_success(quotes, SHEET_COLUMNS)
 
     sheet_id = os.getenv("GOOGLE_SHEET_ID", "").strip()
@@ -439,9 +427,7 @@ def update_google_sheet(quotes: dict[str, MarketQuote]) -> None:
     credentials = os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE", "service_account.json")
     gc = gspread.service_account(filename=credentials)
     book = gc.open_by_key(sheet_id)
-    sheet, warnings = validate_company_workbook(book)
-    for warning in warnings:
-        print(f"WARNING: {warning}")
+    sheet = validate_company_workbook(book)
 
     target_date = now_taipei().date()
     target_row = find_sheet_row(sheet.col_values(1), target_date)
@@ -456,7 +442,7 @@ def update_google_sheet(quotes: dict[str, MarketQuote]) -> None:
     range_name = f"A{target_row}:L{target_row}"
 
     if os.getenv("ALLOW_GOOGLE_SHEET_WRITE", "0") != "1":
-        print(f"DRY RUN：已驗證目標 {range_name}，但 ALLOW_GOOGLE_SHEET_WRITE != 1，不寫入。")
+        print(f"DRY RUN：已驗證權威版型與目標 {range_name}，但 ALLOW_GOOGLE_SHEET_WRITE != 1，不寫入。")
         print("DRY RUN DATA:", row_data)
         return
 
