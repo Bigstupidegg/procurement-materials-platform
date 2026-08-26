@@ -27,11 +27,15 @@ Status: complete for initial v2.3 baseline
 
 ### Phase C — Demo Mode / Real Data Mode separation
 
-- [ ] Move seeded random-walk generation out of the production core path.
-- [ ] Create an explicit demo fixture/module for development and UI testing.
-- [ ] Ensure production cards, chart, tooltip, statistics, and CSV use the same real-data source.
-- [ ] Add regression tests for source consistency.
-- [ ] Fail visibly when required real-data files cannot be loaded instead of silently presenting demo data as real data.
+Status: production-path separation implemented; source-level cleanup remains.
+
+- [x] Remove seeded random-walk generation from the built production core path.
+- [x] Keep the repository `assets/app.js` as an explicit legacy Demo/UI fixture while the production build generates `assets/app-core.js` without market simulation code.
+- [x] Ensure production cards, chart, tooltip, statistics, and CSV are owned by the validated World Bank real-data module rather than the legacy Demo engine.
+- [x] Add regression tests and CI guards that reject Demo engine leakage into `_site/assets/app-core.js` or the production HTML.
+- [x] Keep a visible fail-closed state when required World Bank/status data cannot be loaded or validated.
+- [ ] Rename/restructure the legacy Demo fixture at source level so `assets/app.js` no longer has an ambiguous production-sounding name.
+- [ ] Add browser-level regression coverage for cards/chart/tooltip/CSV source consistency.
 
 ### Phase D — Rule/config consolidation
 
