@@ -39,87 +39,41 @@ L 黃金 — USD / OUNCE — yfinance GC=F — 期貨
 
 ### LME via Selenium
 
-Used for:
-
-- Copper Cash OFFER
-- Copper 3-month OFFER
-- Aluminium Cash OFFER
-- Lead Cash OFFER
-- Nickel Cash OFFER
-- Tin Cash OFFER
-- Zinc Cash OFFER
-
-The collector selects the semantic `OFFER` header instead of relying on a fixed HTML column index.
+Used for Copper Cash / Copper 3-month / Aluminium / Lead / Nickel / Tin / Zinc. The collector selects the semantic `OFFER` header instead of relying on a fixed HTML column index.
 
 ### SMM via Selenium
 
-Used for:
-
-- `1#电解铜` / electrolytic copper
-- explicit average (`均價`) value
-- raw CNY per tonne
-
-No implicit currency conversion is performed before the operational value is recorded.
+Used for `1#电解铜` / electrolytic copper explicit average (`均價`) value. The raw operational value is retained as CNY per tonne; no implicit FX conversion is performed.
 
 ### Yahoo Finance via yfinance
 
 Used for the three fields present in the original `update_prices_v5.py` implementation:
 
-- Brent: `BZ=F`, latest available Close, USD/bbl
-- Silver: `SI=F`, latest available Close × 100, US cents/oz
-- Gold: `GC=F`, latest available Close, USD/oz
+- Brent: `BZ=F`, latest available `Close`, USD/bbl
+- Silver: `SI=F`, latest available `Close × 100`, US cents/oz
+- Gold: `GC=F`, latest available `Close`, USD/oz
 
-These are futures market references, not spot prices.
+These are futures references, not spot prices. yfinance is a data-access library; the collector must retain the ticker symbol, observation timestamp, and quote type (`Close`) in the audit record. These values are market references and should not be represented as exchange settlement or official LME/SMM prices.
 
 ## System roles
 
 ### 1. Public market-analysis layer — GitHub Pages
 
-Use for:
+Use for World Bank Pink Sheet monthly benchmarks, FRED independent corroboration, trend signals, Should-Cost analysis, and public-safe market statistics.
 
-- World Bank Pink Sheet monthly benchmarks
-- FRED independent corroboration
-- market trend and negotiation signals
-- Should-Cost analysis
-- public-safe market statistics
-
-Do not store:
-
-- internal inventory
-- purchase quantities
-- supplier-specific buy decisions
-- purchase orders
-- internal target prices
-- Google service-account credentials
-- private Google Sheet exports
+Do not store internal inventory, purchase quantities, supplier-specific buy decisions, purchase orders, internal target prices, Google service-account credentials, or private Google Sheet exports.
 
 ### 2. Private daily-operation layer — Google Sheets
 
-Use for:
-
-- LME Copper Cash OFFER used in the daily copper-purchase workflow
-- LME Copper 3-Month reference
-- SMM electrolytic-copper reference
-- yfinance Brent / Silver / Gold references
-- manual notes and future internal purchasing context
+Use for LME Copper Cash OFFER, LME Copper 3-Month, SMM electrolytic copper, yfinance Brent / Silver / Gold references, and future internal purchasing context.
 
 Google Sheets is not a source for the public website unless a later phase creates an explicitly public-safe export.
 
 ### 3. Data-engineering layer — Python collector
 
-The collector is responsible for:
-
-- retrieving source prices
-- validating source structure
-- validating the authoritative A1:L4 workbook layout
-- recording source / instrument / term / quote type / unit / timestamp
-- failing closed when a critical quote cannot be proven
-- writing the private Google Sheet only after required checks pass
-- writing a local audit snapshot that is excluded from Git
+The collector retrieves prices, validates source structure and the authoritative A1:L4 workbook layout, records provenance, fails closed when required data cannot be proven, writes the private Sheet only after checks pass, and emits a local audit snapshot excluded from Git.
 
 ## Copper daily decision hierarchy
-
-For the company's daily copper-purchase workflow, the priority is:
 
 1. LME Copper Cash OFFER — primary operational quote
 2. LME Copper 3-Month — near-term curve / spread context
@@ -131,20 +85,13 @@ World Bank monthly data must not replace the daily LME Cash OFFER when deciding 
 
 ## Fail-closed requirements
 
-The collector must stop the operational Google Sheet write when:
-
-- the LME OFFER column cannot be identified by header name
-- the Copper Cash row cannot be identified
-- the Copper Cash OFFER is missing or invalid
-- any of the 11 A:L market quotes fails when a full-row update is requested
-- the authoritative A1:L4 layout no longer matches
-- the target Google Sheet date row is ambiguous or missing
+Stop the operational Google Sheet write when the LME OFFER column cannot be identified, the Copper Cash row/quote is missing, any of the 11 full-row values fails, the authoritative A1:L4 layout no longer matches, or the target date row is ambiguous/missing.
 
 A missing quote is safer than a silently incorrect quote.
 
 ## Data contract
 
-Each market quote is represented with at least:
+Each market quote includes:
 
 ```text
 key
@@ -166,9 +113,7 @@ The local audit snapshot is classified `INTERNAL_OPERATIONAL` and must not be co
 
 ## Credentials and configuration
 
-Secrets must remain outside Git.
-
-Supported environment variables:
+Secrets must remain outside Git. Supported environment variables:
 
 ```text
 GOOGLE_SHEET_ID
@@ -196,16 +141,7 @@ COMPANY_MARKET_AUDIT_PATH
 
 ### C3.2 — Copper daily analytics
 
-Planned calculations:
-
-- day-over-day change
-- 5-day average
-- 20-day average
-- 60-day price percentile
-- LME Cash vs 3-Month spread
-- daily LME Cash OFFER vs latest World Bank monthly benchmark
-
-Output should be a decision-support label such as `FAVORABLE`, `NEUTRAL`, or `UNFAVORABLE`, not an automatic purchase order.
+Planned: day-over-day change, 5-day average, 20-day average, 60-day percentile, LME Cash vs 3-Month spread, and daily LME Cash OFFER vs latest World Bank monthly benchmark. Output remains decision support, not an automatic purchase order.
 
 ### C3.3 — Public-safe market snapshot (optional)
 
