@@ -43,49 +43,57 @@ Status: source and production runtime boundaries implemented; browser-level regr
 - [ ] Add browser-level regression coverage for cards/chart/tooltip/CSV source consistency.
 - [ ] Add visual regression coverage for loading, success, stale, and fail-closed states.
 
-### Phase C3 — Company daily market data layer
+### Phase C3 — Company daily market-data layer
 
-Purpose: keep the public market-analysis website and the private daily purchasing workflow separated while sharing a hardened Python data-engineering layer.
+Goal: keep the public GitHub Pages market-analysis layer separate from the private Google Sheet purchasing-operation layer while sharing a hardened Python data-engineering collector.
 
-#### C3.1 — Collector hardening
+#### C3.1 — Collector hardening and practical workbook acceptance
 
-Status: implementation in progress.
+Status: code + actual workbook-layout contract implemented; live-source dry-run remains before operational cutover.
 
-- [x] Add semantic LME OFFER-column parsing instead of a fixed cell index.
-- [x] Add explicit SMM electrolytic-copper average-price parsing.
-- [x] Add safe Google Sheet date-row matching with fail-closed ambiguity handling.
-- [x] Require successful LME Copper Cash OFFER before writing the operational Google Sheet row.
-- [x] Add source / instrument / term / quote type / currency / unit / timestamps to the quote contract.
-- [x] Move Google Sheet ID and credential path to environment variables.
-- [x] Add local audit snapshots and keep them outside Git.
-- [x] Add `.gitignore` protections for service-account credentials and company operational data.
-- [x] Keep company collector dependencies separate from the public-site build dependencies.
-- [ ] Validate the collector against the company's actual Google Sheet layout and live LME/SMM pages before production replacement of the existing script.
+- [x] Replace fixed LME column indexing with semantic `OFFER` header lookup.
+- [x] Treat LME Copper Cash OFFER as the primary operational copper quote.
+- [x] Select SMM electrolytic-copper `均價` semantically.
+- [x] Match the existing monthly Sheet day row exactly and fail on ambiguous/missing dates.
+- [x] Validate the actual company main-sheet A1:L4 layout before a write.
+- [x] Validate the `行情統計表資料來源` source registry before a write.
+- [x] Align Oil / Silver / Gold with company-required 鉅亨 sources instead of Yahoo Finance.
+- [x] Make Google Sheet writes opt-in via `ALLOW_GOOGLE_SHEET_WRITE=1`; default is dry-run.
+- [x] Prevent partial full-row writes: all 11 quotes must succeed before A:L update.
+- [x] Keep service-account credentials, Sheet IDs, operational audit data, inventory, supplier/PO data and buy/no-buy decisions out of the public repository.
+- [x] Validate the uploaded workbook row mapping: 2026-08-26 resolves to row 16.
+- [ ] Correct/approve SMM unit label (current D2 says USD/TONNE while raw SMM is CNY/MT).
+- [ ] Correct/approve Brent unit label (recommend USD/BBL instead of USD/DRUM).
+- [ ] Run one company-PC Selenium dry-run and compare all 11 values with the same-day Sheet row.
+- [ ] Enable `ALLOW_GOOGLE_SHEET_WRITE=1` only after value-by-value acceptance.
 
 #### C3.2 — Copper daily analytics
 
-- [ ] Calculate day-over-day change.
-- [ ] Calculate 5-day and 20-day averages.
-- [ ] Calculate 60-day price percentile.
-- [ ] Calculate LME Cash vs 3-Month spread.
-- [ ] Compare daily LME Cash OFFER with the latest World Bank monthly Copper benchmark.
-- [ ] Produce decision-support labels such as `FAVORABLE`, `NEUTRAL`, and `UNFAVORABLE` without creating automatic purchase orders.
+Planned after C3.1 cutover:
 
-#### C3.3 — Public-safe market snapshot (optional)
+- Day-over-day Copper Cash OFFER change.
+- 5-day and 20-day moving averages.
+- 60-day price percentile.
+- LME Cash vs 3-month spread / backwardation-contango context.
+- Latest Cash OFFER vs World Bank monthly Copper benchmark.
+- Explainable `FAVORABLE / NEUTRAL / UNFAVORABLE` market condition.
+- No automatic PO and no automatic buy/no-buy action.
 
-- [ ] Decide whether public daily LME/SMM market references add enough value to the GitHub Pages site.
-- [ ] If enabled, export only public market quotes, timestamps, and derived public statistics.
-- [ ] Explicitly prohibit inventory, demand, supplier, PO, target-price, and buy/no-buy records from the public repository.
+#### C3.3 — Operational demand context
 
-#### C3.4 — Private procurement context
+Planned only after market-data quality is stable:
 
-- [ ] Define internal inventory / safety-stock / incoming-order / demand inputs.
-- [ ] Keep private purchasing context in Google Sheets or another internal/private store.
-- [ ] Define a future internal-only decision model before considering database migration.
+- inventory days
+- safety stock
+- open PO / inbound quantity
+- 30/60/90-day demand
+- staged-purchase recommendation
+
+These fields remain private operational data and are not published to the public GitHub Pages site.
 
 ### Phase D — Rule/config consolidation
 
-Next target after C3.1/C3.2 establishes the daily market-data contract.
+Target after C3 collector stabilization and remaining Phase C browser regression coverage.
 
 - [ ] Keep supplier-rationality thresholds in configuration.
 - [ ] Audit UI modules for duplicated hard-coded thresholds.
