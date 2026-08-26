@@ -35,8 +35,9 @@ All notable platform changes should be recorded here. Dates use Asia/Taipei cale
 - World Bank remains the primary market source; FRED remains independent corroboration only.
 - Supplier price analysis remains decision support, not automatic acceptance/rejection.
 - C3.1 now validates the real `大宗材料 行情統計表` A1:L4 layout before any Google Sheet write.
-- C3.1 source contract is reconciled with the original `update_prices_v5.py`: LME for B/C/E-I, SMM for D, yfinance for J/K/L (`BZ=F`, `SI=F`, `GC=F`).
-- C3.1 Google Sheet metadata now reflects SMM CNY/tonne, Brent USD/bbl, and yfinance futures identity instead of stale `鉅亨`/spot labels.
+- C3.1 source contract was revalidated against the original `update_prices_v5.py`: LME for B/C/E-I, SMM for D, and yfinance for J/K/L (`BZ=F`, `SI=F`, `GC=F`).
+- The earlier C3.1 substitution of 鉅亨 for J/K/L was removed because it did not match the original Python implementation.
+- Google Sheet metadata was corrected to SMM `CNY / TONNE`, Brent `USD / BBL`, explicit yfinance tickers, and futures labeling for J/K/L.
 - Company Google Sheet writes are Live Dry Run by default and require `ALLOW_GOOGLE_SHEET_WRITE=1` for an actual update.
 - Full-row company writes require all 11 quotes to succeed, preventing failed sources from blanking existing operational cells.
 
