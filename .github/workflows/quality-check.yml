@@ -1,0 +1,48 @@
+name: Quality Check
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install Python dependencies
+        run: pip install -r scripts/requirements.txt
+
+      - name: Run procurement platform tests
+        run: |
+          python -m unittest discover -s tests -v
+          node --check assets/app.js
+          node --check assets/world-bank-live.js
+          node --check assets/source-comparison.js
+          node --check assets/trend-signals.js
+          node --check assets/supplier-rationality.js
+          node --check assets/negotiation-report.js
+
+      - name: Build GitHub Pages payload
+        run: python scripts/prepare_site.py
+
+      - name: Verify v2.3 release identity
+        run: |
+          grep -q "v2.3.0" _site/index.html
+          grep -q "World Bank 月度資料版 v2.3.0" _site/assets/world-bank-live.js
+          if grep -q "未連接任何外部市場資料來源" _site/index.html; then
+            echo "Obsolete demo-only claim found in built site"
+            exit 1
+          fi
