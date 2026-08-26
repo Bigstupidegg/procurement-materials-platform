@@ -14,9 +14,8 @@ For C3.1, the current company workbook / Google Sheet is the authoritative opera
 - Worksheet: `大宗材料 行情統計表`
 - Authoritative layout range: `A1:L4`
 - There is no required second source-registry worksheet.
-- The collector must validate the current A1:L4 material / unit / source / term labels before any write.
+- The collector must validate A1:L4 before any write.
 - Source labels must match the actual collector implementation.
-- Source-native quote metadata is kept in the local audit snapshot for traceability.
 
 Current A:L operational columns are:
 
@@ -43,35 +42,33 @@ Used for Copper Cash / Copper 3-month / Aluminium / Lead / Nickel / Tin / Zinc. 
 
 ### SMM via Selenium
 
-Used for `1#电解铜` / electrolytic copper explicit average (`均價`) value. The raw operational value is retained as CNY per tonne; no implicit FX conversion is performed.
+Used for `1#电解铜` / electrolytic copper explicit average (`均價`) value. Raw value is kept in CNY/tonne; no implicit FX conversion is performed.
 
 ### Yahoo Finance via yfinance
 
-Used for the three fields present in the original `update_prices_v5.py` implementation:
+Used exactly as in the original `update_prices_v5.py`:
 
 - Brent: `BZ=F`, latest available `Close`, USD/bbl
 - Silver: `SI=F`, latest available `Close × 100`, US cents/oz
 - Gold: `GC=F`, latest available `Close`, USD/oz
 
-These are futures references, not spot prices. yfinance is a data-access library; the collector must retain the ticker symbol, observation timestamp, and quote type (`Close`) in the audit record. These values are market references and should not be represented as exchange settlement or official LME/SMM prices.
+These are futures references, not spot prices. The audit record retains ticker, observation timestamp, and quote type.
 
 ## System roles
 
-### 1. Public market-analysis layer — GitHub Pages
+### Public market-analysis layer — GitHub Pages
 
 Use for World Bank Pink Sheet monthly benchmarks, FRED independent corroboration, trend signals, Should-Cost analysis, and public-safe market statistics.
 
 Do not store internal inventory, purchase quantities, supplier-specific buy decisions, purchase orders, internal target prices, Google service-account credentials, or private Google Sheet exports.
 
-### 2. Private daily-operation layer — Google Sheets
+### Private daily-operation layer — Google Sheets
 
 Use for LME Copper Cash OFFER, LME Copper 3-Month, SMM electrolytic copper, yfinance Brent / Silver / Gold references, and future internal purchasing context.
 
-Google Sheets is not a source for the public website unless a later phase creates an explicitly public-safe export.
+### Data-engineering layer — Python collector
 
-### 3. Data-engineering layer — Python collector
-
-The collector retrieves prices, validates source structure and the authoritative A1:L4 workbook layout, records provenance, fails closed when required data cannot be proven, writes the private Sheet only after checks pass, and emits a local audit snapshot excluded from Git.
+The collector retrieves prices, validates source structure and A1:L4, records provenance, fails closed when required data cannot be proven, writes the private Sheet only after checks pass, and emits a local audit snapshot excluded from Git.
 
 ## Copper daily decision hierarchy
 
@@ -85,7 +82,7 @@ World Bank monthly data must not replace the daily LME Cash OFFER when deciding 
 
 ## Fail-closed requirements
 
-Stop the operational Google Sheet write when the LME OFFER column cannot be identified, the Copper Cash row/quote is missing, any of the 11 full-row values fails, the authoritative A1:L4 layout no longer matches, or the target date row is ambiguous/missing.
+Stop the operational Google Sheet write when the LME OFFER column cannot be identified, the Copper Cash row/quote is missing, any of the 11 full-row values fails, A1:L4 no longer matches, or the target date row is ambiguous/missing.
 
 A missing quote is safer than a silently incorrect quote.
 
@@ -131,7 +128,7 @@ COMPANY_MARKET_AUDIT_PATH
 
 - semantic LME OFFER-column detection
 - explicit SMM average-price detection
-- yfinance BZ=F / SI=F / GC=F source handling
+- yfinance BZ=F / SI=F / GC=F handling
 - authoritative single-sheet A1:L4 validation
 - safe Google Sheet date-row matching
 - local audit snapshot
