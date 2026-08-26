@@ -9,7 +9,6 @@ from zoneinfo import ZoneInfo
 from company_market_core import (
     DataContractError,
     MarketQuote,
-    extract_first_table_value,
     extract_table_value,
     find_sheet_row,
     require_success,
@@ -20,7 +19,6 @@ from company_market_core import (
 TAIPEI = ZoneInfo("Asia/Taipei")
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_AUDIT_PATH = ROOT / "runtime" / "company-market" / "latest.json"
-
 MAIN_SHEET_DEFAULT = "大宗材料 行情統計表"
 
 LME_URLS = {
@@ -35,34 +33,10 @@ LME_URLS = {
 
 SMM_URL = "https://www.smm.com.cn/price"
 
-CNYES_URLS = {
-    "brent_cnyes": (
-        "油",
-        "https://www.cnyes.com/futures/html5chart/IBCON.html",
-        "連續月倫敦布蘭特",
-        1.0,
-        "USD",
-        "USD/bbl",
-        10.0,
-    ),
-    "silver_cnyes": (
-        "銀",
-        "https://www.cnyes.com/futures/html5chart/sicon.html",
-        "連續月紐約白銀",
-        100.0,
-        "US cents",
-        "US cents/troy oz",
-        1.0,
-    ),
-    "gold_cnyes": (
-        "黃金",
-        "https://www.cnyes.com/futures/html5chart/gccon.html",
-        "連續月紐約黃金",
-        1.0,
-        "USD",
-        "USD/troy oz",
-        100.0,
-    ),
+YFINANCE_SPECS = {
+    "brent_yfinance": ("油", "BZ=F", 1.0, "USD", "USD/bbl"),
+    "silver_yfinance": ("銀", "SI=F", 100.0, "US cents", "US cents/troy oz"),
+    "gold_yfinance": ("黃金", "GC=F", 1.0, "USD", "USD/troy oz"),
 }
 
 SHEET_COLUMNS = (
@@ -74,14 +48,12 @@ SHEET_COLUMNS = (
     "nickel_lme_cash",
     "tin_lme_cash",
     "zinc_lme_cash",
-    "brent_cnyes",
-    "silver_cnyes",
-    "gold_cnyes",
+    "brent_yfinance",
+    "silver_yfinance",
+    "gold_yfinance",
 )
 
-# Authoritative A1:L4 contract from the current company workbook / Google Sheet.
-# The collector validates these labels exactly and never rewrites or "corrects"
-# company-defined unit labels during an operational write.
+# Authoritative A1:L4 contract from the current company Google Sheet.
 COMPANY_MAIN_LAYOUT = (
     (
         "日期", "銅 COPPER", "銅 COPPER", "電解銅 Copper Cathode",
@@ -89,32 +61,32 @@ COMPANY_MAIN_LAYOUT = (
         "油", "銀", "黃金",
     ),
     (
-        None, "USD / TONNE", "USD / TONNE", "USD / TONNE",
+        None, "USD / TONNE", "USD / TONNE", "CNY / TONNE",
         "USD / TONNE", "USD / TONNE", "USD / TONNE", "USD / TONNE",
-        "USD / TONNE", "USD / DRUM", "CENT / OUNCE", "USD / OUNCE",
+        "USD / TONNE", "USD / BBL", "CENT / OUNCE", "USD / OUNCE",
     ),
     (
         "資料來源", "LME OFFER", "LME OFFER", "SMM", "LME", "LME", "LME",
-        "LME", "LME", "鉅亨 倫敦布蘭特", "鉅亨 紐約白銀", "鉅亨 紐約黃金",
+        "LME", "LME", "yfinance BZ=F", "yfinance SI=F", "yfinance GC=F",
     ),
     (
         None, "現貨", "期貨(3月)", "現貨", "現貨", "現貨", "現貨", "現貨",
-        "現貨", "現貨", "現貨", "現貨",
+        "現貨", "期貨", "期貨", "期貨",
     ),
 )
 
 SHEET_UNIT_LABELS = {
     "copper_lme_cash": "USD / TONNE",
     "copper_lme_3m": "USD / TONNE",
-    "smm_electrolytic_copper": "USD / TONNE",
+    "smm_electrolytic_copper": "CNY / TONNE",
     "aluminium_lme_cash": "USD / TONNE",
     "lead_lme_cash": "USD / TONNE",
     "nickel_lme_cash": "USD / TONNE",
     "tin_lme_cash": "USD / TONNE",
     "zinc_lme_cash": "USD / TONNE",
-    "brent_cnyes": "USD / DRUM",
-    "silver_cnyes": "CENT / OUNCE",
-    "gold_cnyes": "USD / OUNCE",
+    "brent_yfinance": "USD / BBL",
+    "silver_yfinance": "CENT / OUNCE",
+    "gold_yfinance": "USD / OUNCE",
 }
 
 
@@ -232,32 +204,6 @@ def fetch_smm_average(driver) -> float:
     )
 
 
-def fetch_cnyes_close(driver, url: str, *, minimum: float) -> float:
-    from selenium.webdriver.common.by import By
-    from selenium.webdriver.support.ui import WebDriverWait
-
-    driver.get(url)
-    WebDriverWait(driver, 20).until(lambda d: d.find_elements(By.TAG_NAME, "table"))
-
-    failures: list[str] = []
-    for table in driver.find_elements(By.TAG_NAME, "table"):
-        try:
-            headers, rows = table_to_matrix(table)
-            return extract_first_table_value(
-                headers,
-                rows,
-                value_headers=("收盤價", "close"),
-                minimum=minimum,
-            )
-        except DataContractError as exc:
-            failures.append(str(exc))
-
-    raise DataContractError(
-        "鉅亨頁面無法證明『收盤價』欄位；停止使用此報價。"
-        + (" | " + failures[-1] if failures else "")
-    )
-
-
 def make_quote(
     *,
     key: str,
@@ -347,37 +293,48 @@ def fetch_browser_quotes() -> dict[str, MarketQuote]:
                 value=None,
                 error=str(exc),
             )
-
-        for key, (name, url, instrument, multiplier, currency, unit, minimum) in CNYES_URLS.items():
-            try:
-                raw_value = fetch_cnyes_close(driver, url, minimum=minimum)
-                value = round(raw_value * multiplier, 2)
-                quotes[key] = make_quote(
-                    key=key,
-                    name=name,
-                    source="Anue Cnyes",
-                    instrument=instrument,
-                    term="Continuous Month",
-                    quote_type="Close",
-                    currency=currency,
-                    unit=unit,
-                    value=value,
-                )
-            except Exception as exc:
-                quotes[key] = make_quote(
-                    key=key,
-                    name=name,
-                    source="Anue Cnyes",
-                    instrument=instrument,
-                    term="Continuous Month",
-                    quote_type="Close",
-                    currency=currency,
-                    unit=unit,
-                    value=None,
-                    error=str(exc),
-                )
     finally:
         driver.quit()
+    return quotes
+
+
+def fetch_yfinance_quotes() -> dict[str, MarketQuote]:
+    import yfinance as yf
+
+    quotes: dict[str, MarketQuote] = {}
+    for key, (name, symbol, multiplier, currency, unit) in YFINANCE_SPECS.items():
+        try:
+            history = yf.Ticker(symbol).history(period="5d")
+            if history.empty:
+                raise DataContractError(f"yfinance {symbol} 沒有回傳近期資料")
+            raw_value = float(history["Close"].iloc[-1])
+            observed_at = str(history.index[-1])
+            value = round(raw_value * multiplier, 2)
+            quotes[key] = make_quote(
+                key=key,
+                name=name,
+                source="Yahoo Finance / yfinance",
+                instrument=symbol,
+                term="Continuous Futures",
+                quote_type="Close",
+                currency=currency,
+                unit=unit,
+                value=value,
+                observed_at=observed_at,
+            )
+        except Exception as exc:
+            quotes[key] = make_quote(
+                key=key,
+                name=name,
+                source="Yahoo Finance / yfinance",
+                instrument=symbol,
+                term="Continuous Futures",
+                quote_type="Close",
+                currency=currency,
+                unit=unit,
+                value=None,
+                error=str(exc),
+            )
     return quotes
 
 
@@ -385,7 +342,7 @@ def write_audit_snapshot(quotes: dict[str, MarketQuote]) -> Path:
     output = Path(os.getenv("COMPANY_MARKET_AUDIT_PATH", str(DEFAULT_AUDIT_PATH)))
     output.parent.mkdir(parents=True, exist_ok=True)
     payload = {
-        "schemaVersion": 3,
+        "schemaVersion": 4,
         "classification": "INTERNAL_OPERATIONAL",
         "generatedAt": iso_now(),
         "decisionPolicy": {
@@ -393,11 +350,17 @@ def write_audit_snapshot(quotes: dict[str, MarketQuote]) -> Path:
             "automaticBuyDecision": False,
             "publicGitHubStorage": False,
         },
+        "sourceContract": {
+            "lme": "LME website via Selenium; semantic OFFER header",
+            "smm": "SMM website via Selenium; electrolytic copper average",
+            "brent": "yfinance BZ=F Close",
+            "silver": "yfinance SI=F Close x 100",
+            "gold": "yfinance GC=F Close",
+        },
         "workbookContract": {
             "authority": "AUTHORITATIVE_COMPANY_WORKBOOK",
             "worksheet": os.getenv("GOOGLE_SHEET_WORKSHEET", MAIN_SHEET_DEFAULT).strip(),
             "layoutRange": "A1:L4",
-            "unitPolicy": "PRESERVE_WORKBOOK_LABELS_NO_AUTOMATIC_CONVERSION",
             "sheetUnitLabels": SHEET_UNIT_LABELS,
         },
         "quotes": {key: quote.to_dict() for key, quote in quotes.items()},
@@ -416,8 +379,6 @@ def validate_company_workbook(book):
 def update_google_sheet(quotes: dict[str, MarketQuote]) -> None:
     import gspread
 
-    # Full A:L updates are atomic from the collector's perspective: if any source
-    # failed, do not erase an existing company value with a blank cell.
     require_success(quotes, SHEET_COLUMNS)
 
     sheet_id = os.getenv("GOOGLE_SHEET_ID", "").strip()
@@ -437,12 +398,11 @@ def update_google_sheet(quotes: dict[str, MarketQuote]) -> None:
             "公司月表只允許寫入已存在的交易日列，已停止更新。"
         )
 
-    date_value = str(target_date.day)
-    row_data = [date_value] + [quotes[key].value for key in SHEET_COLUMNS]
+    row_data = [str(target_date.day)] + [quotes[key].value for key in SHEET_COLUMNS]
     range_name = f"A{target_row}:L{target_row}"
 
     if os.getenv("ALLOW_GOOGLE_SHEET_WRITE", "0") != "1":
-        print(f"DRY RUN：已驗證權威版型與目標 {range_name}，但 ALLOW_GOOGLE_SHEET_WRITE != 1，不寫入。")
+        print(f"LIVE DRY RUN：已驗證資料來源、版型與目標 {range_name}；不寫入 Google Sheet。")
         print("DRY RUN DATA:", row_data)
         return
 
@@ -451,13 +411,16 @@ def update_google_sheet(quotes: dict[str, MarketQuote]) -> None:
 
 
 def main() -> int:
-    print("C3.1 Company Market Collector：開始抓取公司指定來源的每日市場資料")
+    print("C3.1 Company Market Collector：開始抓取 LME / SMM / yfinance 每日市場資料")
+
     quotes = fetch_browser_quotes()
+    quotes.update(fetch_yfinance_quotes())
 
     audit_path = write_audit_snapshot(quotes)
     print(f"稽核快照：{audit_path}")
 
-    # Copper Cash OFFER is the operationally critical quote used by purchasing.
+    # Copper Cash OFFER is operationally critical. Full-row writes also require
+    # all 11 values to succeed in update_google_sheet().
     require_success(quotes, ("copper_lme_cash",))
 
     if os.getenv("GOOGLE_SHEET_ID", "").strip():
@@ -466,7 +429,8 @@ def main() -> int:
         print("GOOGLE_SHEET_ID 未設定：本次只產生本機稽核快照，不連線 Google Sheet")
 
     print("今日報價摘要：")
-    for key, quote in quotes.items():
+    for key in SHEET_COLUMNS:
+        quote = quotes[key]
         print(f"- {key}: {quote.status} {quote.value if quote.ok else quote.error}")
     return 0
 
