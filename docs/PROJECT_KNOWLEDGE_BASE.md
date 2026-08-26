@@ -34,9 +34,9 @@ Verified daily source contract from the original `update_prices_v5.py`:
 - Silver: yfinance `SI=F` Close × 100, stored as cents/oz.
 - Gold: yfinance `GC=F` Close.
 
-C3.1 strengthens this legacy behavior by adding semantic LME OFFER-column validation, explicit SMM average selection, safe target-row resolution, full A:L write guards, audit metadata, credential isolation, and Live Dry Run mode.
+`BZ=F`, `SI=F`, and `GC=F` are futures market references. They are not spot prices and should remain labeled as futures in the company Sheet and audit metadata.
 
-The current authoritative Google Sheet labels must match those actual sources rather than stale display text.
+C3.1 strengthens the legacy behavior by adding semantic LME OFFER-column validation, explicit SMM average selection, safe target-row resolution, full A:L write guards, audit metadata, credential isolation, and Live Dry Run mode.
 
 ## 4. Copper daily decision principle
 
