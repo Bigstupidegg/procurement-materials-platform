@@ -21,7 +21,18 @@ K 銀 — CENT / OUNCE — yfinance SI=F — 期貨
 L 黃金 — USD / OUNCE — yfinance GC=F — 期貨
 ```
 
-For the current 2026-08 snapshot, day `26` is at row 16.
+## Date contract
+
+Column A is now a strict full-date field.
+
+- A1 = `日期`
+- A5 downward = true Google Sheets date values displayed as `yyyy/mm/dd`
+- Example: `2026/08/26` resolves to row 16 in the current sheet
+- Day-only values such as `26` are not accepted
+- Alternate separators such as `2026-08-26` or `2026.08.26` are not accepted by the C3.1 row-matching contract
+- If the full date is missing or duplicated, the collector stops without writing
+
+This removes cross-month ambiguity and makes the operational row auditable.
 
 ## Verified source contract
 
@@ -42,7 +53,7 @@ A Live Dry Run means:
 1. real Selenium access to LME/SMM;
 2. real yfinance requests;
 3. real Google Sheet authentication and A1:L4 validation;
-4. real target-row resolution;
+4. real full-date target-row resolution using `yyyy/mm/dd`;
 5. print the exact A:L row that would be written;
 6. no Sheet write because `ALLOW_GOOGLE_SHEET_WRITE=0`.
 
@@ -53,7 +64,7 @@ It is live because every external dependency is real, and dry because operationa
 Before any A:L update:
 
 1. A1:L4 must match.
-2. Today's row must exist exactly once.
+2. Today's complete `yyyy/mm/dd` date must exist exactly once in column A.
 3. All 11 market values must succeed.
 4. Copper Cash OFFER must succeed.
 5. `ALLOW_GOOGLE_SHEET_WRITE=1` must be explicit.
@@ -64,6 +75,7 @@ Before any A:L update:
 - Confirm LME OFFER detection live.
 - Confirm SMM average detection live.
 - Confirm yfinance BZ=F / SI=F / GC=F values.
+- Confirm the collector resolves today's full date to the intended row.
 - Compare all 11 values to expected same-day observations.
 - Only then enable real Sheet writes.
 
