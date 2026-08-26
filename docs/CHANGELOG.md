@@ -19,7 +19,7 @@ All notable platform changes should be recorded here. Dates use Asia/Taipei cale
 - `tests/test_prepare_site.py` coverage for release identity, source boundary, production stripping, and freshness status.
 - `.github/workflows/quality-check.yml` for pull-request tests, JS syntax checks, site build, release identity, and Demo-leakage guards.
 - C3.1 private company-market collector core and tests.
-- `docs/C3_1_PRACTICAL_ACCEPTANCE.md` documenting validation against the supplied company workbook.
+- `docs/C3_1_PRACTICAL_ACCEPTANCE.md` documenting validation against the authoritative company workbook.
 
 ### Changed
 
@@ -34,8 +34,10 @@ All notable platform changes should be recorded here. Dates use Asia/Taipei cale
 - Existing calculator integration tests now treat `assets/app-core.js` as the formal Should-Cost contract.
 - World Bank remains the primary market source; FRED remains independent corroboration only.
 - Supplier price analysis remains decision support, not automatic acceptance/rejection.
-- C3.1 now validates the real `大宗材料 行情統計表` A1:L4 layout and the `行情統計表資料來源` registry before any Google Sheet write.
-- C3.1 company-market J/K/L sources now follow the company workbook requirement: 鉅亨 Brent / Silver / Gold close prices, rather than Yahoo Finance substitution.
+- C3.1 now treats the current single worksheet `大宗材料 行情統計表` as the authoritative operational workbook layout.
+- C3.1 validates A1:L4 material / unit / source / term labels before any Google Sheet write and no longer requires a second `行情統計表資料來源` worksheet.
+- Company-defined unit labels, including D2 `USD / TONNE` and J2 `USD / DRUM`, are preserved exactly as the operational Sheet contract; source-native units remain separately traceable in the local audit snapshot.
+- C3.1 company-market J/K/L sources remain aligned with company-facing 鉅亨 Brent / Silver / Gold close-price labels rather than Yahoo Finance substitution.
 - Company Google Sheet writes are dry-run by default and require `ALLOW_GOOGLE_SHEET_WRITE=1` for an actual update.
 - Full-row company writes require all 11 quotes to succeed, preventing failed sources from blanking existing operational cells.
 
@@ -46,7 +48,6 @@ All notable platform changes should be recorded here. Dates use Asia/Taipei cale
 - Visual regression coverage for loading, success, stale, and fail-closed states is still pending.
 - Rule/config threshold consolidation is still pending.
 - C3.1 live Selenium dry-run is pending in the company Windows environment.
-- Company workbook SMM and Brent unit labels require confirmation/correction before collector cutover.
 
 ### Planned before v2.3 completion
 
