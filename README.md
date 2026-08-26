@@ -20,7 +20,7 @@ v2.3 不以增加大量新功能為優先，而是把現有成果整理成可長
 
 公開 GitHub Pages 採 World Bank Pink Sheet 月度資料作為主要市場基準，FRED 作為獨立交叉核對。正式 production runtime 不使用 Demo 隨機行情。
 
-Phase C3 新增的是**公司私有的每日市場資料層**，與公開網站保持分離：
+Phase C3 新增的是**公司私有的每日市場資料層**，與公開網站保持分離。其來源已重新依原始 `update_prices_v5.py` 核對：
 
 - Google Sheet：`大宗材料 行情統計表`
 - B/C/E-I：LME
