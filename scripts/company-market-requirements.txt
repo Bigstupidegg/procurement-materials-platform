@@ -1,3 +1,4 @@
 gspread>=6,<7
 selenium>=4.25,<5
 webdriver-manager>=4,<5
+yfinance>=0.2.50,<1
