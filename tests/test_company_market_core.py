@@ -6,9 +6,11 @@ import unittest
 from scripts.company_market_core import (
     DataContractError,
     MarketQuote,
+    extract_first_table_value,
     extract_table_value,
     find_sheet_row,
     require_success,
+    validate_sheet_layout,
 )
 
 
@@ -39,7 +41,7 @@ class CompanyMarketCoreTests(unittest.TestCase):
 
     def test_smm_average_selects_average_not_first_price(self) -> None:
         headers = ["品名", "最低价", "最高价", "均价", "涨跌"]
-        rows = [["1#电解铜", "78,000", "78,300", "78,150", "+200"]]
+        rows = [["1#电解铜", "108,400", "108,800", "108,600", "+200"]]
         value = extract_table_value(
             headers,
             rows,
@@ -47,11 +49,34 @@ class CompanyMarketCoreTests(unittest.TestCase):
             value_headers=("均价", "平均价"),
             minimum=50000,
         )
-        self.assertEqual(value, 78150.0)
+        self.assertEqual(value, 108600.0)
+
+    def test_cnyes_close_selects_close_header(self) -> None:
+        headers = ["日期", "收盤價", "漲跌", "漲%", "開盤價"]
+        rows = [
+            ["20260826", "69.235", "+1.2", "+1.76", "68.100"],
+            ["20260825", "68.682", "-0.1", "-0.14", "68.900"],
+        ]
+        value = extract_first_table_value(
+            headers,
+            rows,
+            value_headers=("收盤價", "close"),
+            minimum=1,
+        )
+        self.assertEqual(value, 69.235)
 
     def test_sheet_row_matches_exact_day_in_existing_monthly_sheet(self) -> None:
         values = ["日期", "24", "25", "26", "27"]
         self.assertEqual(find_sheet_row(values, date(2026, 8, 26)), 4)
+
+    def test_sheet_row_matches_actual_uploaded_layout(self) -> None:
+        # A1:A16 from the supplied company workbook: four header rows followed by
+        # business-day rows.  The 26th is row 16, not row 17.
+        values = [
+            "日期", "", "資料來源", "",
+            11, 12, 13, 14, 17, 18, 19, 20, 21, 24, 25, "26",
+        ]
+        self.assertEqual(find_sheet_row(values, date(2026, 8, 26)), 16)
 
     def test_sheet_row_prefers_full_date(self) -> None:
         values = ["日期", "26", "2026-08-26", "27"]
@@ -61,10 +86,41 @@ class CompanyMarketCoreTests(unittest.TestCase):
         with self.assertRaises(DataContractError):
             find_sheet_row(["日期", "26", "26"], date(2026, 8, 26))
 
+    def test_actual_company_sheet_layout_contract_passes(self) -> None:
+        actual = [
+            ["日期", "銅 COPPER", "銅 COPPER", "電解銅 Copper Cathode", "鋁 ALUMINIUM", "鉛 LEAD", "鎳 NICKEL", "錫 TIN", "鋅 ZINC", "油", "銀", "黃金"],
+            ["", "USD / TONNE", "USD / TONNE", "USD / TONNE", "USD / TONNE", "USD / TONNE", "USD / TONNE", "USD / TONNE", "USD / TONNE", "USD / DRUM", "CENT / OUNCE", "USD / OUNCE"],
+            ["資料來源", "LME OFFER", "LME OFFER", "SMM", "LME", "LME", "LME", "LME", "LME", "鉅亨 倫敦布蘭特", "鉅亨 紐約白銀", "鉅亨 紐約黃金"],
+            ["", "現貨", "期貨(3月)", "現貨", "現貨", "現貨", "現貨", "現貨", "現貨", "現貨", "現貨", "現貨"],
+        ]
+        expected = [
+            actual[0],
+            [None, "USD / TONNE", "USD / TONNE", None, "USD / TONNE", "USD / TONNE", "USD / TONNE", "USD / TONNE", "USD / TONNE", None, "CENT / OUNCE", "USD / OUNCE"],
+            actual[2],
+            [None] + actual[3][1:],
+        ]
+        validate_sheet_layout(actual, expected)
+
+    def test_sheet_layout_fails_if_copper_source_column_shifts(self) -> None:
+        actual = [
+            ["日期", "銅 COPPER", "銅 COPPER"],
+            ["", "USD / TONNE", "USD / TONNE"],
+            ["資料來源", "LME", "LME OFFER"],
+            ["", "現貨", "期貨(3月)"],
+        ]
+        expected = [
+            ["日期", "銅 COPPER", "銅 COPPER"],
+            [None, "USD / TONNE", "USD / TONNE"],
+            ["資料來源", "LME OFFER", "LME OFFER"],
+            [None, "現貨", "期貨(3月)"],
+        ]
+        with self.assertRaises(DataContractError):
+            validate_sheet_layout(actual, expected)
+
     def test_required_copper_cash_must_succeed(self) -> None:
         quote = MarketQuote(
             key="copper_lme_cash",
-            name="銅_LME_現貨",
+            name="銅 COPPER",
             source="London Metal Exchange",
             instrument="Copper",
             term="Cash",
