@@ -19,7 +19,7 @@ All notable platform changes should be recorded here. Dates use Asia/Taipei cale
 - `tests/test_prepare_site.py` coverage for release identity, source boundary, production stripping, and freshness status.
 - `.github/workflows/quality-check.yml` for pull-request tests, JS syntax checks, site build, release identity, and Demo-leakage guards.
 - C3.1 private company-market collector core and tests.
-- `docs/C3_1_PRACTICAL_ACCEPTANCE.md` documenting validation against the authoritative company workbook.
+- `docs/C3_1_PRACTICAL_ACCEPTANCE.md` documenting validation against the supplied company workbook and original Python collection behavior.
 
 ### Changed
 
@@ -34,11 +34,10 @@ All notable platform changes should be recorded here. Dates use Asia/Taipei cale
 - Existing calculator integration tests now treat `assets/app-core.js` as the formal Should-Cost contract.
 - World Bank remains the primary market source; FRED remains independent corroboration only.
 - Supplier price analysis remains decision support, not automatic acceptance/rejection.
-- C3.1 now treats the current single worksheet `大宗材料 行情統計表` as the authoritative operational workbook layout.
-- C3.1 validates A1:L4 material / unit / source / term labels before any Google Sheet write and no longer requires a second `行情統計表資料來源` worksheet.
-- Company-defined unit labels, including D2 `USD / TONNE` and J2 `USD / DRUM`, are preserved exactly as the operational Sheet contract; source-native units remain separately traceable in the local audit snapshot.
-- C3.1 company-market J/K/L sources remain aligned with company-facing 鉅亨 Brent / Silver / Gold close-price labels rather than Yahoo Finance substitution.
-- Company Google Sheet writes are dry-run by default and require `ALLOW_GOOGLE_SHEET_WRITE=1` for an actual update.
+- C3.1 now validates the real `大宗材料 行情統計表` A1:L4 layout before any Google Sheet write.
+- C3.1 source contract is reconciled with the original `update_prices_v5.py`: LME for B/C/E-I, SMM for D, yfinance for J/K/L (`BZ=F`, `SI=F`, `GC=F`).
+- C3.1 Google Sheet metadata now reflects SMM CNY/tonne, Brent USD/bbl, and yfinance futures identity instead of stale `鉅亨`/spot labels.
+- Company Google Sheet writes are Live Dry Run by default and require `ALLOW_GOOGLE_SHEET_WRITE=1` for an actual update.
 - Full-row company writes require all 11 quotes to succeed, preventing failed sources from blanking existing operational cells.
 
 ### Remaining v2.3 technical debt
@@ -47,7 +46,7 @@ All notable platform changes should be recorded here. Dates use Asia/Taipei cale
 - Browser-level source-consistency tests for cards/chart/tooltip/CSV are still pending.
 - Visual regression coverage for loading, success, stale, and fail-closed states is still pending.
 - Rule/config threshold consolidation is still pending.
-- C3.1 live Selenium dry-run is pending in the company Windows environment.
+- C3.1 Live Dry Run is pending in the company Windows environment.
 
 ### Planned before v2.3 completion
 
@@ -55,7 +54,7 @@ All notable platform changes should be recorded here. Dates use Asia/Taipei cale
 - add visual/status regression coverage
 - consolidate duplicated rule/config thresholds where applicable
 - add schema-version enforcement for derived JSON
-- complete C3.1 company-market dry-run acceptance and proceed to Copper daily analytics
+- complete C3.1 company-market Live Dry Run acceptance and proceed to Copper daily analytics
 - Supplier Case foundation for TTP Radiator and Bushing
 
 ## [2.2.x] - historical implementation state
