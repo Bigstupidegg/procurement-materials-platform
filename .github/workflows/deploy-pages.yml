@@ -30,6 +30,7 @@ jobs:
         run: |
           python -m unittest discover -s tests -p "test_supplier_rationality.py" -v
           python -m unittest discover -s tests -p "test_negotiation_report.py" -v
+          python -m unittest discover -s tests -p "test_prepare_site.py" -v
           node --check assets/supplier-rationality.js
           node --check assets/negotiation-report.js
 
