@@ -361,6 +361,7 @@ def write_audit_snapshot(quotes: dict[str, MarketQuote]) -> Path:
             "authority": "AUTHORITATIVE_COMPANY_WORKBOOK",
             "worksheet": os.getenv("GOOGLE_SHEET_WORKSHEET", MAIN_SHEET_DEFAULT).strip(),
             "layoutRange": "A1:L4",
+            "dateFormat": "yyyy/mm/dd",
             "sheetUnitLabels": SHEET_UNIT_LABELS,
         },
         "quotes": {key: quote.to_dict() for key, quote in quotes.items()},
@@ -392,17 +393,18 @@ def update_google_sheet(quotes: dict[str, MarketQuote]) -> None:
 
     target_date = now_taipei().date()
     target_row = find_sheet_row(sheet.col_values(1), target_date)
+    target_date_text = target_date.strftime("%Y/%m/%d")
     if target_row is None:
         raise DataContractError(
-            f"Google Sheet 找不到 {target_date.isoformat()} / {target_date.day} 號資料列；"
-            "公司月表只允許寫入已存在的交易日列，已停止更新。"
+            f"Google Sheet 找不到完整日期 {target_date_text}；"
+            "A 欄只接受 yyyy/mm/dd 完整日期，已停止更新。"
         )
 
-    row_data = [str(target_date.day)] + [quotes[key].value for key in SHEET_COLUMNS]
+    row_data = [target_date_text] + [quotes[key].value for key in SHEET_COLUMNS]
     range_name = f"A{target_row}:L{target_row}"
 
     if os.getenv("ALLOW_GOOGLE_SHEET_WRITE", "0") != "1":
-        print(f"LIVE DRY RUN：已驗證資料來源、版型與目標 {range_name}；不寫入 Google Sheet。")
+        print(f"LIVE DRY RUN：已驗證資料來源、版型、完整日期與目標 {range_name}；不寫入 Google Sheet。")
         print("DRY RUN DATA:", row_data)
         return
 
