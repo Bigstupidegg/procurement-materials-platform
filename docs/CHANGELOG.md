@@ -23,27 +23,17 @@ All notable platform changes should be recorded here. Dates use Asia/Taipei cale
 
 ### Changed
 
-- README rewritten to reflect the repository's real implementation rather than the obsolete Phase 2 seed-data state.
-- Project positioning changed from `v1.2.1 Prototype / Demo Data` to `v2.3 Real Data + Procurement Decision Support`.
-- `assets/app.js` is now a Development Demo bootstrap only; it no longer contains market simulation, Should-Cost, or navigation business logic.
-- `scripts/prepare_site.py` now uses source-level `app-core.js` directly instead of extracting a production core from the legacy monolithic app at build time.
-- Production build replaces the development bootstrap reference with `app-core.js` and removes both `_site/assets/app.js` and `_site/assets/demo-market.js`.
-- Market cards, chart, tooltip, statistics, and CSV in production are owned by the validated World Bank real-data module.
-- Built `world-bank-live.js` release wording is normalized from legacy v1.3.0 text to the active release version.
-- Pages deployment rejects a build if Development Demo code appears in the production core or production HTML.
-- Existing calculator integration tests now treat `assets/app-core.js` as the formal Should-Cost contract.
-- World Bank remains the primary market source; FRED remains independent corroboration only.
-- Supplier price analysis remains decision support, not automatic acceptance/rejection.
 - C3.1 now validates the real `大宗材料 行情統計表` A1:L4 layout before any Google Sheet write.
 - C3.1 source contract was revalidated against the original `update_prices_v5.py`: LME for B/C/E-I, SMM for D, and yfinance for J/K/L (`BZ=F`, `SI=F`, `GC=F`).
 - The earlier C3.1 substitution of 鉅亨 for J/K/L was removed because it did not match the original Python implementation.
 - Google Sheet metadata was corrected to SMM `CNY / TONNE`, Brent `USD / BBL`, explicit yfinance tickers, and futures labeling for J/K/L.
 - Company Google Sheet writes are Live Dry Run by default and require `ALLOW_GOOGLE_SHEET_WRITE=1` for an actual update.
 - Full-row company writes require all 11 quotes to succeed, preventing failed sources from blanking existing operational cells.
+- LME extraction uses the semantic OFFER header rather than the original fixed third-cell assumption.
+- SMM extraction uses the explicit average-price column.
 
 ### Remaining v2.3 technical debt
 
-- Source `assets/world-bank-live.js` still contains a legacy v1.3.0 literal; the v2.3 build normalizes the copied deployment asset through `prepare_site.py`.
 - Browser-level source-consistency tests for cards/chart/tooltip/CSV are still pending.
 - Visual regression coverage for loading, success, stale, and fail-closed states is still pending.
 - Rule/config threshold consolidation is still pending.
@@ -51,36 +41,8 @@ All notable platform changes should be recorded here. Dates use Asia/Taipei cale
 
 ### Planned before v2.3 completion
 
+- complete C3.1 company-market Live Dry Run acceptance and proceed to Copper daily analytics
 - add browser-level cards/chart/tooltip/CSV source-consistency coverage
 - add visual/status regression coverage
 - consolidate duplicated rule/config thresholds where applicable
-- add schema-version enforcement for derived JSON
-- complete C3.1 company-market Live Dry Run acceptance and proceed to Copper daily analytics
 - Supplier Case foundation for TTP Radiator and Bushing
-
-## [2.2.x] - historical implementation state
-
-The repository already contained, before the v2.3 documentation baseline:
-
-- World Bank synchronization
-- FRED synchronization
-- source comparison
-- procurement trend signals
-- supplier rationality rules
-- negotiation report UI
-- automated GitHub Pages deployment
-
-These capabilities were not consistently reflected in the previous README/version wording, which is why v2.3 begins with project consolidation rather than feature expansion.
-
-## [1.2.1] - prototype baseline
-
-Legacy front-end prototype included:
-
-- raw-material overview cards
-- multi-material chart
-- index-mode comparison
-- CSV export
-- procurement cost impact calculator
-- seeded random-walk demonstration market data
-
-The v1.2.1 prototype remains historically useful for UI behavior, but it is no longer an accurate description of the current production data architecture.
