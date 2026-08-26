@@ -49,7 +49,7 @@ Goal: keep the public GitHub Pages market-analysis layer separate from the priva
 
 #### C3.1 — Collector hardening and practical workbook acceptance
 
-Status: code + authoritative single-sheet workbook contract implemented; company-PC live-source dry-run remains before operational cutover.
+Status: source contract corrected and authoritative single-sheet workbook contract implemented; one company-PC Live Dry Run remains before operational cutover.
 
 - [x] Replace fixed LME column indexing with semantic `OFFER` header lookup.
 - [x] Treat LME Copper Cash OFFER as the primary operational copper quote.
@@ -58,9 +58,10 @@ Status: code + authoritative single-sheet workbook contract implemented; company
 - [x] Treat the current `大宗材料 行情統計表` worksheet as the authoritative operational workbook layout.
 - [x] Validate authoritative A1:L4 material / unit / source / term labels before every write.
 - [x] Remove the obsolete requirement for a second `行情統計表資料來源` worksheet.
-- [x] Reconcile actual collection sources against the original `update_prices_v5.py` implementation.
+- [x] Revalidate collection sources against the original `update_prices_v5.py` implementation.
 - [x] Keep B/C/E-I on LME, D on SMM, and J/K/L on yfinance (`BZ=F`, `SI=F`, `GC=F`).
-- [x] Correct Sheet metadata to reflect SMM CNY/tonne, Brent USD/bbl, and yfinance futures identity.
+- [x] Remove the incorrect interim C3.1 substitution of 鉅亨 for J/K/L.
+- [x] Correct Sheet metadata to SMM CNY/tonne, Brent USD/bbl, explicit yfinance tickers, and futures identity for J/K/L.
 - [x] Make Google Sheet writes opt-in via `ALLOW_GOOGLE_SHEET_WRITE=1`; default is Live Dry Run.
 - [x] Prevent partial full-row writes: all 11 quotes must succeed before A:L update.
 - [x] Keep service-account credentials, Sheet IDs, operational audit data, inventory, supplier/PO data and buy/no-buy decisions out of the public repository.
