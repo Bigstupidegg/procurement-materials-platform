@@ -65,24 +65,29 @@ class CompanyMarketCoreTests(unittest.TestCase):
         )
         self.assertEqual(value, 108600.0)
 
-    def test_sheet_row_matches_exact_day_in_existing_monthly_sheet(self) -> None:
-        values = ["日期", "24", "25", "26", "27"]
-        self.assertEqual(find_sheet_row(values, date(2026, 8, 26)), 4)
-
-    def test_sheet_row_matches_authoritative_uploaded_layout(self) -> None:
+    def test_sheet_row_matches_authoritative_full_date(self) -> None:
         values = [
             "日期", "", "資料來源", "",
-            11, 12, 13, 14, 17, 18, 19, 20, 21, 24, 25, "26",
+            "2026/08/11", "2026/08/12", "2026/08/13", "2026/08/14",
+            "2026/08/17", "2026/08/18", "2026/08/19", "2026/08/20",
+            "2026/08/21", "2026/08/24", "2026/08/25", "2026/08/26",
         ]
         self.assertEqual(find_sheet_row(values, date(2026, 8, 26)), 16)
 
-    def test_sheet_row_prefers_full_date(self) -> None:
-        values = ["日期", "26", "2026-08-26", "27"]
-        self.assertEqual(find_sheet_row(values, date(2026, 8, 26)), 3)
+    def test_sheet_row_rejects_day_only_values(self) -> None:
+        values = ["日期", "24", "25", "26", "27"]
+        self.assertIsNone(find_sheet_row(values, date(2026, 8, 26)))
 
-    def test_sheet_row_fails_when_day_only_is_ambiguous(self) -> None:
+    def test_sheet_row_rejects_non_authoritative_date_separators(self) -> None:
+        values = ["日期", "2026-08-26", "2026.08.26"]
+        self.assertIsNone(find_sheet_row(values, date(2026, 8, 26)))
+
+    def test_sheet_row_fails_when_full_date_is_duplicated(self) -> None:
         with self.assertRaises(DataContractError):
-            find_sheet_row(["日期", "26", "26"], date(2026, 8, 26))
+            find_sheet_row(
+                ["日期", "2026/08/26", "2026/08/26"],
+                date(2026, 8, 26),
+            )
 
     def test_authoritative_company_sheet_layout_contract_passes(self) -> None:
         validate_sheet_layout(AUTHORITATIVE_MAIN_LAYOUT, EXPECTED_MAIN_LAYOUT)
