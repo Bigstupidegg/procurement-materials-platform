@@ -59,6 +59,28 @@ A Live Dry Run means:
 
 It is live because every external dependency is real, and dry because operational cells remain unchanged.
 
+### Windows one-command runner
+
+From the repository root on the operational Windows PC:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\run_c3_1_live_dry_run.ps1 -SheetId "<GOOGLE_SHEET_ID>"
+```
+
+The helper script:
+
+- forces `ALLOW_GOOGLE_SHEET_WRITE=0`;
+- checks Python and `service_account.json`;
+- installs/verifies collector dependencies;
+- runs C3.1 unit tests;
+- performs real LME / SMM / yfinance retrieval;
+- authenticates to the real Google Sheet;
+- validates A1:L4 and today's `yyyy/mm/dd` row;
+- prints the exact dry-run row and quote summary;
+- never writes Sheet cells.
+
+If the service-account file is stored elsewhere, pass `-CredentialFile "C:\path\service_account.json"`.
+
 ## Write safety
 
 Before any A:L update:
