@@ -15,25 +15,61 @@ For C3.1, the current company workbook / Google Sheet is the authoritative opera
 - Authoritative layout range: `A1:L4`
 - There is no required second source-registry worksheet.
 - The collector must validate the current A1:L4 material / unit / source / term labels before any write.
-- Company-defined unit labels are preserved exactly; the collector must not silently rewrite them.
-- Source-native quote metadata is still kept in the local audit snapshot for traceability.
+- Source labels must match the actual collector implementation.
+- Source-native quote metadata is kept in the local audit snapshot for traceability.
 
 Current A:L operational columns are:
 
 ```text
 A 日期
-B 銅 COPPER — LME OFFER — 現貨
-C 銅 COPPER — LME OFFER — 期貨(3月)
-D 電解銅 Copper Cathode — SMM — 現貨
-E 鋁 ALUMINIUM — LME — 現貨
-F 鉛 LEAD — LME — 現貨
-G 鎳 NICKEL — LME — 現貨
-H 錫 TIN — LME — 現貨
-I 鋅 ZINC — LME — 現貨
-J 油 — 鉅亨 倫敦布蘭特 — 現貨
-K 銀 — 鉅亨 紐約白銀 — 現貨
-L 黃金 — 鉅亨 紐約黃金 — 現貨
+B 銅 COPPER — USD / TONNE — LME OFFER — 現貨
+C 銅 COPPER — USD / TONNE — LME OFFER — 期貨(3月)
+D 電解銅 Copper Cathode — CNY / TONNE — SMM — 現貨
+E 鋁 ALUMINIUM — USD / TONNE — LME — 現貨
+F 鉛 LEAD — USD / TONNE — LME — 現貨
+G 鎳 NICKEL — USD / TONNE — LME — 現貨
+H 錫 TIN — USD / TONNE — LME — 現貨
+I 鋅 ZINC — USD / TONNE — LME — 現貨
+J 油 — USD / BBL — yfinance BZ=F — 期貨
+K 銀 — CENT / OUNCE — yfinance SI=F — 期貨
+L 黃金 — USD / OUNCE — yfinance GC=F — 期貨
 ```
+
+## Verified collection sources
+
+### LME via Selenium
+
+Used for:
+
+- Copper Cash OFFER
+- Copper 3-month OFFER
+- Aluminium Cash OFFER
+- Lead Cash OFFER
+- Nickel Cash OFFER
+- Tin Cash OFFER
+- Zinc Cash OFFER
+
+The collector selects the semantic `OFFER` header instead of relying on a fixed HTML column index.
+
+### SMM via Selenium
+
+Used for:
+
+- `1#电解铜` / electrolytic copper
+- explicit average (`均價`) value
+- raw CNY per tonne
+
+No implicit currency conversion is performed before the operational value is recorded.
+
+### Yahoo Finance via yfinance
+
+Used for the three fields present in the original `update_prices_v5.py` implementation:
+
+- Brent: `BZ=F`, latest available Close, USD/bbl
+- Silver: `SI=F`, latest available Close × 100, US cents/oz
+- Gold: `GC=F`, latest available Close, USD/oz
+
+These are futures market references, not spot prices.
 
 ## System roles
 
@@ -63,8 +99,8 @@ Use for:
 
 - LME Copper Cash OFFER used in the daily copper-purchase workflow
 - LME Copper 3-Month reference
-- SMM electrolytic-copper spot reference
-- other company-required daily market quotations
+- SMM electrolytic-copper reference
+- yfinance Brent / Silver / Gold references
 - manual notes and future internal purchasing context
 
 Google Sheets is not a source for the public website unless a later phase creates an explicitly public-safe export.
@@ -76,7 +112,7 @@ The collector is responsible for:
 - retrieving source prices
 - validating source structure
 - validating the authoritative A1:L4 workbook layout
-- recording source / instrument / term / quote type / source-native unit / timestamp
+- recording source / instrument / term / quote type / unit / timestamp
 - failing closed when a critical quote cannot be proven
 - writing the private Google Sheet only after required checks pass
 - writing a local audit snapshot that is excluded from Git
@@ -126,8 +162,6 @@ status
 error
 ```
 
-The audit snapshot separately records the authoritative workbook unit labels so source-native metadata and company sheet labels are both traceable.
-
 The local audit snapshot is classified `INTERNAL_OPERATIONAL` and must not be committed to this public repository.
 
 ## Credentials and configuration
@@ -152,13 +186,13 @@ COMPANY_MARKET_AUDIT_PATH
 
 - semantic LME OFFER-column detection
 - explicit SMM average-price detection
-- company-required 鉅亨 source handling
+- yfinance BZ=F / SI=F / GC=F source handling
 - authoritative single-sheet A1:L4 validation
 - safe Google Sheet date-row matching
 - local audit snapshot
 - credential / company-data isolation
 - Copper Cash OFFER fail-closed gate
-- dry-run by default
+- Live Dry Run by default
 
 ### C3.2 — Copper daily analytics
 
