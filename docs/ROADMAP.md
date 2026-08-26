@@ -5,7 +5,6 @@
 Goal: turn the existing real-data and procurement-analysis implementation into a maintainable formal baseline before adding more supplier-specific features.
 
 ### Phase A — Documentation baseline
-
 Status: complete for initial v2.3 baseline
 
 - [x] Refresh README to reflect actual repository state.
@@ -17,7 +16,6 @@ Status: complete for initial v2.3 baseline
 - [x] Add Changelog.
 
 ### Phase B — Version and deployment identity
-
 Status: complete for v2.3 baseline
 
 - [x] Establish a machine-readable release metadata file.
@@ -28,7 +26,6 @@ Status: complete for v2.3 baseline
 - [x] Show latest market period / synchronization status from `data/status.json` prominently through the freshness panel.
 
 ### Phase C — Development Demo / Production Real Data separation
-
 Status: source and production runtime boundaries implemented; browser-level regression coverage remains.
 
 - [x] Remove seeded random-walk generation from the built production core path.
@@ -44,11 +41,9 @@ Status: source and production runtime boundaries implemented; browser-level regr
 - [ ] Add visual regression coverage for loading, success, stale, and fail-closed states.
 
 ### Phase C3 — Company daily market-data layer
-
 Goal: keep the public GitHub Pages market-analysis layer separate from the private Google Sheet purchasing-operation layer while sharing a hardened Python data-engineering collector.
 
 #### C3.1 — Collector hardening and practical workbook acceptance
-
 Status: source contract corrected and authoritative single-sheet workbook contract implemented; one company-PC Live Dry Run remains before operational cutover.
 
 - [x] Replace fixed LME column indexing with semantic `OFFER` header lookup.
@@ -66,11 +61,10 @@ Status: source contract corrected and authoritative single-sheet workbook contra
 - [x] Prevent partial full-row writes: all 11 quotes must succeed before A:L update.
 - [x] Keep service-account credentials, Sheet IDs, operational audit data, inventory, supplier/PO data and buy/no-buy decisions out of the public repository.
 - [x] Validate the authoritative workbook row mapping: 2026-08-26 resolves to row 16.
-- [ ] Run one company-PC Live Dry Run and compare all 11 values with the same-day expected observations.
+- [ ] Run one company-PC Live Dry Run and compare all 11 values with same-day expected observations.
 - [ ] Enable `ALLOW_GOOGLE_SHEET_WRITE=1` only after value-by-value acceptance.
 
 #### C3.2 — Copper daily analytics
-
 Planned after C3.1 cutover:
 
 - Day-over-day Copper Cash OFFER change.
@@ -82,7 +76,6 @@ Planned after C3.1 cutover:
 - No automatic PO and no automatic buy/no-buy action.
 
 #### C3.3 — Operational demand context
-
 Planned only after market-data quality is stable:
 
 - inventory days
@@ -94,7 +87,6 @@ Planned only after market-data quality is stable:
 These fields remain private operational data and are not published to the public GitHub Pages site.
 
 ### Phase D — Rule/config consolidation
-
 Target after C3 collector stabilization and remaining Phase C browser regression coverage.
 
 - [ ] Keep supplier-rationality thresholds in configuration.
@@ -105,14 +97,12 @@ Target after C3 collector stabilization and remaining Phase C browser regression
 - [ ] Add tests proving UI decisions use configured thresholds rather than shadow constants.
 
 ### Phase E — Supplier Case foundation
-
 - [ ] Add `cases/` schema.
 - [ ] Add supplier master-data schema.
 - [ ] Preserve source evidence and manual assumptions separately.
 - [ ] Add case status, target, final price, and savings/avoidance fields.
 
 ## v2.4 — TTP Radiator Case
-
 Target capabilities:
 
 - JPC CR Coil 1.00 mm time series
@@ -129,7 +119,6 @@ Target capabilities:
 Important: inferred steel cost share must remain clearly labeled as an assumption until verified by BOM / cost breakdown.
 
 ## v2.5 — Bushing Material Basket
-
 Target capabilities:
 
 - Copper
@@ -142,7 +131,6 @@ Target capabilities:
 - target / final price record
 
 ## v2.6 — Supplier Intelligence
-
 Candidate supplier profiles:
 
 - PCORE / Hubbell
@@ -151,24 +139,7 @@ Candidate supplier profiles:
 - ZDVolt
 - TTP
 
-Potential fields:
-
-```text
-supplier_id
-company_name
-country
-manufacturing_locations
-product_families
-capacity_notes
-lead_time_notes
-public_financials
-sourcing_risk
-source_evidence
-last_reviewed_at
-```
-
 ## v3.x — Procurement Transaction Integration
-
 Goal: connect market movement, supplier requests, and actual PO outcomes.
 
 Target flow:
@@ -188,12 +159,3 @@ Candidate integrations:
 - supplier history
 - same-day multi-price cases
 - ERP export normalization
-
-Questions the platform should eventually answer:
-
-1. What did the market do?
-2. What did the supplier ask for?
-3. What did the model support?
-4. What was negotiated?
-5. What price was actually ordered?
-6. How did actual purchasing performance compare with market movement?
