@@ -1,0 +1,58 @@
+--- update_prices_v6_3_1_C3_1_DRYRUN.py
++++ update_prices_v6_3_2_C3_1_DRYRUN.py
+@@
+-# C3.1 v6.3.1 修正版
++# C3.1 v6.3.2 修正版
+@@
+-VERSION = "6.3.1"
++VERSION = "6.3.2"
+@@
+-def resolve_target_row(sheet, target_date):
+-    target_text = target_date.strftime("%Y/%m/%d")
+-    col_a = get_formatted_col_a(sheet)
+-    ...
+-    # only the last valid full-date row was used to choose append position
+-    ...
++def get_formatted_market_rows(sheet):
++    try:
++        return sheet.get("A5:L1000", value_render_option="FORMATTED_VALUE")
++    except TypeError:
++        return sheet.get("A5:L1000")
++
++def resolve_target_row(sheet, target_date):
++    """Fail closed on occupied malformed-date rows and append after last used row."""
++    target_text = target_date.strftime("%Y/%m/%d")
++    rows = get_formatted_market_rows(sheet)
++    matches = []
++    last_used_row = 4
++
++    for offset, raw_row in enumerate(rows):
++        row_number = 5 + offset
++        row = list(raw_row or [])
++        padded = row + [""] * (12 - len(row))
++        a_raw = str(padded[0] or "").strip()
++        b_to_l_occupied = any(str(cell or "").strip() for cell in padded[1:12])
++        row_used = bool(a_raw) or b_to_l_occupied
++        if row_used:
++            last_used_row = row_number
++
++        parsed = parse_sheet_date(a_raw)
++        if b_to_l_occupied and parsed is None:
++            raise RuntimeError(
++                f"Google Sheet Row {row_number} 的 B:L 已有行情資料，"
++                f"但 A{row_number}={a_raw!r} 不是完整 yyyy/mm/dd 日期；"
++                "為避免覆蓋既有資料，停止更新。"
++            )
++        if parsed == target_date:
++            matches.append(row_number)
++
++    if len(matches) > 1:
++        raise RuntimeError(
++            f"Google Sheet 找到多筆今天日期 {target_text}：{matches}；"
++            "為避免覆寫錯誤資料，停止更新"
++        )
++    if len(matches) == 1:
++        return matches[0], False
++
++    target_row = max(5, last_used_row + 1)
++    return target_row, True
