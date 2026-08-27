@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$SheetId = $env:GOOGLE_SHEET_ID,
     [string]$CredentialFile = $(if ($env:GOOGLE_SERVICE_ACCOUNT_FILE) { $env:GOOGLE_SERVICE_ACCOUNT_FILE } else { "service_account.json" }),
     [string]$Worksheet = $(if ($env:GOOGLE_SHEET_WORKSHEET) { $env:GOOGLE_SHEET_WORKSHEET } else { "大宗材料 行情統計表" })
