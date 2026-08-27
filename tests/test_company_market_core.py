@@ -7,6 +7,7 @@ from scripts.company_market_core import (
     DataContractError,
     MarketQuote,
     extract_table_value,
+    find_previous_valid_values,
     find_sheet_row,
     require_success,
     validate_sheet_layout,
@@ -88,6 +89,53 @@ class CompanyMarketCoreTests(unittest.TestCase):
                 ["日期", "2026/08/26", "2026/08/26"],
                 date(2026, 8, 26),
             )
+
+    def test_previous_valid_price_is_found_independently_per_column(self) -> None:
+        rows = [
+            ["日期", "銅", "銅3M", "電解銅", "鋁", "鉛", "鎳", "錫", "鋅", "油", "銀", "金"],
+            [],
+            ["資料來源"],
+            [],
+            ["2026/08/24", 14100, 14020, 108000, 3150, 1850, 16500, 55000, 3900, 87.0, 6800, 4660],
+            ["2026/08/25", 14300, 14220, 108400, 3170, "", "", "", "", 88.58, 6868, 4694.2],
+            ["2026/08/26", 14425, 14298, 109575, 3188, 1867, 16780, 55700, 3987, 84.93, 6854, 4679.8],
+        ]
+
+        previous = find_previous_valid_values(rows, target_row=7)
+
+        self.assertEqual(previous[2].row, 6)
+        self.assertEqual(previous[2].value, 14300.0)
+        self.assertEqual(previous[6].row, 5)
+        self.assertEqual(previous[6].value, 1850.0)
+        self.assertEqual(previous[7].row, 5)
+        self.assertEqual(previous[7].value, 16500.0)
+        self.assertEqual(previous[8].row, 5)
+        self.assertEqual(previous[8].value, 55000.0)
+        self.assertEqual(previous[9].row, 5)
+        self.assertEqual(previous[9].value, 3900.0)
+        self.assertEqual(previous[10].row, 6)
+        self.assertEqual(previous[10].value, 88.58)
+
+    def test_previous_valid_price_skips_invalid_date_and_non_numeric_cells(self) -> None:
+        rows = [
+            ["日期", "銅"],
+            [],
+            ["資料來源"],
+            [],
+            ["2026/08/22", "13,900"],
+            ["2026-08-24", "14,100"],
+            ["2026/08/25", "N/A"],
+            ["2026/08/26", "14,425"],
+        ]
+
+        previous = find_previous_valid_values(
+            rows,
+            target_row=8,
+            value_columns=(2,),
+        )
+
+        self.assertEqual(previous[2].row, 5)
+        self.assertEqual(previous[2].value, 13900.0)
 
     def test_authoritative_company_sheet_layout_contract_passes(self) -> None:
         validate_sheet_layout(AUTHORITATIVE_MAIN_LAYOUT, EXPECTED_MAIN_LAYOUT)
