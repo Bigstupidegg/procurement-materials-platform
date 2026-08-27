@@ -182,6 +182,23 @@ class CompanyMarketCoreTests(unittest.TestCase):
         with self.assertRaises(DataContractError):
             require_success({"copper_lme_cash": quote}, ("copper_lme_cash",))
 
+    def test_retry_success_is_usable(self) -> None:
+        quote = MarketQuote(
+            key="lead_lme_cash",
+            name="鉛 LEAD",
+            source="London Metal Exchange",
+            instrument="鉛 LEAD",
+            term="Cash",
+            quote_type="OFFER",
+            currency="USD",
+            unit="USD/MT",
+            value=1866.0,
+            fetched_at="2026-08-27T16:00:00+08:00",
+            status="RETRY_SUCCESS",
+            attempts=2,
+        )
+        require_success({"lead_lme_cash": quote}, ("lead_lme_cash",))
+
 
 if __name__ == "__main__":
     unittest.main()

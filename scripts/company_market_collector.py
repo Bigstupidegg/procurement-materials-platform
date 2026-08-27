@@ -1,24 +1,42 @@
 from __future__ import annotations
 
 from datetime import datetime
+from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
+import time
+from typing import Callable, Sequence
 from zoneinfo import ZoneInfo
 
-from company_market_core import (
-    DataContractError,
-    MarketQuote,
-    extract_table_value,
-    require_success,
-    validate_sheet_layout,
-)
-from company_market_preflight import (
-    require_explicit_write_approval,
-    run_anomaly_checks,
-    validate_controlled_write_preflight,
-)
-from company_market_row_safety import resolve_safe_target_row
+try:
+    from company_market_core import (
+        DataContractError,
+        MarketQuote,
+        extract_table_value,
+        require_success,
+        validate_sheet_layout,
+    )
+    from company_market_preflight import (
+        require_explicit_write_approval,
+        run_anomaly_checks,
+        validate_controlled_write_preflight,
+    )
+    from company_market_row_safety import resolve_safe_target_row
+except ModuleNotFoundError:  # imported as scripts.company_market_collector in tests
+    from scripts.company_market_core import (
+        DataContractError,
+        MarketQuote,
+        extract_table_value,
+        require_success,
+        validate_sheet_layout,
+    )
+    from scripts.company_market_preflight import (
+        require_explicit_write_approval,
+        run_anomaly_checks,
+        validate_controlled_write_preflight,
+    )
+    from scripts.company_market_row_safety import resolve_safe_target_row
 
 
 TAIPEI = ZoneInfo("Asia/Taipei")
@@ -169,31 +187,129 @@ def table_to_matrix(table) -> tuple[list[str], list[list[str]]]:
     return headers, rows
 
 
-def fetch_lme_offer(driver, url: str, term_type: str) -> float:
-    from selenium.webdriver.common.by import By
-    from selenium.webdriver.support.ui import WebDriverWait
+@dataclass(frozen=True)
+class TableSnapshot:
+    index: int
+    headers: tuple[str, ...]
+    row_labels: tuple[str, ...]
+    rows: tuple[tuple[str, ...], ...]
+    error: str | None = None
 
-    driver.get(url)
-    WebDriverWait(driver, 20).until(lambda d: d.find_elements(By.TAG_NAME, "table"))
 
-    failures: list[str] = []
-    for table in driver.find_elements(By.TAG_NAME, "table"):
+def snapshot_tables(tables) -> tuple[TableSnapshot, ...]:
+    snapshots: list[TableSnapshot] = []
+    for index, table in enumerate(tables):
         try:
             headers, rows = table_to_matrix(table)
+            snapshots.append(
+                TableSnapshot(
+                    index=index,
+                    headers=tuple(headers),
+                    row_labels=tuple(row[0] for row in rows if row),
+                    rows=tuple(tuple(row) for row in rows),
+                )
+            )
+        except Exception as exc:
+            snapshots.append(
+                TableSnapshot(index, (), (), (), f"{type(exc).__name__}: {exc}")
+            )
+    return tuple(snapshots)
+
+
+def format_table_diagnostics(snapshots: Sequence[TableSnapshot]) -> str:
+    if not snapshots:
+        return "tables=0"
+    details = []
+    for snapshot in snapshots:
+        if snapshot.error:
+            details.append(f"table[{snapshot.index}] error={snapshot.error}")
+        else:
+            details.append(
+                f"table[{snapshot.index}] headers={list(snapshot.headers)!r} "
+                f"row_labels={list(snapshot.row_labels)!r}"
+            )
+    return f"tables={len(snapshots)}; " + "; ".join(details)
+
+
+def extract_lme_offer_from_snapshots(
+    snapshots: Sequence[TableSnapshot], term_type: str
+) -> float:
+    failures: list[str] = []
+    for snapshot in snapshots:
+        if snapshot.error:
+            failures.append(f"table[{snapshot.index}] {snapshot.error}")
+            continue
+        try:
             return extract_table_value(
-                headers,
-                rows,
+                snapshot.headers,
+                snapshot.rows,
                 row_terms=(term_type,),
                 value_headers=("offer",),
                 minimum=100.0,
             )
         except DataContractError as exc:
-            failures.append(str(exc))
-
+            failures.append(f"table[{snapshot.index}] {exc}")
     raise DataContractError(
-        f"LME 頁面無法證明 {term_type} OFFER 欄位；停止使用此報價。"
-        + (" | " + failures[-1] if failures else "")
+        f"contract check failed: required row={term_type!r}, header='OFFER'; "
+        + (" | ".join(failures) if failures else "no tables found")
     )
+
+
+def fetch_lme_offer(driver, url: str, term_type: str, *, timeout_seconds: int = 30) -> float:
+    from selenium.webdriver.common.by import By
+    from selenium.common.exceptions import TimeoutException
+    from selenium.webdriver.support.ui import WebDriverWait
+
+    driver.get(url)
+    last_snapshots: tuple[TableSnapshot, ...] = ()
+    last_contract_error = "semantic price table not evaluated"
+
+    def semantic_offer_is_ready(current_driver):
+        nonlocal last_snapshots, last_contract_error
+        last_snapshots = snapshot_tables(current_driver.find_elements(By.TAG_NAME, "table"))
+        try:
+            return extract_lme_offer_from_snapshots(last_snapshots, term_type)
+        except DataContractError as exc:
+            last_contract_error = str(exc)
+            return False
+
+    try:
+        return WebDriverWait(driver, timeout_seconds, poll_frequency=0.5).until(
+            semantic_offer_is_ready
+        )
+    except TimeoutException as exc:
+        raise DataContractError(
+            f"LME 頁面在 {timeout_seconds}s 內未完成 {term_type} OFFER contract check; "
+            f"url={driver.current_url!r}; last_failure={last_contract_error}; "
+            f"{format_table_diagnostics(last_snapshots)}"
+        ) from exc
+
+
+def fetch_lme_offer_with_retry(
+    driver,
+    url: str,
+    term_type: str,
+    *,
+    max_attempts: int = 3,
+    retry_delays: Sequence[float] = (2.0, 5.0),
+    fetcher: Callable | None = None,
+) -> tuple[float, int]:
+    if max_attempts < 1:
+        raise ValueError("max_attempts must be at least 1")
+    fetcher = fetcher or fetch_lme_offer
+    failures: list[str] = []
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return fetcher(driver, url, term_type), attempt
+        except Exception as exc:
+            message = f"attempt {attempt}/{max_attempts}: {type(exc).__name__}: {exc}"
+            failures.append(message)
+            print(f"  [WARN] LME {term_type} OFFER {message}")
+            if attempt < max_attempts:
+                delay = retry_delays[min(attempt - 1, len(retry_delays) - 1)] if retry_delays else 0
+                if delay > 0:
+                    time.sleep(delay)
+    raise DataContractError("LME retry exhausted; " + " || ".join(failures))
 
 
 def fetch_smm_average(driver) -> float:
@@ -236,6 +352,7 @@ def make_quote(
     value: float | None,
     observed_at: str | None = None,
     error: str | None = None,
+    attempts: int = 1,
 ) -> MarketQuote:
     return MarketQuote(
         key=key,
@@ -249,8 +366,13 @@ def make_quote(
         value=value,
         fetched_at=iso_now(),
         observed_at=observed_at,
-        status="SUCCESS" if value is not None and error is None else "ERROR",
+        status=(
+            "RETRY_SUCCESS" if value is not None and error is None and attempts > 1
+            else "SUCCESS" if value is not None and error is None
+            else "ERROR"
+        ),
         error=error,
+        attempts=attempts,
     )
 
 
@@ -260,7 +382,7 @@ def fetch_browser_quotes() -> dict[str, MarketQuote]:
     try:
         for key, (name, url, term) in LME_URLS.items():
             try:
-                value = fetch_lme_offer(driver, url, term)
+                value, attempts = fetch_lme_offer_with_retry(driver, url, term)
                 quotes[key] = make_quote(
                     key=key,
                     name=name,
@@ -271,6 +393,7 @@ def fetch_browser_quotes() -> dict[str, MarketQuote]:
                     currency="USD",
                     unit="USD/MT",
                     value=value,
+                    attempts=attempts,
                 )
             except Exception as exc:
                 quotes[key] = make_quote(

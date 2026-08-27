@@ -247,10 +247,11 @@ class MarketQuote:
     status: str
     observed_at: str | None = None
     error: str | None = None
+    attempts: int = 1
 
     @property
     def ok(self) -> bool:
-        return self.status == "SUCCESS" and self.value is not None
+        return self.status in ("SUCCESS", "RETRY_SUCCESS") and self.value is not None
 
     def to_dict(self) -> dict:
         return asdict(self)
