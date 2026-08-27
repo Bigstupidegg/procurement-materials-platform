@@ -30,7 +30,7 @@ jobs:
       - name: Run procurement platform tests
         run: |
           python -m unittest discover -s tests -v
-          python -m py_compile scripts/company_market_core.py scripts/company_market_collector.py
+          python -m py_compile scripts/company_market_core.py scripts/company_market_row_safety.py scripts/company_market_preflight.py scripts/company_market_collector.py
           node --check assets/app.js
           node --check assets/app-core.js
           node --check assets/demo-market.js

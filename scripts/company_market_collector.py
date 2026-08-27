@@ -10,10 +10,15 @@ from company_market_core import (
     DataContractError,
     MarketQuote,
     extract_table_value,
-    find_sheet_row,
     require_success,
     validate_sheet_layout,
 )
+from company_market_preflight import (
+    require_explicit_write_approval,
+    run_anomaly_checks,
+    validate_controlled_write_preflight,
+)
+from company_market_row_safety import resolve_safe_target_row
 
 
 TAIPEI = ZoneInfo("Asia/Taipei")
@@ -52,6 +57,20 @@ SHEET_COLUMNS = (
     "silver_yfinance",
     "gold_yfinance",
 )
+
+MAX_DAILY_CHANGE_PCT = {
+    "copper_lme_cash": 20.0,
+    "copper_lme_3m": 20.0,
+    "smm_electrolytic_copper": 20.0,
+    "aluminium_lme_cash": 20.0,
+    "lead_lme_cash": 20.0,
+    "nickel_lme_cash": 25.0,
+    "tin_lme_cash": 25.0,
+    "zinc_lme_cash": 20.0,
+    "brent_yfinance": 25.0,
+    "silver_yfinance": 30.0,
+    "gold_yfinance": 20.0,
+}
 
 # Authoritative A1:L4 contract from the current company Google Sheet.
 COMPANY_MAIN_LAYOUT = (
@@ -377,7 +396,7 @@ def validate_company_workbook(book):
     return main_sheet
 
 
-def update_google_sheet(quotes: dict[str, MarketQuote]) -> None:
+def update_google_sheet(quotes: dict[str, MarketQuote], audit_path: Path) -> None:
     import gspread
 
     require_success(quotes, SHEET_COLUMNS)
@@ -392,22 +411,46 @@ def update_google_sheet(quotes: dict[str, MarketQuote]) -> None:
     sheet = validate_company_workbook(book)
 
     target_date = now_taipei().date()
-    target_row = find_sheet_row(sheet.col_values(1), target_date)
     target_date_text = target_date.strftime("%Y/%m/%d")
-    if target_row is None:
-        raise DataContractError(
-            f"Google Sheet 找不到完整日期 {target_date_text}；"
-            "A 欄只接受 yyyy/mm/dd 完整日期，已停止更新。"
-        )
+    sheet_rows = sheet.get("A1:L1000", value_render_option="FORMATTED_VALUE")
+    target_row, is_new_row = resolve_safe_target_row(sheet_rows[4:], target_date)
+    target_row_values = sheet_rows[target_row - 1] if target_row <= len(sheet_rows) else []
+
+    anomaly_checks = run_anomaly_checks(
+        quotes,
+        SHEET_COLUMNS,
+        sheet_rows,
+        target_row,
+        MAX_DAILY_CHANGE_PCT,
+    )
+    report = validate_controlled_write_preflight(
+        target_date=target_date,
+        expected_date=now_taipei().date(),
+        target_row=target_row,
+        is_new_row=is_new_row,
+        target_row_values=target_row_values,
+        quotes=quotes,
+        required_keys=SHEET_COLUMNS,
+        anomaly_checks=anomaly_checks,
+        layout_validated=True,
+        audit_path=audit_path,
+    )
 
     row_data = [target_date_text] + [quotes[key].value for key in SHEET_COLUMNS]
     range_name = f"A{target_row}:L{target_row}"
 
     if os.getenv("ALLOW_GOOGLE_SHEET_WRITE", "0") != "1":
-        print(f"LIVE DRY RUN：已驗證資料來源、版型、完整日期與目標 {range_name}；不寫入 Google Sheet。")
+        print(f"CONTROLLED WRITE PREFLIGHT PASS：{target_date_text} -> {range_name}")
+        print(f"人工批准字串（尚未批准）：{report.approval_token}")
+        print("LIVE DRY RUN：preflight 已完成；不寫入 Google Sheet。")
         print("DRY RUN DATA:", row_data)
         return
 
+    require_explicit_write_approval(
+        report,
+        write_enabled=os.getenv("ALLOW_GOOGLE_SHEET_WRITE", "0"),
+        approval=os.getenv("CONTROLLED_WRITE_APPROVAL", ""),
+    )
     sheet.update(values=[row_data], range_name=range_name)
     print(f"Google Sheet 更新完成：{range_name}")
 
@@ -426,7 +469,7 @@ def main() -> int:
     require_success(quotes, ("copper_lme_cash",))
 
     if os.getenv("GOOGLE_SHEET_ID", "").strip():
-        update_google_sheet(quotes)
+        update_google_sheet(quotes, audit_path)
     else:
         print("GOOGLE_SHEET_ID 未設定：本次只產生本機稽核快照，不連線 Google Sheet")
 
