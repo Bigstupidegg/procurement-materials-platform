@@ -167,6 +167,72 @@ def find_sheet_row(col_values: Sequence[object], target_date: date) -> int | Non
 
 
 @dataclass(frozen=True)
+class PreviousValue:
+    row: int
+    value: float
+
+
+def find_previous_valid_values(
+    sheet_rows: Sequence[Sequence[object]],
+    target_row: int,
+    *,
+    first_data_row: int = 5,
+    value_columns: Iterable[int] = range(2, 13),
+) -> dict[int, PreviousValue | None]:
+    """Find the most recent valid historical value independently for each column.
+
+    ``target_row`` and all later rows are excluded. A candidate row is accepted only
+    when column A contains the authoritative ``yyyy/mm/dd`` date format and the target
+    cell contains a parseable numeric value. Blank or malformed cells are skipped,
+    allowing (for example) lead to fall back to row 14 while copper uses row 15.
+
+    Returned dictionary keys are 1-based Google Sheet column numbers (B=2 ... L=12).
+    """
+
+    columns = tuple(value_columns)
+    if target_row < 1:
+        raise DataContractError("target_row 必須是 1-based 正整數")
+    if first_data_row < 1:
+        raise DataContractError("first_data_row 必須是 1-based 正整數")
+    if any(column < 2 for column in columns):
+        raise DataContractError("歷史價格欄位必須從 B 欄或之後開始")
+
+    last_candidate_row = min(target_row - 1, len(sheet_rows))
+    results: dict[int, PreviousValue | None] = {}
+
+    for column in columns:
+        previous: PreviousValue | None = None
+        cell_index = column - 1
+
+        for row_number in range(last_candidate_row, first_data_row - 1, -1):
+            row = sheet_rows[row_number - 1]
+            if not row:
+                continue
+
+            date_text = str(row[0] if len(row) >= 1 else "")
+            if _parse_full_date(date_text) is None:
+                continue
+            if cell_index >= len(row):
+                continue
+
+            raw_value = row[cell_index]
+            if str(raw_value or "").strip() == "":
+                continue
+
+            try:
+                numeric_value = parse_numeric(raw_value)
+            except DataContractError:
+                continue
+
+            previous = PreviousValue(row=row_number, value=numeric_value)
+            break
+
+        results[column] = previous
+
+    return results
+
+
+@dataclass(frozen=True)
 class MarketQuote:
     key: str
     name: str
