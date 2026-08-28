@@ -8,6 +8,7 @@ from pathlib import Path
 import re
 import time
 from typing import Callable, Sequence
+from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
 try:
@@ -152,6 +153,8 @@ def get_driver():
         "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 Chrome/152 Safari/537.36"
     )
+    # Diagnostic-only: performance entries expose transport metadata, not bodies.
+    options.set_capability("goog:loggingPrefs", {"browser": "ALL", "performance": "ALL"})
     return webdriver.Chrome(
         service=Service(ChromeDriverManager().install()),
         options=options,
@@ -265,6 +268,100 @@ def lme_console_diagnostics(driver) -> str:
     return f"console_available=True; console_errors={len(errors)}; console_categories={categories!r}"
 
 
+def sanitize_lme_resource_url(value: object) -> str:
+    """Return only a resource host and allowlisted path category for diagnostics."""
+    try:
+        parsed = urlsplit(str(value or ""))
+        host = (parsed.hostname or "unknown").casefold()
+        path = parsed.path.casefold()
+    except (TypeError, ValueError):
+        return "host=unknown; path_category=unknown"
+    if "api" in path:
+        category = "api"
+    elif "trading" in path or "summary" in path:
+        category = "trading_summary"
+    elif path in {"", "/"}:
+        category = "root"
+    else:
+        category = "other"
+    return f"host={host}; path_category={category}"
+
+
+def lme_network_failure_category(value: object) -> str:
+    """Map Chrome network errors to a small, safe diagnostic vocabulary."""
+    text = str(value or "").casefold()
+    if "timed_out" in text or "timeout" in text:
+        return "timeout"
+    if "name_not_resolved" in text or "dns" in text:
+        return "dns"
+    if "connection_refused" in text:
+        return "connection_refused"
+    if "connection_reset" in text:
+        return "connection_reset"
+    if "blocked" in text:
+        return "blocked"
+    if "aborted" in text or "cancelled" in text:
+        return "aborted"
+    return "other"
+
+
+def parse_lme_performance_entries(entries: Sequence[object]) -> str:
+    """Summarize Document/XHR/Fetch transport metadata without retaining payloads."""
+    response_counts = {kind: 0 for kind in ("Document", "XHR", "Fetch")}
+    failed_counts = {kind: 0 for kind in ("Document", "XHR", "Fetch")}
+    status_counts: dict[str, int] = {}
+    failure_counts: dict[str, int] = {}
+    resources: set[str] = set()
+
+    for entry in entries:
+        try:
+            entry_message = entry.get("message", "") if isinstance(entry, dict) else ""
+            envelope = json.loads(str(entry_message))
+            message = envelope.get("message", {})
+            method = message.get("method", "")
+            params = message.get("params", {})
+            resource_type = str(params.get("type", ""))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            continue
+        if resource_type not in response_counts:
+            continue
+        if method == "Network.responseReceived":
+            response = params.get("response", {})
+            try:
+                status = int(response.get("status"))
+            except (TypeError, ValueError):
+                continue
+            response_counts[resource_type] += 1
+            status_counts[str(status)] = status_counts.get(str(status), 0) + 1
+            resources.add(sanitize_lme_resource_url(response.get("url", "")))
+        elif method == "Network.loadingFailed":
+            failed_counts[resource_type] += 1
+            category = lme_network_failure_category(params.get("errorText", ""))
+            failure_counts[category] = failure_counts.get(category, 0) + 1
+
+    status_classes = {
+        label: sum(count for status, count in status_counts.items() if status.startswith(prefix))
+        for label, prefix in (("2xx", "2"), ("3xx", "3"), ("4xx", "4"), ("5xx", "5"))
+    }
+    dynamic_responses = response_counts["XHR"] + response_counts["Fetch"]
+    dynamic_failed = failed_counts["XHR"] + failed_counts["Fetch"]
+    return (
+        "network_available=True; "
+        f"resources={sorted(resources)!r}; responses={response_counts!r}; failed={failed_counts!r}; "
+        f"status_codes={dict(sorted(status_counts.items()))!r}; status_classes={status_classes!r}; "
+        f"dynamic_responses={dynamic_responses}; dynamic_failed={dynamic_failed}; "
+        f"failure_categories={dict(sorted(failure_counts.items()))!r}"
+    )
+
+
+def lme_network_diagnostics(driver) -> str:
+    try:
+        entries = driver.get_log("performance")
+    except Exception:
+        return "network_available=False; network_diagnostics=unavailable"
+    return parse_lme_performance_entries(entries)
+
+
 def lme_page_flags(page_source: object) -> str:
     text = str(page_source or "").casefold()
     return (
@@ -357,7 +454,7 @@ def fetch_lme_offer(driver, url: str, term_type: str, *, timeout_seconds: int = 
             f"semantic_wait_seconds={wait_duration:.2f}; row_timeline={format_row_timeline(row_timeline)}; "
             f"rows_zero_to_nonzero={rows_transitioned_to_nonzero(row_timeline)}; "
             f"{lme_semantic_diagnostics(last_snapshots)}; {lme_console_diagnostics(driver)}; "
-            f"{lme_page_flags(getattr(driver, 'page_source', ''))}"
+            f"{lme_network_diagnostics(driver)}; {lme_page_flags(getattr(driver, 'page_source', ''))}"
         )
         return result
     except TimeoutException as exc:
@@ -372,8 +469,10 @@ def fetch_lme_offer(driver, url: str, term_type: str, *, timeout_seconds: int = 
             f"semantic_wait_seconds={wait_duration:.2f}; row_timeline={format_row_timeline(row_timeline)}; "
             f"rows_zero_to_nonzero={rows_transitioned_to_nonzero(row_timeline)}; "
             f"{lme_semantic_diagnostics(last_snapshots)}; "
-            f"{lme_console_diagnostics(driver)}; {lme_page_flags(getattr(driver, 'page_source', ''))}; "
-            f"url={driver.current_url!r}; last_failure={sanitize_lme_text(last_contract_error, limit=500)}; "
+            f"{lme_console_diagnostics(driver)}; {lme_network_diagnostics(driver)}; "
+            f"{lme_page_flags(getattr(driver, 'page_source', ''))}; "
+            f"resource={sanitize_lme_resource_url(getattr(driver, 'current_url', ''))}; "
+            f"last_failure={sanitize_lme_text(last_contract_error, limit=500)}; "
             f"{format_table_diagnostics(last_snapshots)}"
         ) from exc
 

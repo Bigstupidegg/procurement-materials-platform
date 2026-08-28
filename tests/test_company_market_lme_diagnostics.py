@@ -11,10 +11,14 @@ from scripts.company_market_collector import (
     format_row_timeline,
     format_table_diagnostics,
     lme_console_diagnostics,
+    lme_network_diagnostics,
+    lme_network_failure_category,
     lme_page_flags,
     lme_semantic_diagnostics,
+    parse_lme_performance_entries,
     rows_transitioned_to_nonzero,
     sanitize_lme_text,
+    sanitize_lme_resource_url,
 )
 
 
@@ -117,6 +121,56 @@ class LmeDiagnosticsTests(unittest.TestCase):
         self.assertIn("OFFER value <number>", diagnostic)
         self.assertNotIn("1866", diagnostic)
         self.assertNotIn("2000", diagnostic)
+
+    def test_network_url_sanitization_keeps_only_host_and_path_category(self):
+        diagnostic = sanitize_lme_resource_url(
+            "https://user:secret@www.lme.com/api/price/1866?token=abc123&session=xyz#quote"
+        )
+        self.assertEqual(diagnostic, "host=www.lme.com; path_category=api")
+        for forbidden in ("user", "secret", "1866", "token", "abc123", "session", "xyz", "#"):
+            self.assertNotIn(forbidden, diagnostic)
+
+    def test_network_summary_reports_safe_statuses_and_failure_categories(self):
+        def event(method, params):
+            return {"message": __import__("json").dumps({"message": {"method": method, "params": params}})}
+
+        entries = (
+            event("Network.responseReceived", {"type": "Document", "response": {"status": 200, "url": "https://www.lme.com/metals?Authorization=hidden"}}),
+            event("Network.responseReceived", {"type": "XHR", "response": {"status": 429, "url": "https://www.lme.com/api/prices?token=hidden&value=1866"}}),
+            event("Network.responseReceived", {"type": "Fetch", "response": {"status": 503, "url": "https://www.lme.com/api/feed#private"}}),
+            event("Network.loadingFailed", {"type": "XHR", "errorText": "net::ERR_TIMED_OUT token=hidden"}),
+        )
+        diagnostic = parse_lme_performance_entries(entries)
+        self.assertIn("'200': 1", diagnostic)
+        self.assertIn("'429': 1", diagnostic)
+        self.assertIn("'503': 1", diagnostic)
+        self.assertIn("'2xx': 1", diagnostic)
+        self.assertIn("'4xx': 1", diagnostic)
+        self.assertIn("'5xx': 1", diagnostic)
+        self.assertIn("dynamic_responses=2", diagnostic)
+        self.assertIn("dynamic_failed=1", diagnostic)
+        self.assertIn("'timeout': 1", diagnostic)
+        for forbidden in ("Authorization", "hidden", "token", "1866", "private", "ERR_TIMED_OUT"):
+            self.assertNotIn(forbidden, diagnostic)
+
+    def test_network_failure_categories_are_allowlisted(self):
+        self.assertEqual(lme_network_failure_category("ERR_NAME_NOT_RESOLVED"), "dns")
+        self.assertEqual(lme_network_failure_category("ERR_CONNECTION_REFUSED"), "connection_refused")
+        self.assertEqual(lme_network_failure_category("ERR_CONNECTION_RESET"), "connection_reset")
+        self.assertEqual(lme_network_failure_category("ERR_BLOCKED_BY_CLIENT"), "blocked")
+        self.assertEqual(lme_network_failure_category("ERR_ABORTED"), "aborted")
+        self.assertEqual(lme_network_failure_category("unrecognised 1866 token"), "other")
+
+    def test_network_diagnostics_does_not_log_raw_entry_content(self):
+        class Driver:
+            def get_log(self, kind):
+                self.kind = kind
+                return [{"message": "not-json Cookie=secret Authorization=private price=1866"}]
+
+        diagnostic = lme_network_diagnostics(Driver())
+        self.assertIn("network_available=True", diagnostic)
+        for forbidden in ("Cookie", "secret", "Authorization", "private", "1866"):
+            self.assertNotIn(forbidden, diagnostic)
 
 
 if __name__ == "__main__":
