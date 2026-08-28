@@ -1,0 +1,53 @@
+name: C3.2-1 Read-Only Market Collection PoC
+
+on:
+  push:
+    branches:
+      - v2.3-c3-2-daily-automation
+    paths:
+      - ".github/workflows/c3-2-readonly-collection-poc.yml"
+      - "scripts/c3_2_readonly_collection_poc.py"
+      - "scripts/company_market_*.py"
+      - "scripts/company-market-requirements.txt"
+      - "tests/test_c3_2_readonly_collection_poc.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: c3-2-readonly-collection-poc-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  collect-read-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      ALLOW_GOOGLE_SHEET_WRITE: "0"
+      PYTHONUNBUFFERED: "1"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install C3.1 collector dependencies
+        run: pip install -r scripts/company-market-requirements.txt
+
+      - name: Run read-only 11-column collection
+        run: python scripts/c3_2_readonly_collection_poc.py
+
+      - name: Verify no company data was persisted
+        if: always()
+        shell: bash
+        run: |
+          test ! -e service_account.json
+          test ! -d runtime
+          test ! -d company-data
+          git diff --exit-code
+          echo "Persistence check: PASS (no Sheet write, audit artifact, or company data)" >> "$GITHUB_STEP_SUMMARY"
