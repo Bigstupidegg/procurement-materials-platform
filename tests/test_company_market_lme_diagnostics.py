@@ -8,6 +8,7 @@ from scripts.company_market_collector import (
     expected_lme_identity,
     extract_lme_data_valid_date,
     extract_lme_offer_from_snapshots,
+    extract_smm_selected_row_date,
     extract_smm_quote_date,
     fetch_lme_offer_with_retry,
     format_row_timeline,
@@ -187,6 +188,12 @@ class LmeDiagnosticsTests(unittest.TestCase):
         self.assertIsNone(extract_lme_data_valid_date("Page updated 2026-08-28"))
         self.assertIsNone(extract_smm_quote_date("price 1866.00"))
         self.assertEqual(normalize_market_date("2026-08-28 00:00:00-04:00"), "2026-08-28")
+
+    def test_smm_selected_row_date_uses_existing_average_and_date_columns(self):
+        headers = ("Name", "Average", "Date")
+        rows = (("Copper Cathode", "108600", "2026-08-28"),)
+        self.assertEqual(extract_smm_selected_row_date(headers, rows, 108600.0), "2026-08-28")
+        self.assertIsNone(extract_smm_selected_row_date(("Name", "Average"), rows, 108600.0))
 
 
 if __name__ == "__main__":

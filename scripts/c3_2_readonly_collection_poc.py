@@ -40,6 +40,7 @@ SOURCE_DATE_GROUPS = {
     "yfinance_SI=F": ("silver_yfinance",),
     "yfinance_GC=F": ("gold_yfinance",),
 }
+SHEET_DATE_COLUMNS = dict(zip("BCDEFGHIJKL", SHEET_COLUMNS))
 
 
 def enforce_read_only_environment() -> None:
@@ -81,6 +82,32 @@ def log_source_date_metadata(quotes: dict[str, MarketQuote]) -> None:
         )
 
 
+def verify_same_date_atomic_row(quotes: dict[str, MarketQuote]) -> str | None:
+    """Return the sole verified business date, otherwise fail closed without inference."""
+    parsed_dates: list[str] = []
+    for column, key in SHEET_DATE_COLUMNS.items():
+        quote = quotes.get(key)
+        source_date = normalize_market_date(quote.observed_at) if quote else None
+        date_status = "PARSED" if source_date else "MISSING_OR_UNPARSABLE"
+        source = quote.source if quote else "MISSING_QUOTE"
+        collection_status = quote.status if quote else "MISSING"
+        print(
+            f"source_date_column={column} key={key} source={source} "
+            f"collection_status={collection_status} observed_at={source_date or 'UNAVAILABLE'} "
+            f"date_parse_status={date_status}"
+        )
+        if source_date:
+            parsed_dates.append(source_date)
+
+    common_dates = set(parsed_dates)
+    if len(parsed_dates) != len(SHEET_DATE_COLUMNS) or len(common_dates) != 1:
+        print("C3_2_DATE_RESULT=DATE_MISMATCH target_business_date=UNAVAILABLE")
+        return None
+    target_business_date = common_dates.pop()
+    print(f"C3_2_DATE_RESULT=DATE_MATCH target_business_date={target_business_date}")
+    return target_business_date
+
+
 def run_collection(
     browser_fetcher: Callable[[], dict[str, MarketQuote]] = fetch_browser_quotes,
     finance_fetcher: Callable[[], dict[str, MarketQuote]] = fetch_yfinance_quotes,
@@ -107,6 +134,7 @@ def run_collection(
             print(f"{line} classification={classification} diagnostic={quote.error or 'unknown'}")
 
     log_source_date_metadata(quotes)
+    target_business_date = verify_same_date_atomic_row(quotes)
 
     try:
         require_success(quotes, SHEET_COLUMNS)
@@ -115,7 +143,15 @@ def run_collection(
         print("google_sheet_write=DISABLED audit_persistence=DISABLED raw_values_logged=NO")
         return 1
 
-    print(f"C3_2_1_RESULT=PASS usable_quotes={len(SHEET_COLUMNS)}/{len(SHEET_COLUMNS)}")
+    if target_business_date is None:
+        print("C3_2_1_RESULT=FAIL classification=DATE_MISMATCH")
+        print("google_sheet_write=DISABLED audit_persistence=DISABLED raw_values_logged=NO")
+        return 1
+
+    print(
+        f"C3_2_1_RESULT=PASS usable_quotes={len(SHEET_COLUMNS)}/{len(SHEET_COLUMNS)} "
+        f"target_business_date={target_business_date}"
+    )
     print("google_sheet_write=DISABLED audit_persistence=DISABLED raw_values_logged=NO")
     return 0
 

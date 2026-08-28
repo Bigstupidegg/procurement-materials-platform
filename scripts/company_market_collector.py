@@ -17,6 +17,8 @@ try:
         DataContractError,
         MarketQuote,
         extract_table_value,
+        find_header_index,
+        parse_numeric,
         require_success,
         validate_sheet_layout,
     )
@@ -31,6 +33,8 @@ except ModuleNotFoundError:  # imported as scripts.company_market_collector in t
         DataContractError,
         MarketQuote,
         extract_table_value,
+        find_header_index,
+        parse_numeric,
         require_success,
         validate_sheet_layout,
     )
@@ -415,6 +419,31 @@ def extract_smm_quote_date(page_source: object) -> str | None:
     return normalize_market_date(match.group(1)) if match else None
 
 
+def extract_smm_selected_row_date(
+    headers: Sequence[object], rows: Sequence[Sequence[object]], selected_value: float
+) -> str | None:
+    """Return the Date-cell metadata for the already selected SMM average row."""
+    try:
+        date_index = find_header_index(headers, ("date", "\u65e5\u671f"))
+        average_index = find_header_index(headers, ("average", "avg", "\u5747\u4ef7"))
+    except DataContractError:
+        return None
+
+    dates: set[str] = set()
+    for row in rows:
+        if date_index >= len(row) or average_index >= len(row):
+            continue
+        try:
+            is_selected_value = parse_numeric(row[average_index]) == selected_value
+        except DataContractError:
+            continue
+        if is_selected_value:
+            parsed = normalize_market_date(row[date_index])
+            if parsed:
+                dates.add(parsed)
+    return next(iter(dates)) if len(dates) == 1 else None
+
+
 def format_row_timeline(timeline: Sequence[tuple[float, tuple[int, ...]]]) -> str:
     return "[" + ", ".join(f"{elapsed:.1f}s:{list(counts)}" for elapsed, counts in timeline) + "]"
 
@@ -547,7 +576,7 @@ def fetch_lme_offer_with_retry(
     raise DataContractError("LME retry exhausted; " + " || ".join(failures))
 
 
-def fetch_smm_average(driver) -> float:
+def fetch_smm_average_with_date(driver) -> tuple[float, str | None]:
     from selenium.webdriver.common.by import By
     from selenium.webdriver.support.ui import WebDriverWait
 
@@ -558,13 +587,14 @@ def fetch_smm_average(driver) -> float:
     for table in driver.find_elements(By.TAG_NAME, "table"):
         try:
             headers, rows = table_to_matrix(table)
-            return extract_table_value(
+            value = extract_table_value(
                 headers,
                 rows,
                 row_terms=("1#电解铜", "1#電解銅", "电解铜", "電解銅"),
                 value_headers=("均价", "平均价", "average", "avg"),
                 minimum=50000.0,
             )
+            return value, extract_smm_selected_row_date(headers, rows, value)
         except DataContractError as exc:
             failures.append(str(exc))
 
@@ -572,6 +602,11 @@ def fetch_smm_average(driver) -> float:
         "SMM 頁面無法證明電解銅『均價』欄位；停止使用此報價。"
         + (" | " + failures[-1] if failures else "")
     )
+
+
+def fetch_smm_average(driver) -> float:
+    """Preserve the existing price-only SMM collector API."""
+    return fetch_smm_average_with_date(driver)[0]
 
 
 def make_quote(
@@ -647,8 +682,7 @@ def fetch_browser_quotes() -> dict[str, MarketQuote]:
                 )
 
         try:
-            value = fetch_smm_average(driver)
-            observed_at = extract_smm_quote_date(getattr(driver, "page_source", ""))
+            value, observed_at = fetch_smm_average_with_date(driver)
             quotes["smm_electrolytic_copper"] = make_quote(
                 key="smm_electrolytic_copper",
                 name="電解銅 Copper Cathode",

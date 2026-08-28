@@ -11,6 +11,7 @@ from scripts.c3_2_readonly_collection_poc import (
     classify_failure,
     log_source_date_metadata,
     run_collection,
+    verify_same_date_atomic_row,
 )
 from scripts.company_market_collector import make_quote
 
@@ -32,6 +33,8 @@ def successful_quote(key: str, value: float):
 class ReadOnlyCollectionPocTests(unittest.TestCase):
     def test_success_reports_statuses_without_raw_values_or_sheet_access(self):
         quotes = {key: successful_quote(key, 91000.25 + index) for index, key in enumerate(SHEET_COLUMNS)}
+        for key in quotes:
+            quotes[key] = quotes[key].__class__(**{**quotes[key].__dict__, "observed_at": "2026-08-28"})
         browser_quotes = {key: quotes[key] for key in SHEET_COLUMNS[:8]}
         finance_quotes = {key: quotes[key] for key in SHEET_COLUMNS[8:]}
 
@@ -104,6 +107,22 @@ class ReadOnlyCollectionPocTests(unittest.TestCase):
         self.assertIn("source_date source=LME market_date=UNAVAILABLE", text)
         self.assertIn("source_date source=yfinance_BZ=F market_date=2026-08-28", text)
         self.assertNotIn("1866.25", text)
+
+    def test_same_date_atomic_row_requires_all_parsed_dates_to_match(self):
+        quotes = {key: successful_quote(key, 1000.0) for key in SHEET_COLUMNS}
+        for key in quotes:
+            quotes[key] = quotes[key].__class__(**{**quotes[key].__dict__, "observed_at": "2026-08-28"})
+        output = io.StringIO()
+        with redirect_stdout(output):
+            self.assertEqual(verify_same_date_atomic_row(quotes), "2026-08-28")
+        self.assertIn("C3_2_DATE_RESULT=DATE_MATCH", output.getvalue())
+
+        quotes["gold_yfinance"] = quotes["gold_yfinance"].__class__(
+            **{**quotes["gold_yfinance"].__dict__, "observed_at": "2026-08-27"}
+        )
+        with redirect_stdout(io.StringIO()) as mismatch_output:
+            self.assertIsNone(verify_same_date_atomic_row(quotes))
+        self.assertIn("C3_2_DATE_RESULT=DATE_MISMATCH", mismatch_output.getvalue())
 
 
 if __name__ == "__main__":
