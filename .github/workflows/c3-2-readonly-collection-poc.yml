@@ -11,6 +11,9 @@ on:
       - "scripts/company-market-requirements.txt"
       - "tests/test_c3_2_readonly_collection_poc.py"
   workflow_dispatch:
+  schedule:
+    # GitHub Actions cron is UTC: 09:00 UTC is 17:00 Asia/Taipei (UTC+8).
+    - cron: "0 9 * * 1-5"
 
 permissions:
   contents: read
