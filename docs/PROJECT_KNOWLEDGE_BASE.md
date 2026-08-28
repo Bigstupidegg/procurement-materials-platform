@@ -259,7 +259,27 @@ evidence
 notes
 ```
 
-## 10. v2.3 scope
+## 10. Company daily market-data layer — C3.1
+
+The private company Google Sheet remains separate from the public GitHub Pages market-analysis layer. The Python collector is the data-engineering layer.
+
+Verified source contract from the original `update_prices_v5.py`:
+
+- Copper Cash: LME Cash OFFER.
+- Copper 3-month: LME 3-month OFFER.
+- Aluminium / Lead / Nickel / Tin / Zinc: LME Cash OFFER.
+- Electrolytic Copper: SMM explicit average (`均價`), CNY/tonne.
+- Brent: yfinance `BZ=F` Close, USD/bbl.
+- Silver: yfinance `SI=F` Close ×100, cents/oz.
+- Gold: yfinance `GC=F` Close, USD/oz.
+
+`BZ=F`, `SI=F`, and `GC=F` are futures market references, not spot prices.
+
+C3.1 adds semantic LME OFFER-column validation, explicit SMM average selection, safe target-row resolution, full A:L fail-closed guards, local audit metadata, credential isolation, and Live Dry Run mode.
+
+For the company's daily copper purchase analysis, LME Copper Cash OFFER is the primary same-day market reference. World Bank monthly Copper remains medium-term benchmark context.
+
+## 11. v2.3 scope
 
 v2.3 is the maintainability baseline:
 
@@ -268,6 +288,7 @@ v2.3 is the maintainability baseline:
 - document schemas and calculations
 - separate Demo Mode from Real Data Mode
 - make data source / formula / signal logic traceable
+- harden the private company daily-market collector
 - prepare for TTP and Bushing Supplier Cases
 
 New supplier-case functionality should be built only after this baseline is stable.

@@ -1,0 +1,164 @@
+--- update_prices_v6_3_C3_1_DRYRUN.py
++++ update_prices_v6_3_1_C3_1_DRYRUN.py
+@@ -18,7 +18,7 @@
+-# C3.1 v6.3 修正版
++# C3.1 v6.3.1 修正版
+@@ -27,12 +27,12 @@
+-# 7. 合理價格範圍 + 與上一筆資料的異常波動檢查
++# 7. 合理價格範圍 + 每欄各自上一筆有效價格的異常波動檢查
+@@
+-VERSION = "6.3"
++VERSION = "6.3.1"
+@@
+     error: str | None = None
+     previous_value: float | None = None
++    previous_row: int | None = None
+     change_pct: float | None = None
+@@
+-def get_previous_market_row(sheet, target_row):
+-    """讀取目標列之前最近一筆合法行情資料。
+-
+-    回傳 (row_number, values B:L)；找不到則回傳 (None, None)。
+-    """
++def get_previous_valid_values(sheet, target_row):
++    """每個行情欄位各自尋找目標列之前最近一筆有效價格。
++
++    只接受 A 欄可解析為完整日期的資料列。每一欄 B:L 都獨立往上尋找，
++    空白、非數字、0 或負值都會略過。
++
++    回傳：
++        {
++            key: {
++                "row": <1-based row number> | None,
++                "value": <float> | None,
++            }
++        }
++    """
++    previous = {
++        key: {"row": None, "value": None}
++        for key in REQUIRED_KEYS
++    }
++
+     if target_row <= 5:
+-        return None, None
++        return previous
+ 
+     values = sheet.get(f"A5:L{target_row - 1}")
+ 
+     for offset in range(len(values) - 1, -1, -1):
+         row = values[offset]
+         row_number = 5 + offset
+ 
+         if not row:
+             continue
+ 
+         date_value = row[0] if len(row) > 0 else ""
+         if parse_sheet_date(date_value) is None:
+             continue
+ 
+         padded = row + [""] * (12 - len(row))
+-        return row_number, padded[1:12]
++
++        for key in REQUIRED_KEYS:
++            if previous[key]["value"] is not None:
++                continue
++
++            sheet_col = SHEET_COLUMNS[key]
++            raw = padded[sheet_col - 1]
++
++            try:
++                value = float(str(raw).replace(",", "").strip())
++            except Exception:
++                continue
++
++            if value <= 0:
++                continue
++
++            previous[key] = {
++                "row": row_number,
++                "value": value,
++            }
++
++        if all(item["value"] is not None for item in previous.values()):
++            break
+ 
+-    return None, None
++    return previous
+@@
+ def apply_anomaly_checks(results, sheet, target_row):
+-    previous_row, previous_values = get_previous_market_row(sheet, target_row)
++    previous = get_previous_valid_values(sheet, target_row)
+ 
+-    if previous_row is None:
+-        print("  [INFO] 無上一筆行情資料，略過日變動異常檢查。")
++    available_count = sum(
++        1 for item in previous.values()
++        if item["value"] is not None
++    )
++
++    if available_count == 0:
++        print("  [INFO] 無可用歷史行情，略過日變動異常檢查。")
+         return
+ 
+-    print(f"  [INFO] 異常波動比較基準：Row {previous_row}")
++    print(
++        "  [INFO] 異常波動比較："
++        f"{available_count}/{len(REQUIRED_KEYS)} 欄找到各自上一筆有效價格。"
++    )
+ 
+     for key in REQUIRED_KEYS:
+         result = results[key]
+ 
+         if not result.usable:
+             continue
+ 
+-        col_index = SHEET_COLUMNS[key] - 2
+-        previous_raw = previous_values[col_index]
+-
+-        try:
+-            previous_value = float(str(previous_raw).replace(",", "").strip())
+-        except Exception:
+-            continue
+-
+-        if previous_value <= 0:
++        prior = previous[key]
++        previous_value = prior["value"]
++        previous_row = prior["row"]
++
++        if previous_value is None:
+             continue
+ 
+         change_pct = ((result.value - previous_value) / previous_value) * 100.0
+         result.previous_value = previous_value
++        result.previous_row = previous_row
+         result.change_pct = round(change_pct, 4)
+ 
+         threshold = MAX_DAILY_CHANGE_PCT[key]
+ 
+         if abs(change_pct) > threshold:
+             result.status = "ANOMALY"
+             result.error = (
+-                f"與上一筆 {previous_value} 相比變動 "
+-                f"{change_pct:+.2f}% ，超過 ±{threshold:.1f}% 防呆門檻"
++                f"與上一筆有效資料 Row {previous_row} 的 {previous_value} 相比 "
++                f"變動 {change_pct:+.2f}% ，超過 ±{threshold:.1f}% 防呆門檻"
+             )
+@@
+                 "attempts",
+                 "previous_value",
++                "previous_row",
+                 "change_pct",
+                 "error",
+@@
+                 result.attempts,
+                 result.previous_value,
++                result.previous_row,
+                 result.change_pct,
+                 result.error,
+@@
+         change_text = (
+             f" change={result.change_pct:+.2f}%"
+-            if result.change_pct is not None
++            if result.status == "ANOMALY" and result.change_pct is not None
+             else ""
+         )

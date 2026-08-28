@@ -86,6 +86,19 @@ Pull Request 會先執行 Quality Check；GitHub Pages 部署前也會執行採�
 - 供應商合理成品調價必須另外考慮材料占比、採購落後期、庫存、匯率、能源、加工、運費與合約條件。
 - 完整規範見 `docs/DATA_SOURCE_POLICY.md`。
 
+## C3.1 公司每日市場資料層
+
+公司每日採購作業與公開 GitHub Pages 分離。資料來源已依原始 `update_prices_v5.py` 再次核對：
+
+- B/C/E-I：LME。
+- D：SMM 電解銅均價。
+- J：yfinance `BZ=F` Close。
+- K：yfinance `SI=F` Close ×100，保存為 cents/oz。
+- L：yfinance `GC=F` Close。
+- LME Copper Cash OFFER 是每日銅採購分析的第一市場參考。
+
+`ALLOW_GOOGLE_SHEET_WRITE=0` 時為 **Live Dry Run**：實際抓取 LME / SMM / yfinance、實際登入並驗證 Google Sheet，但不修改任何儲存格。
+
 ## Should-Cost 核心原則
 
 單一成本項目影響：
@@ -134,6 +147,8 @@ Negotiation Gap
 - `docs/DATA_DICTIONARY.md`：核心 JSON 與欄位定義。
 - `docs/CALCULATION_RULES.md`：市場變化、Should-Cost、議價差距與訊號規則。
 - `docs/DATA_SOURCE_POLICY.md`：資料來源角色、驗證、staleness、單位與安全政策。
+- `docs/C3_1_PRACTICAL_ACCEPTANCE.md`：公司每日行情資料來源、Sheet 契約與 Live Dry Run 驗收。
+- `docs/COMPANY_MARKET_DATA_POLICY.md`：公開網站與私人 Google Sheet 的資料邊界。
 - `docs/ROADMAP.md`：v2.3 與後續 Supplier Case / ERP 整合方向。
 - `docs/CHANGELOG.md`：版本變更紀錄。
 - `docs/github-pages-static-architecture.md`：原始靜態資料架構規劃。
