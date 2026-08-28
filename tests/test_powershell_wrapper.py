@@ -11,6 +11,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 WRAPPER = ROOT / "scripts" / "run_c3_1_live_dry_run.ps1"
 SCHEDULED_WRAPPER = ROOT / "scripts" / "run_c3_2_windows_readonly.ps1"
+PILOT_WRAPPER = ROOT / "scripts" / "run_c3_2_windows_pilot_dry_run.ps1"
 
 
 class PowerShellWrapperEncodingTests(unittest.TestCase):
@@ -37,6 +38,13 @@ class PowerShellWrapperEncodingTests(unittest.TestCase):
         self.assertNotIn("service_account.json", text)
         self.assertNotIn("GOOGLE_SHEET_ID =", text)
 
+    def test_pilot_wrapper_is_ascii_and_forces_write_disabled(self):
+        payload = PILOT_WRAPPER.read_bytes()
+        text = payload.decode("ascii")
+        self.assertIn('$env:ALLOW_GOOGLE_SHEET_WRITE = "0"', text)
+        self.assertIn("Remove-Item Env:CONTROLLED_WRITE_APPROVAL", text)
+        self.assertNotIn('$env:ALLOW_GOOGLE_SHEET_WRITE = "1"', text)
+
     def test_windows_powershell_parser_accepts_wrappers(self):
         powershell = shutil.which("powershell.exe") or shutil.which("powershell")
         if powershell is None or os.name != "nt":
@@ -57,7 +65,7 @@ if ($errors.Count -gt 0) {
 """
         encoded = base64.b64encode(parser_script.encode("utf-16-le")).decode("ascii")
         environment = os.environ.copy()
-        for wrapper in (WRAPPER, SCHEDULED_WRAPPER):
+        for wrapper in (WRAPPER, SCHEDULED_WRAPPER, PILOT_WRAPPER):
             environment["C3_PS1_PARSE_PATH"] = str(wrapper)
             completed = subprocess.run(
                 [powershell, "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded],
