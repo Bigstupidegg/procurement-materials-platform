@@ -10,6 +10,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 WRAPPER = ROOT / "scripts" / "run_c3_1_live_dry_run.ps1"
+SCHEDULED_WRAPPER = ROOT / "scripts" / "run_c3_2_windows_readonly.ps1"
 
 
 class PowerShellWrapperEncodingTests(unittest.TestCase):
@@ -26,7 +27,17 @@ class PowerShellWrapperEncodingTests(unittest.TestCase):
         self.assertIn('$env:ALLOW_GOOGLE_SHEET_WRITE = "0"', text)
         self.assertNotIn('$env:ALLOW_GOOGLE_SHEET_WRITE = "1"', text)
 
-    def test_windows_powershell_parser_accepts_wrapper(self):
+    def test_scheduled_wrapper_is_ascii_and_forces_read_only_environment(self):
+        payload = SCHEDULED_WRAPPER.read_bytes()
+        payload.decode("ascii")
+        text = payload.decode("ascii")
+        self.assertIn('$env:ALLOW_GOOGLE_SHEET_WRITE = "0"', text)
+        self.assertIn("Remove-Item Env:GOOGLE_SHEET_ID", text)
+        self.assertIn("Remove-Item Env:GOOGLE_SERVICE_ACCOUNT_FILE", text)
+        self.assertNotIn("service_account.json", text)
+        self.assertNotIn("GOOGLE_SHEET_ID =", text)
+
+    def test_windows_powershell_parser_accepts_wrappers(self):
         powershell = shutil.which("powershell.exe") or shutil.which("powershell")
         if powershell is None or os.name != "nt":
             self.skipTest("Windows PowerShell parser is available only on Windows")
@@ -46,22 +57,23 @@ if ($errors.Count -gt 0) {
 """
         encoded = base64.b64encode(parser_script.encode("utf-16-le")).decode("ascii")
         environment = os.environ.copy()
-        environment["C3_PS1_PARSE_PATH"] = str(WRAPPER)
-        completed = subprocess.run(
-            [powershell, "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            env=environment,
-            timeout=30,
-            check=False,
-        )
-        self.assertEqual(
-            completed.returncode,
-            0,
-            f"Windows PowerShell parser rejected wrapper:\n{completed.stderr}",
-        )
+        for wrapper in (WRAPPER, SCHEDULED_WRAPPER):
+            environment["C3_PS1_PARSE_PATH"] = str(wrapper)
+            completed = subprocess.run(
+                [powershell, "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                env=environment,
+                timeout=30,
+                check=False,
+            )
+            self.assertEqual(
+                completed.returncode,
+                0,
+                f"Windows PowerShell parser rejected {wrapper.name}:\n{completed.stderr}",
+            )
 
 
 if __name__ == "__main__":
