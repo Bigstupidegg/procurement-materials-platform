@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from html import unescape
 from dataclasses import dataclass
 import json
 import os
@@ -372,6 +373,48 @@ def lme_page_flags(page_source: object) -> str:
     )
 
 
+def normalize_market_date(value: object) -> str | None:
+    """Return an ISO market date from source metadata, without retaining page text."""
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    patterns = (
+        (r"\b\d{4}-\d{2}-\d{2}\b", ("%Y-%m-%d",)),
+        (r"\b\d{4}/\d{1,2}/\d{1,2}\b", ("%Y/%m/%d",)),
+        (r"\b\d{1,2}/\d{1,2}/\d{4}\b", ("%d/%m/%Y",)),
+        (r"\b\d{1,2}\s+[A-Za-z]+\s+\d{4}\b", ("%d %B %Y", "%d %b %Y")),
+        (r"\b[A-Za-z]+\s+\d{1,2},\s*\d{4}\b", ("%B %d, %Y", "%b %d, %Y")),
+        (r"\b\d{4}年\d{1,2}月\d{1,2}日\b", ("%Y年%m月%d日",)),
+    )
+    for pattern, formats in patterns:
+        match = re.search(pattern, text)
+        if not match:
+            continue
+        for date_format in formats:
+            try:
+                return datetime.strptime(match.group(0), date_format).date().isoformat()
+            except ValueError:
+                continue
+    return None
+
+
+def source_page_text(page_source: object) -> str:
+    """Reduce HTML to text only for local date-marker recognition."""
+    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", unescape(str(page_source or "")))).strip()
+
+
+def extract_lme_data_valid_date(page_source: object) -> str | None:
+    """Parse LME's explicit 'Data valid for' marker, if present."""
+    text = source_page_text(page_source)
+    match = re.search(r"data\s+valid\s+for(?:\s+date)?\s*[:：]?\s*([^|]{1,48})", text, re.IGNORECASE)
+    return normalize_market_date(match.group(1)) if match else None
+
+
+def extract_smm_quote_date(page_source: object) -> str | None:
+    """Parse an explicit SMM date/update marker only; never infer from execution time."""
+    text = source_page_text(page_source)
+    match = re.search(r"(?:发布日期|更新(?:时间|日期)?|日期|date)\s*[:：]?\s*([^|]{1,48})", text, re.IGNORECASE)
+    return normalize_market_date(match.group(1)) if match else None
+
+
 def format_row_timeline(timeline: Sequence[tuple[float, tuple[int, ...]]]) -> str:
     return "[" + ", ".join(f"{elapsed:.1f}s:{list(counts)}" for elapsed, counts in timeline) + "]"
 
@@ -575,6 +618,7 @@ def fetch_browser_quotes() -> dict[str, MarketQuote]:
         for key, (name, url, term) in LME_URLS.items():
             try:
                 value, attempts = fetch_lme_offer_with_retry(driver, url, term)
+                observed_at = extract_lme_data_valid_date(getattr(driver, "page_source", ""))
                 quotes[key] = make_quote(
                     key=key,
                     name=name,
@@ -585,6 +629,7 @@ def fetch_browser_quotes() -> dict[str, MarketQuote]:
                     currency="USD",
                     unit="USD/MT",
                     value=value,
+                    observed_at=observed_at,
                     attempts=attempts,
                 )
             except Exception as exc:
@@ -603,6 +648,7 @@ def fetch_browser_quotes() -> dict[str, MarketQuote]:
 
         try:
             value = fetch_smm_average(driver)
+            observed_at = extract_smm_quote_date(getattr(driver, "page_source", ""))
             quotes["smm_electrolytic_copper"] = make_quote(
                 key="smm_electrolytic_copper",
                 name="電解銅 Copper Cathode",
@@ -613,6 +659,7 @@ def fetch_browser_quotes() -> dict[str, MarketQuote]:
                 currency="CNY",
                 unit="CNY/MT",
                 value=value,
+                observed_at=observed_at,
             )
         except Exception as exc:
             quotes["smm_electrolytic_copper"] = make_quote(
@@ -642,7 +689,7 @@ def fetch_yfinance_quotes() -> dict[str, MarketQuote]:
             if history.empty:
                 raise DataContractError(f"yfinance {symbol} 沒有回傳近期資料")
             raw_value = float(history["Close"].iloc[-1])
-            observed_at = str(history.index[-1])
+            observed_at = normalize_market_date(history.index[-1])
             value = round(raw_value * multiplier, 2)
             quotes[key] = make_quote(
                 key=key,

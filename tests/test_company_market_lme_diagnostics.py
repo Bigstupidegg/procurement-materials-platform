@@ -6,7 +6,9 @@ from scripts.company_market_core import DataContractError
 from scripts.company_market_collector import (
     TableSnapshot,
     expected_lme_identity,
+    extract_lme_data_valid_date,
     extract_lme_offer_from_snapshots,
+    extract_smm_quote_date,
     fetch_lme_offer_with_retry,
     format_row_timeline,
     format_table_diagnostics,
@@ -15,6 +17,7 @@ from scripts.company_market_collector import (
     lme_network_failure_category,
     lme_page_flags,
     lme_semantic_diagnostics,
+    normalize_market_date,
     parse_lme_performance_entries,
     rows_transitioned_to_nonzero,
     sanitize_lme_text,
@@ -171,6 +174,19 @@ class LmeDiagnosticsTests(unittest.TestCase):
         self.assertIn("network_available=True", diagnostic)
         for forbidden in ("Cookie", "secret", "Authorization", "private", "1866"):
             self.assertNotIn(forbidden, diagnostic)
+
+    def test_source_date_parsers_require_explicit_source_markers(self):
+        self.assertEqual(
+            extract_lme_data_valid_date("<span>Data valid for: 28 August 2026</span>"),
+            "2026-08-28",
+        )
+        self.assertEqual(
+            extract_smm_quote_date("<span>发布日期：2026年8月28日</span>"),
+            "2026-08-28",
+        )
+        self.assertIsNone(extract_lme_data_valid_date("Page updated 2026-08-28"))
+        self.assertIsNone(extract_smm_quote_date("price 1866.00"))
+        self.assertEqual(normalize_market_date("2026-08-28 00:00:00-04:00"), "2026-08-28")
 
 
 if __name__ == "__main__":

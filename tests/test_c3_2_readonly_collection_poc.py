@@ -9,6 +9,7 @@ from unittest.mock import patch
 from scripts.c3_2_readonly_collection_poc import (
     SHEET_COLUMNS,
     classify_failure,
+    log_source_date_metadata,
     run_collection,
 )
 from scripts.company_market_collector import make_quote
@@ -91,6 +92,18 @@ class ReadOnlyCollectionPocTests(unittest.TestCase):
         self.assertEqual(classify_failure("ChromeDriver failed"), "ENVIRONMENT_FAILURE")
         self.assertEqual(classify_failure("request timeout"), "EXTERNAL_SERVICE_FAILURE")
         self.assertEqual(classify_failure("contract check failed"), "CODE_FAILURE")
+
+    def test_source_date_log_exposes_dates_but_not_quote_values(self):
+        quotes = {key: successful_quote(key, 1866.25) for key in SHEET_COLUMNS}
+        for key in ("brent_yfinance", "silver_yfinance", "gold_yfinance"):
+            quotes[key] = quotes[key].__class__(**{**quotes[key].__dict__, "observed_at": "2026-08-28"})
+        output = io.StringIO()
+        with redirect_stdout(output):
+            log_source_date_metadata(quotes)
+        text = output.getvalue()
+        self.assertIn("source_date source=LME market_date=UNAVAILABLE", text)
+        self.assertIn("source_date source=yfinance_BZ=F market_date=2026-08-28", text)
+        self.assertNotIn("1866.25", text)
 
 
 if __name__ == "__main__":
