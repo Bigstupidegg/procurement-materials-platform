@@ -37,8 +37,7 @@ DRY_RUN = True
 
 TAIPEI = ZoneInfo("Asia/Taipei")
 
-DEFAULT_SHEET_ID = "1-YWjUm1d-8ZwuOIr-9YhbRIly2OYEfJOJ52hbz407rQ"
-SHEET_ID = os.getenv("GOOGLE_SHEET_ID", DEFAULT_SHEET_ID)
+SHEET_ID = os.getenv("GOOGLE_SHEET_ID", "").strip()
 
 SERVICE_ACCOUNT_FILE = os.getenv(
     "GOOGLE_SERVICE_ACCOUNT_FILE",
@@ -56,6 +55,16 @@ AUDIT_DIR = Path(
 
 MAX_ATTEMPTS = 3
 RETRY_WAIT_SECONDS = (5, 10)
+
+
+def require_sheet_id(value):
+    sheet_id = str(value or "").strip()
+    if not sheet_id:
+        raise RuntimeError(
+            "GOOGLE_SHEET_ID 未設定；請透過環境變數或既有 -SheetId 參數提供，"
+            "不允許使用 hardcoded fallback。"
+        )
+    return sheet_id
 
 MAX_DAILY_CHANGE_PCT = {
     "銅_LME_現貨": 20.0,
@@ -532,6 +541,8 @@ def require_all_usable(results):
 
 
 if __name__ == "__main__":
+    sheet_id = require_sheet_id(SHEET_ID)
+
     print("=" * 78)
     print(f"C3.1 大宗材料行情抓取修正版 v{VERSION}")
     print(f"DRY_RUN = {DRY_RUN}")
@@ -564,7 +575,7 @@ if __name__ == "__main__":
 
     print("正在連線至 Google Sheets...")
     gc = gspread.service_account(filename=SERVICE_ACCOUNT_FILE)
-    book = gc.open_by_key(SHEET_ID)
+    book = gc.open_by_key(sheet_id)
     try:
         sheet = book.worksheet(WORKSHEET_NAME)
     except Exception as exc:
