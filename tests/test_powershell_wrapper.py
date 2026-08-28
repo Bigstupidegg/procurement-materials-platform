@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 WRAPPER = ROOT / "scripts" / "run_c3_1_live_dry_run.ps1"
 SCHEDULED_WRAPPER = ROOT / "scripts" / "run_c3_2_windows_readonly.ps1"
 PILOT_WRAPPER = ROOT / "scripts" / "run_c3_2_windows_pilot_dry_run.ps1"
+EVENING_LAUNCHER = ROOT / "scripts" / "run_c3_2_evening_observation.ps1"
 
 
 class PowerShellWrapperEncodingTests(unittest.TestCase):
@@ -46,6 +47,69 @@ class PowerShellWrapperEncodingTests(unittest.TestCase):
         self.assertIn('$env:ALLOW_GOOGLE_SHEET_WRITE = "0"', text)
         self.assertIn("Remove-Item Env:CONTROLLED_WRITE_APPROVAL", text)
         self.assertNotIn('$env:ALLOW_GOOGLE_SHEET_WRITE = "1"', text)
+
+    def _run_evening_launcher(self, *, user_lookup_replacement: str, child_exit: int):
+        powershell = shutil.which("powershell.exe") or shutil.which("powershell")
+        if powershell is None or os.name != "nt":
+            self.skipTest("Windows PowerShell is available only on Windows")
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            scripts = root / "scripts"
+            scripts.mkdir()
+            launcher = scripts / EVENING_LAUNCHER.name
+            launcher_text = EVENING_LAUNCHER.read_text(encoding="ascii")
+            launcher_text = launcher_text.replace(
+                '[Environment]::GetEnvironmentVariable("GOOGLE_SHEET_ID", "User")',
+                user_lookup_replacement,
+            )
+            launcher.write_text(launcher_text, encoding="ascii")
+            marker = root / "child-ran.marker"
+            (scripts / PILOT_WRAPPER.name).write_text(
+                "param([string]$SheetId, [string]$WorksheetName)\n"
+                "if ($env:ALLOW_GOOGLE_SHEET_WRITE -ne '0') { exit 21 }\n"
+                "if (-not [string]::IsNullOrWhiteSpace($env:CONTROLLED_WRITE_APPROVAL)) { exit 22 }\n"
+                "if ($WorksheetName -ne (-join [char[]](0x5927,0x5B97,0x6750,0x6599,0x20,0x884C,0x60C5,0x7D71,0x8A08,0x8868))) { exit 23 }\n"
+                f"Set-Content -LiteralPath {str(marker)!r} -Value 'ran' -Encoding ASCII\n"
+                f"exit {child_exit}\n",
+                encoding="ascii",
+            )
+            environment = os.environ.copy()
+            environment["ALLOW_GOOGLE_SHEET_WRITE"] = "1"
+            environment["CONTROLLED_WRITE_APPROVAL"] = "test-approval"
+            completed = subprocess.run(
+                [powershell, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", str(launcher)],
+                cwd=root,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                env=environment,
+                timeout=30,
+                check=False,
+            )
+            return completed, marker.exists()
+
+    def test_evening_launcher_is_transparent_and_uses_user_scope_only(self):
+        text = EVENING_LAUNCHER.read_text(encoding="ascii")
+        self.assertIn('[Environment]::GetEnvironmentVariable("GOOGLE_SHEET_ID", "User")', text)
+        self.assertIn('$env:ALLOW_GOOGLE_SHEET_WRITE = "0"', text)
+        self.assertIn("Remove-Item Env:CONTROLLED_WRITE_APPROVAL", text)
+        self.assertIn("run_c3_2_windows_pilot_dry_run.ps1", text)
+        self.assertNotIn("EncodedCommand", text)
+        self.assertNotIn("Base64", text)
+        self.assertNotIn("service_account.json", text)
+        self.assertNotIn('$SheetId = "', text)
+
+    def test_evening_launcher_fails_closed_when_user_sheet_id_is_missing(self):
+        completed, child_ran = self._run_evening_launcher(user_lookup_replacement='""', child_exit=0)
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertFalse(child_ran)
+        self.assertIn("GOOGLE_SHEET_ID is missing", completed.stdout)
+
+    def test_evening_launcher_forces_safety_and_preserves_child_exit(self):
+        completed, child_ran = self._run_evening_launcher(user_lookup_replacement='"test-sheet-id"', child_exit=9)
+        self.assertTrue(child_ran)
+        self.assertEqual(completed.returncode, 9)
 
     def _run_pilot_wrapper(self, *, pilot_exit: int, log_directory: Path):
         powershell = shutil.which("powershell.exe") or shutil.which("powershell")
@@ -144,7 +208,7 @@ if ($errors.Count -gt 0) {
 """
         encoded = base64.b64encode(parser_script.encode("utf-16-le")).decode("ascii")
         environment = os.environ.copy()
-        for wrapper in (WRAPPER, SCHEDULED_WRAPPER, PILOT_WRAPPER):
+        for wrapper in (WRAPPER, SCHEDULED_WRAPPER, PILOT_WRAPPER, EVENING_LAUNCHER):
             environment["C3_PS1_PARSE_PATH"] = str(wrapper)
             completed = subprocess.run(
                 [powershell, "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded],
