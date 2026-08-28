@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
+import re
 import time
 from typing import Callable, Sequence
 from zoneinfo import ZoneInfo
@@ -231,6 +232,62 @@ def format_table_diagnostics(snapshots: Sequence[TableSnapshot]) -> str:
     return f"tables={len(snapshots)}; " + "; ".join(details)
 
 
+def sanitize_lme_text(value: object, *, limit: int = 160) -> str:
+    """Return diagnostic text without numeric values or control characters."""
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    text = re.sub(r"\d+(?:[.,]\d+)*", "<number>", text)
+    return text[:limit]
+
+
+def expected_lme_identity(url: str) -> str:
+    match = re.search(r"/lme-([a-z-]+)", url.lower())
+    return match.group(1) if match else "unknown"
+
+
+def lme_semantic_diagnostics(snapshots: Sequence[TableSnapshot]) -> str:
+    headers = [header.casefold() for snapshot in snapshots for header in snapshot.headers]
+    labels = [label.casefold() for snapshot in snapshots for label in snapshot.row_labels]
+    return (
+        f"table_count={len(snapshots)}; row_counts={[len(snapshot.rows) for snapshot in snapshots]}; "
+        f"cash={any('cash' in label for label in labels)}; "
+        f"three_month={any('3-month' in label or '3 month' in label for label in labels)}; "
+        f"offer={any('offer' in header for header in headers)}"
+    )
+
+
+def lme_console_diagnostics(driver) -> str:
+    try:
+        entries = driver.get_log("browser")
+    except Exception:
+        return "console_available=False; console_errors=unknown; console_categories=[]"
+    errors = [entry for entry in entries if str(entry.get("level", "")).upper() in {"SEVERE", "ERROR"}]
+    categories = sorted({sanitize_lme_text(entry.get("source", "unknown"), limit=40) for entry in errors})
+    return f"console_available=True; console_errors={len(errors)}; console_categories={categories!r}"
+
+
+def lme_page_flags(page_source: object) -> str:
+    text = str(page_source or "").casefold()
+    return (
+        f"cookie={any(marker in text for marker in ('cookie', 'onetrust'))}; "
+        f"consent={any(marker in text for marker in ('consent', 'privacy preference'))}; "
+        f"challenge={any(marker in text for marker in ('captcha', 'challenge-platform', 'verify you are human'))}; "
+        f"access_denied={any(marker in text for marker in ('access denied', 'request blocked', 'forbidden'))}"
+    )
+
+
+def format_row_timeline(timeline: Sequence[tuple[float, tuple[int, ...]]]) -> str:
+    return "[" + ", ".join(f"{elapsed:.1f}s:{list(counts)}" for elapsed, counts in timeline) + "]"
+
+
+def rows_transitioned_to_nonzero(timeline: Sequence[tuple[float, tuple[int, ...]]]) -> bool:
+    saw_zero = False
+    for _, counts in timeline:
+        saw_zero = saw_zero or not counts or all(count == 0 for count in counts)
+        if saw_zero and any(count > 0 for count in counts):
+            return True
+    return False
+
+
 def extract_lme_offer_from_snapshots(
     snapshots: Sequence[TableSnapshot], term_type: str
 ) -> float:
@@ -260,13 +317,26 @@ def fetch_lme_offer(driver, url: str, term_type: str, *, timeout_seconds: int = 
     from selenium.common.exceptions import TimeoutException
     from selenium.webdriver.support.ui import WebDriverWait
 
-    driver.get(url)
+    load_started = time.monotonic()
+    try:
+        driver.get(url)
+    except Exception as exc:
+        raise DataContractError(
+            f"LME page load failed; stage=page_load; expected_metal={expected_lme_identity(url)!r}; "
+            f"error_type={type(exc).__name__}"
+        ) from exc
+    load_duration = time.monotonic() - load_started
+    wait_started = time.monotonic()
     last_snapshots: tuple[TableSnapshot, ...] = ()
     last_contract_error = "semantic price table not evaluated"
+    row_timeline: list[tuple[float, tuple[int, ...]]] = []
 
     def semantic_offer_is_ready(current_driver):
         nonlocal last_snapshots, last_contract_error
         last_snapshots = snapshot_tables(current_driver.find_elements(By.TAG_NAME, "table"))
+        counts = tuple(len(snapshot.rows) for snapshot in last_snapshots)
+        if not row_timeline or row_timeline[-1][1] != counts:
+            row_timeline.append((time.monotonic() - wait_started, counts))
         try:
             return extract_lme_offer_from_snapshots(last_snapshots, term_type)
         except DataContractError as exc:
@@ -274,13 +344,36 @@ def fetch_lme_offer(driver, url: str, term_type: str, *, timeout_seconds: int = 
             return False
 
     try:
-        return WebDriverWait(driver, timeout_seconds, poll_frequency=0.5).until(
+        result = WebDriverWait(driver, timeout_seconds, poll_frequency=0.5).until(
             semantic_offer_is_ready
         )
+        wait_duration = time.monotonic() - wait_started
+        title = sanitize_lme_text(getattr(driver, "title", ""))
+        identity = expected_lme_identity(url)
+        print(
+            f"  [DIAG] LME stage=complete; page_load=True; page_load_seconds={load_duration:.2f}; "
+            f"expected_metal={identity!r}; title={title!r}; "
+            f"identity_match={identity != 'unknown' and identity in title.casefold()}; "
+            f"semantic_wait_seconds={wait_duration:.2f}; row_timeline={format_row_timeline(row_timeline)}; "
+            f"rows_zero_to_nonzero={rows_transitioned_to_nonzero(row_timeline)}; "
+            f"{lme_semantic_diagnostics(last_snapshots)}; {lme_console_diagnostics(driver)}; "
+            f"{lme_page_flags(getattr(driver, 'page_source', ''))}"
+        )
+        return result
     except TimeoutException as exc:
+        wait_duration = time.monotonic() - wait_started
+        title = sanitize_lme_text(getattr(driver, "title", ""))
+        identity = expected_lme_identity(url)
+        identity_ok = identity != "unknown" and identity in title.casefold()
         raise DataContractError(
-            f"LME 頁面在 {timeout_seconds}s 內未完成 {term_type} OFFER contract check; "
-            f"url={driver.current_url!r}; last_failure={last_contract_error}; "
+            f"LME semantic wait timed out after {timeout_seconds}s; stage=semantic_wait; "
+            f"page_load=True; page_load_seconds={load_duration:.2f}; "
+            f"expected_metal={identity!r}; title={title!r}; identity_match={identity_ok}; "
+            f"semantic_wait_seconds={wait_duration:.2f}; row_timeline={format_row_timeline(row_timeline)}; "
+            f"rows_zero_to_nonzero={rows_transitioned_to_nonzero(row_timeline)}; "
+            f"{lme_semantic_diagnostics(last_snapshots)}; "
+            f"{lme_console_diagnostics(driver)}; {lme_page_flags(getattr(driver, 'page_source', ''))}; "
+            f"url={driver.current_url!r}; last_failure={sanitize_lme_text(last_contract_error, limit=500)}; "
             f"{format_table_diagnostics(last_snapshots)}"
         ) from exc
 

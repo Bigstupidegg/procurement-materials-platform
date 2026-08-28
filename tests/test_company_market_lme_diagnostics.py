@@ -5,9 +5,16 @@ import unittest
 from scripts.company_market_core import DataContractError
 from scripts.company_market_collector import (
     TableSnapshot,
+    expected_lme_identity,
     extract_lme_offer_from_snapshots,
     fetch_lme_offer_with_retry,
+    format_row_timeline,
     format_table_diagnostics,
+    lme_console_diagnostics,
+    lme_page_flags,
+    lme_semantic_diagnostics,
+    rows_transitioned_to_nonzero,
+    sanitize_lme_text,
 )
 
 
@@ -63,6 +70,53 @@ class LmeDiagnosticsTests(unittest.TestCase):
         message = str(context.exception)
         self.assertIn("attempt 1/3", message)
         self.assertIn("attempt 3/3", message)
+
+    def test_sanitized_semantic_diagnostic_has_shape_but_no_quote_value(self):
+        snapshots = (
+            TableSnapshot(0, ("CONTRACT", "OFFER"), ("Cash",), (("Cash", "1866.00"),)),
+            TableSnapshot(1, (), (), ()),
+        )
+        diagnostic = lme_semantic_diagnostics(snapshots)
+        self.assertIn("table_count=2", diagnostic)
+        self.assertIn("row_counts=[1, 0]", diagnostic)
+        self.assertIn("cash=True", diagnostic)
+        self.assertIn("offer=True", diagnostic)
+        self.assertNotIn("1866", diagnostic)
+
+    def test_text_timeline_identity_and_page_flags_are_sanitized(self):
+        self.assertEqual(sanitize_lme_text("Lead 1866.25\nOffer"), "Lead <number> Offer")
+        self.assertEqual(expected_lme_identity("https://www.lme.com/x/lme-nickel#Summary"), "nickel")
+        self.assertEqual(
+            format_row_timeline(((0.0, (0, 0)), (1.25, (2, 0)))),
+            "[0.0s:[0, 0], 1.2s:[2, 0]]",
+        )
+        self.assertTrue(rows_transitioned_to_nonzero(((0.0, (0, 0)), (1.25, (2, 0)))))
+        self.assertFalse(rows_transitioned_to_nonzero(((0.0, (2, 0)),)))
+        flags = lme_page_flags("Cookie consent; verify you are human; access denied")
+        self.assertIn("cookie=True", flags)
+        self.assertIn("challenge=True", flags)
+        self.assertIn("access_denied=True", flags)
+
+    def test_console_diagnostic_reports_category_not_raw_message(self):
+        class Driver:
+            def get_log(self, kind):
+                self.kind = kind
+                return [{"level": "SEVERE", "source": "javascript", "message": "price 1866 failed"}]
+
+        diagnostic = lme_console_diagnostics(Driver())
+        self.assertIn("console_errors=1", diagnostic)
+        self.assertIn("javascript", diagnostic)
+        self.assertNotIn("1866", diagnostic)
+        self.assertNotIn("failed", diagnostic)
+
+    def test_contract_failure_text_redacts_quote_like_values(self):
+        diagnostic = sanitize_lme_text(
+            "contract check failed: OFFER value 1866.25 is below minimum 2000",
+            limit=500,
+        )
+        self.assertIn("OFFER value <number>", diagnostic)
+        self.assertNotIn("1866", diagnostic)
+        self.assertNotIn("2000", diagnostic)
 
 
 if __name__ == "__main__":
