@@ -31,13 +31,46 @@ $env:GOOGLE_SHEET_WORKSHEET = $WorksheetName
 $env:PYTHONUNBUFFERED = "1"
 $env:PYTHONUTF8 = "1"
 
-New-Item -ItemType Directory -Force -Path $LogDirectory | Out-Null
-$Timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
-$LogPath = Join-Path $LogDirectory "c3_2_pilot_dry_run-$Timestamp.log"
 Write-Host "C3.2-2 Windows Pilot Dry Run"
 Write-Host "google_sheet_write=DISABLED mode=DRY_RUN"
-$Output = & $PythonExecutable $Pilot 2>&1
-$ExitCode = $LASTEXITCODE
-$Output | Tee-Object -FilePath $LogPath
+
+$StartInfo = New-Object System.Diagnostics.ProcessStartInfo
+$StartInfo.FileName = $PythonExecutable
+$StartInfo.Arguments = ('"{0}"' -f $Pilot)
+$StartInfo.UseShellExecute = $false
+$StartInfo.CreateNoWindow = $true
+$StartInfo.RedirectStandardOutput = $true
+$StartInfo.RedirectStandardError = $true
+$Process = New-Object System.Diagnostics.Process
+$Process.StartInfo = $StartInfo
+
+try {
+    if (-not $Process.Start()) { Fail "Pilot process did not start." }
+    $StdoutTask = $Process.StandardOutput.ReadToEndAsync()
+    $StderrTask = $Process.StandardError.ReadToEndAsync()
+    $Process.WaitForExit()
+    $StandardOutput = $StdoutTask.Result
+    $StandardError = $StderrTask.Result
+    $ExitCode = $Process.ExitCode
+} catch {
+    Fail "Pilot process execution failed."
+}
+
+$OutputParts = @()
+if (-not [string]::IsNullOrEmpty($StandardOutput)) { $OutputParts += $StandardOutput }
+if (-not [string]::IsNullOrEmpty($StandardError)) { $OutputParts += $StandardError }
+$Output = $OutputParts -join [Environment]::NewLine
+$Timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+$LogPath = Join-Path $LogDirectory "c3_2_pilot_dry_run-$Timestamp.log"
+
+try {
+    New-Item -ItemType Directory -Force -Path $LogDirectory -ErrorAction Stop | Out-Null
+    Set-Content -LiteralPath $LogPath -Value $Output -Encoding UTF8 -ErrorAction Stop
+} catch {
+    Write-Host "[FAIL] Pilot log write failed."
+    exit 1
+}
+
+if (-not [string]::IsNullOrEmpty($Output)) { Write-Output $Output }
 Write-Host "exit_code=$ExitCode log_path=$LogPath"
 exit $ExitCode
