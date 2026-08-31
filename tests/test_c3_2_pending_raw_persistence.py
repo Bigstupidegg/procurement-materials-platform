@@ -6,7 +6,8 @@ import unittest
 from unittest.mock import patch
 
 from scripts.c3_2_pending_raw_persistence import (
-    ALLOW_PENDING_RAW_WRITE, MARKET_RAW_COLUMNS, build_pending_rows, run_pending_raw_persistence_pilot,
+    ALLOW_PENDING_RAW_WRITE, MARKET_RAW_COLUMNS, _readback_matches, build_pending_rows,
+    run_pending_raw_persistence_pilot,
 )
 from scripts.company_market_collector import make_quote
 
@@ -82,7 +83,8 @@ class PendingRawPersistenceTests(unittest.TestCase):
 
     def test_same_value_duplicate_is_not_appended_twice(self):
         rows, _ = build_pending_rows(valid_quotes(), run_id="old", now=NOW)
-        result, written, _ = self._run(existing=[rows[0]])
+        slash_row = list(rows[0]); slash_row[4] = "2026/08/31"
+        result, written, _ = self._run(existing=[tuple(slash_row)])
         self.assertEqual(result.duplicate_same_count, 1)
         self.assertEqual(result.appended_count, 3)
         self.assertNotIn("CU_SMM_CATHODE", [row[2] for row in written])
@@ -107,8 +109,41 @@ class PendingRawPersistenceTests(unittest.TestCase):
         result, written, audits = self._run(readback=False)
         self.assertEqual(result.final_status, "FAIL_CLOSED")
         self.assertEqual(result.error_code, "READBACK_MISMATCH")
-        self.assertEqual(result.appended_count, 0)
+        self.assertEqual(result.appended_count, 4)
         self.assertEqual(audits[0][17], "MISMATCH")
+        self.assertEqual(audits[0][16], 4)
+        self.assertEqual(audits[0][22], "TRUE")
+
+    def test_readback_normalizes_date_presentations_but_not_actual_date_changes(self):
+        rows, _ = build_pending_rows(valid_quotes(), run_id="run", now=NOW)
+        displayed = []
+        for row in rows:
+            copy = list(row)
+            copy[4] = "2026/08/31"
+            copy[1] = None
+            copy[16] = None
+            displayed.append(tuple(copy))
+        self.assertTrue(_readback_matches(rows, displayed))
+        wrong = list(displayed[0]); wrong[4] = "2026/08/30"
+        self.assertFalse(_readback_matches(rows[:1], [tuple(wrong)]))
+
+    def test_readback_accepts_date_objects_and_blank_pending_fields(self):
+        rows, _ = build_pending_rows(valid_quotes(), run_id="run", now=NOW)
+        displayed = []
+        for row in rows:
+            copy = list(row)
+            copy[4] = NOW.date()
+            copy[1] = None
+            copy[16] = ""
+            displayed.append(tuple(copy))
+        self.assertTrue(_readback_matches(rows, displayed))
+
+    def test_invalid_source_date_or_pending_business_date_date_fails_closed(self):
+        rows, _ = build_pending_rows(valid_quotes(), run_id="run", now=NOW)
+        invalid = list(rows[0]); invalid[4] = "not-a-date"
+        self.assertFalse(_readback_matches(rows[:1], [tuple(invalid)]))
+        populated = list(rows[0]); populated[1] = "2026/08/31"
+        self.assertFalse(_readback_matches(rows[:1], [tuple(populated)]))
 
     def test_collection_failure_still_appends_redacted_audit_without_raw_write(self):
         stored, audits = [], []

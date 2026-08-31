@@ -7,7 +7,7 @@ when its separate, opt-in runtime gate is enabled.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 import math
 import os
@@ -148,6 +148,21 @@ def _numeric_text(value: object) -> str:
         return str(value).strip()
 
 
+def _canonical_date(value: object) -> str | None:
+    """Normalize presentation-only date variants; reject ambiguous dates."""
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    text = str(value or "").strip()
+    if not text:
+        return None
+    # Only ISO and unambiguous year-first slash dates are accepted here.
+    if "/" in text and not text[:4].isdigit():
+        return None
+    return normalize_market_date(text)
+
+
 def _same_pending_value(existing: Mapping[str, object], candidate: Sequence[object]) -> bool:
     return (
         str(existing["source_id"]).strip() == str(candidate[3]).strip()
@@ -163,8 +178,11 @@ def classify_pending_rows(candidates: Sequence[tuple[object, ...]], existing_val
     duplicate_same = 0
     conflicts = 0
     for candidate in candidates:
-        key = (str(candidate[4]), str(candidate[2]))
-        matches = [row for row in existing if (str(row["source_date"]), str(row["material_id"])) == key]
+        key = (_canonical_date(candidate[4]), str(candidate[2]))
+        matches = [
+            row for row in existing
+            if (_canonical_date(row["source_date"]), str(row["material_id"])) == key
+        ]
         if not matches:
             appendable.append(candidate)
         elif any(_same_pending_value(row, candidate) for row in matches):
@@ -199,6 +217,12 @@ def _readback_matches(expected: Sequence[Sequence[object]], values: Sequence[Seq
             return False
         padded = list(actual) + [""] * (len(MARKET_RAW_COLUMNS) - len(actual))
         for index in range(len(MARKET_RAW_COLUMNS)):
+            if index in {1, 4, 16}:
+                expected_date = _canonical_date(row[index])
+                actual_date = _canonical_date(padded[index])
+                if expected_date != actual_date:
+                    return False
+                continue
             # Sheets may render a numeric 100.0 as "100".  Compare that one
             # numeric field as a value; every other persistence field remains exact.
             if index == 5:
@@ -262,7 +286,8 @@ def run_pending_raw_persistence_pilot(
         status, error = ("PENDING_RAW_ONLY", "PENDING_RAW_ONLY") if readback == "MATCH" else ("FAIL_CLOSED", "READBACK_MISMATCH")
     if "CU_SMM_CATHODE" in missing and status == "PENDING_RAW_ONLY":
         error = "SMM_SNAPSHOT_MISSING"
-    result = PendingPersistenceResult(run_id, len(candidates), len(appendable) if readback == "MATCH" else 0, duplicate_same, conflicts, missing, readback, status, error)
+    actual_appended = len(appendable)
+    result = PendingPersistenceResult(run_id, len(candidates), actual_appended, duplicate_same, conflicts, missing, readback, status, error)
     finished = datetime.now(TAIPEI).isoformat(timespec="seconds")
     audit_writer(sheet_id, credential_file, build_pending_audit_row(result, started_at=started, finished_at=finished))
     return result
