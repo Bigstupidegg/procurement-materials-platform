@@ -65,7 +65,7 @@ class PowerShellWrapperEncodingTests(unittest.TestCase):
             launcher.write_text(launcher_text, encoding="ascii")
             marker = root / "child-ran.marker"
             (scripts / PILOT_WRAPPER.name).write_text(
-                "param([string]$SheetId, [string]$WorksheetName)\n"
+                "param([string]$SheetId, [string]$WorksheetName, [string]$LogDirectory)\n"
                 "if ($env:ALLOW_GOOGLE_SHEET_WRITE -ne '0') { exit 21 }\n"
                 "if (-not [string]::IsNullOrWhiteSpace($env:CONTROLLED_WRITE_APPROVAL)) { exit 22 }\n"
                 "if ($WorksheetName -ne (-join [char[]](0x5927,0x5B97,0x6750,0x6599,0x20,0x884C,0x60C5,0x7D71,0x8A08,0x8868))) { exit 23 }\n"
@@ -91,10 +91,12 @@ class PowerShellWrapperEncodingTests(unittest.TestCase):
 
     def test_evening_launcher_is_transparent_and_uses_user_scope_only(self):
         text = EVENING_LAUNCHER.read_text(encoding="ascii")
+        self.assertIn('[string]$LogDirectory = (Join-Path $env:LOCALAPPDATA "ProcurementMaterialsPlatform\\logs")', text)
         self.assertIn('[Environment]::GetEnvironmentVariable("GOOGLE_SHEET_ID", "User")', text)
         self.assertIn('$env:ALLOW_GOOGLE_SHEET_WRITE = "0"', text)
         self.assertIn("Remove-Item Env:CONTROLLED_WRITE_APPROVAL", text)
         self.assertIn("run_c3_2_windows_pilot_dry_run.ps1", text)
+        self.assertIn("-LogDirectory $LogDirectory", text)
         self.assertNotIn("EncodedCommand", text)
         self.assertNotIn("Base64", text)
         self.assertNotIn("service_account.json", text)

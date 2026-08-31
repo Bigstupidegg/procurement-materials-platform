@@ -1,3 +1,7 @@
+param(
+    [string]$LogDirectory = (Join-Path $env:LOCALAPPDATA "ProcurementMaterialsPlatform\logs")
+)
+
 $ErrorActionPreference = "Stop"
 
 function Fail([string]$Message) {
@@ -17,6 +21,6 @@ Remove-Item Env:CONTROLLED_WRITE_APPROVAL -ErrorAction SilentlyContinue
 $WorksheetName = -join [char[]](0x5927, 0x5B97, 0x6750, 0x6599, 0x20, 0x884C, 0x60C5, 0x7D71, 0x8A08, 0x8868)
 
 Set-Location -LiteralPath $RepositoryRoot
-& $PilotWrapper -SheetId $SheetId -WorksheetName $WorksheetName
+& $PilotWrapper -SheetId $SheetId -WorksheetName $WorksheetName -LogDirectory $LogDirectory
 $ChildExitCode = $LASTEXITCODE
 exit $ChildExitCode
