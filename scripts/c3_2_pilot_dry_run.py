@@ -1,17 +1,18 @@
 """C3.2-2 Windows Pilot preparation: safe, read-only preflight.
 
-This entry point intentionally contains no Google Sheet mutation API calls.  It
-uses the proven C3.1 layout, row-safety, and anomaly components, but produces
-only a redacted local diagnostic status for the C3.2 pilot gate.
+This entry point intentionally contains no production market-sheet mutation API
+calls. It uses the proven C3.1 layout, row-safety, and anomaly components, and
+may append one redacted Run_Audit row for the C3.2 pilot gate.
 """
 from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass
 from datetime import datetime
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Mapping, Sequence
+from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 try:
@@ -42,6 +43,14 @@ except ModuleNotFoundError:  # imported as scripts.c3_2_pilot_dry_run
 
 TAIPEI = ZoneInfo("Asia/Taipei")
 STATUS_DIRECTORY_ENV = "COMPANY_MARKET_PILOT_STATUS_DIRECTORY"
+RUN_AUDIT_COLUMNS = (
+    "run_id", "started_at", "finished_at", "runner_type", "mode",
+    "collector_version", "expected_count", "success_count", "collection_status",
+    "date_status", "business_date", "sheet_contract_status", "duplicate_status",
+    "row_safety_status", "anomaly_status", "write_enabled", "write_count",
+    "readback_status", "final_status", "failure_class", "error_code", "retry_total",
+    "data_persisted", "audit_version", "created_at", "notes",
+)
 
 
 @dataclass(frozen=True)
@@ -73,7 +82,7 @@ class PilotResult:
             "anomaly_status": self.anomaly_status,
             "mode": "DRY_RUN",
             "google_sheet_write": "DISABLED",
-            "audit_persistence": "LOCAL_REDACTED_STATUS_ONLY",
+            "audit_persistence": "RUN_AUDIT_ONLY_REDACTED",
             "final_classification": self.final_status,
             "target_row": self.target_row,
         }
@@ -83,6 +92,52 @@ def enforce_write_disabled() -> None:
     """Make a write impossible even if a caller inherited an unsafe environment."""
     os.environ.pop("CONTROLLED_WRITE_APPROVAL", None)
     os.environ["ALLOW_GOOGLE_SHEET_WRITE"] = "0"
+
+
+def append_run_audit(
+    sheet_id: str,
+    credential_file: str,
+    row: Sequence[object],
+    *,
+    worksheet_name: str = "Run_Audit",
+) -> None:
+    """Append one redacted audit row; this function has no other Sheet mutation."""
+    if len(row) != len(RUN_AUDIT_COLUMNS):
+        raise DataContractError("Run_Audit schema column count mismatch.")
+    if not sheet_id.strip() or not credential_file.strip():
+        raise DataContractError("Run_Audit requires Sheet ID and credential file.")
+    import gspread
+
+    audit_sheet = gspread.service_account(filename=credential_file).open_by_key(sheet_id).worksheet(worksheet_name)
+    audit_sheet.append_row(list(row), value_input_option="USER_ENTERED")
+
+
+def build_run_audit_row(
+    result: PilotResult,
+    *,
+    started_at: str,
+    finished_at: str,
+    run_id: str | None = None,
+    success_count: int = 0,
+    retry_total: int = 0,
+    failure_class: str = "",
+    error_code: str = "",
+    notes: str = "",
+) -> tuple[object, ...]:
+    """Build the fixed Run_Audit schema without accepting quote values."""
+    safe = result.safe_dict()
+    final_status = str(safe["final_classification"])
+    if result.date_status == "DATE_MISMATCH":
+        error_code = "DATE_MISMATCH"
+    return (
+        run_id or str(uuid4()), started_at, finished_at, "WINDOWS", "PILOT",
+        "C3.2-2", 11, success_count, result.collection_status,
+        "MISMATCH" if result.date_status == "DATE_MISMATCH" else result.date_status,
+        result.target_business_date or "", result.sheet_contract_status,
+        result.duplicate_status, result.row_safety_status, result.anomaly_status,
+        "FALSE", 0, "NOT_APPLICABLE", final_status, failure_class, error_code,
+        retry_total, "FALSE", "1", finished_at, notes,
+    )
 
 
 def read_sheet_read_only(sheet_id: str, credential_file: str, worksheet_name: str):
@@ -158,15 +213,52 @@ def run_pilot_dry_run(
     finance_fetcher: Callable[[], dict[str, MarketQuote]] = fetch_yfinance_quotes,
     sheet_reader: Callable[[str, str, str], tuple[Sequence[Sequence[object]], Sequence[Sequence[object]]]] = read_sheet_read_only,
     status_writer: Callable[[PilotResult], Path] = persist_redacted_status,
+    audit_writer: Callable[[str, str, Sequence[object]], None] = append_run_audit,
 ) -> int:
     enforce_write_disabled()
-    quotes = browser_fetcher()
-    quotes.update(finance_fetcher())
-    contract_rows, data_rows = sheet_reader(sheet_id, credential_file, worksheet_name)
-    result = evaluate_pilot_dry_run(quotes, contract_rows, data_rows)
-    output = status_writer(result)
+    started_at = datetime.now(TAIPEI).isoformat(timespec="seconds")
+    quotes: dict[str, MarketQuote] = {}
+    failure_class = ""
+    error_code = ""
+    notes = ""
+    try:
+        quotes.update(browser_fetcher())
+        quotes.update(finance_fetcher())
+        contract_rows, data_rows = sheet_reader(sheet_id, credential_file, worksheet_name)
+        result = evaluate_pilot_dry_run(quotes, contract_rows, data_rows)
+    except Exception as exc:
+        result = PilotResult(
+            started_at, "FAIL", "NOT_CHECKED", None, "NOT_CHECKED", "NOT_CHECKED",
+            "NOT_CHECKED", "NOT_CHECKED", "FAIL_CLOSED",
+        )
+        failure_class = "EXTERNAL_SERVICE_FAILURE"
+        error_code = "COLLECTION_OR_INSPECTION_FAILURE"
+        notes = type(exc).__name__
+    finished_at = datetime.now(TAIPEI).isoformat(timespec="seconds")
+    try:
+        output = status_writer(result)
+    except Exception as exc:
+        output = Path("LOCAL_STATUS_WRITE_FAILED")
+        notes = "; ".join(filter(None, (notes, type(exc).__name__)))
+    try:
+        audit_row = build_run_audit_row(
+            result,
+            started_at=started_at,
+            finished_at=finished_at,
+            success_count=sum(1 for quote in quotes.values() if quote.ok),
+            retry_total=sum(max(0, quote.attempts - 1) for quote in quotes.values()),
+            failure_class=failure_class,
+            error_code=error_code,
+            notes=notes,
+        )
+        audit_writer(sheet_id, credential_file, audit_row)
+    except Exception as exc:
+        print("run_audit_write=FAIL classification=ENVIRONMENT_FAILURE")
+        print(f"run_audit_error={type(exc).__name__}")
+        return 1
     print(f"C3_2_PILOT_RESULT={result.final_status} date_status={result.date_status}")
-    print(f"google_sheet_write=DISABLED audit_persistence=LOCAL_REDACTED_STATUS_ONLY raw_values_logged=NO status_path={output}")
+    print(f"run_audit_write=APPEND_ONLY schema_columns={len(RUN_AUDIT_COLUMNS)}")
+    print(f"google_sheet_write=DISABLED audit_persistence=RUN_AUDIT_ONLY raw_values_logged=NO status_path={output}")
     return 0 if result.final_status == "DRY_RUN_PASS_WRITE_DISABLED" else 1
 
 
