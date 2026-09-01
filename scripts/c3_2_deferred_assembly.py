@@ -55,6 +55,26 @@ class DeferredAssemblyResult:
     failure_reason: str | None = None
 
 
+def assemble_deferred_canonical_business_date(target_date: str, canonical_records: Iterable[object]) -> DeferredAssemblyResult:
+    """Assemble only records explicitly selected by the canonicalization layer."""
+    snapshots: list[PendingSnapshot] = []
+    for canonical in canonical_records:
+        if getattr(canonical, "canonical_status", None) != "CANONICAL":
+            return DeferredAssemblyResult("ASSEMBLY_INCOMPLETE", None, (), failure_reason="NON_CANONICAL_RECORD")
+        observation = getattr(canonical, "observation", None)
+        if observation is None:
+            return DeferredAssemblyResult("ASSEMBLY_INCOMPLETE", None, (), failure_reason="MISSING_OBSERVATION")
+        snapshots.append(PendingSnapshot(
+            material_id=observation.material_id, source_id=observation.source_id,
+            source_date=observation.source_date, price=observation.price,
+            currency=observation.currency, unit=observation.unit,
+            market_type=observation.market_type, collected_at=observation.observation_at,
+            source_status=observation.source_status, date_parse_status=observation.date_parse_status,
+            run_id="canonical:" + observation.record_id, collector_version="C3.2-canonical",
+        ))
+    return assemble_deferred_business_date(target_date, snapshots)
+
+
 def enforce_pending_raw_write_disabled() -> None:
     """PoC safety: no approval token or environment can enable persistence."""
     os.environ.pop("CONTROLLED_WRITE_APPROVAL", None)
