@@ -30,6 +30,10 @@ def run(*, sheet_id: str, credential_file: str, dry_run: bool) -> int:
     import gspread
 
     collected_at = datetime.now(ZoneInfo("Asia/Taipei")).isoformat(timespec="seconds")
+    if date.today().weekday() >= 5:
+        print("SCHEDULED_SHADOW=NORMAL_SKIP_NON_BUSINESS_DAY execution_at=" + collected_at + " no_smm_backfill=TRUE")
+        return 0
+    print("SCHEDULED_SHADOW_EXECUTION execution_at=" + collected_at + " missed_recovery=TASK_SCHEDULER_START_WHEN_AVAILABLE")
     quotes = fetch_browser_quotes()
     quotes.update(fetch_yfinance_quotes())
     spreadsheet = gspread.service_account(filename=credential_file).open_by_key(sheet_id)

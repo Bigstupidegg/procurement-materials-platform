@@ -11,6 +11,9 @@ class ScheduledShadowRunnerTests(unittest.TestCase):
     def test_runner_uses_shadow_only_components(self):
         text = (ROOT / "scripts" / "c3_2_scheduled_shadow_runner.py").read_text(encoding="utf-8")
         self.assertIn("enforce_shadow_write_safety()", text)
+        self.assertIn("NORMAL_SKIP_NON_BUSINESS_DAY", text)
+        self.assertIn("no_smm_backfill=TRUE", text)
+        self.assertIn("TASK_SCHEDULER_START_WHEN_AVAILABLE", text)
         self.assertIn("append_shadow_observation_plan", text)
         self.assertNotIn("Market_Raw", text)
         self.assertNotIn("ALLOW_GOOGLE_SHEET_WRITE\"] = \"1\"", text)
