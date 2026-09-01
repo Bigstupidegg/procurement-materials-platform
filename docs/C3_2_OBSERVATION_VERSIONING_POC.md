@@ -17,10 +17,14 @@ cannot remain the unique key because it currently contains only date/material.
 
 ## Canonicalization
 
-Yahoo Futures observations marked `INTRADAY` or `LATEST` remain history only.
-Only one verified `FINAL_DAILY_CLOSE` per source date/material may become the
-canonical record.  Multiple final closes with different source/unit/price are
-`HUMAN_REVIEW_REQUIRED`; same-value versions are safe duplicates.  SMM uses its
+Yahoo Futures observations with `source_date == today` are
+`INTRADAY_OR_UNCONFIRMED` and remain history only.  On the next day, the
+historical query must still contain that source date and expose a parseable
+Close before a new `YAHOO_DAILY_CLOSE_CONFIRMED` observation may become the
+canonical record.  A changed confirmed Close is a new version, not a conflict
+with an earlier unconfirmed observation. Multiple confirmed closes with
+different source/unit/price are `HUMAN_REVIEW_REQUIRED`; same-value versions
+are safe duplicates. SMM uses its
 daily snapshot policy and LME its documented delayed official source-date
 policy.  Deferred Same-Date Assembly must receive only canonical records.
 

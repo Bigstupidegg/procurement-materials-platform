@@ -6,7 +6,7 @@ models the proposed append-only observation layer before any schema migration.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Iterable
 
@@ -18,6 +18,8 @@ except ModuleNotFoundError:  # imported as scripts.c3_2_observation_canonicaliza
 
 YAHOO_MATERIALS = frozenset({"BRENT_FUT", "SILVER_FUT", "GOLD_FUT"})
 DAILY_SNAPSHOT_SOURCES = frozenset({"LME", "SMM"})
+YAHOO_UNCONFIRMED = "INTRADAY_OR_UNCONFIRMED"
+YAHOO_CONFIRMED = "YAHOO_DAILY_CLOSE_CONFIRMED"
 
 
 @dataclass(frozen=True)
@@ -55,6 +57,23 @@ class CanonicalizationResult:
     duplicate_same_count: int = 0
     conflict_materials: tuple[str, ...] = ()
     failure_reason: str | None = None
+
+
+def classify_yahoo_close(
+    source_date: object, *, evaluated_on: date, historical_date_present: bool, close_parseable: bool
+) -> str:
+    """Apply the approved two-step Yahoo Futures finality policy.
+
+    A same-day row is never final.  On a later day the historical query must
+    still contain the source date and expose a parseable Close before it can
+    become a canonical candidate.
+    """
+    parsed = normalize_market_date(source_date)
+    if not parsed:
+        return YAHOO_UNCONFIRMED
+    if parsed >= evaluated_on.isoformat():
+        return YAHOO_UNCONFIRMED
+    return YAHOO_CONFIRMED if historical_date_present and close_parseable else YAHOO_UNCONFIRMED
 
 
 def observation_version_key(observation: RawObservation) -> tuple[str, str, str, str]:
@@ -105,7 +124,7 @@ def canonicalize_daily_observations(
 ) -> CanonicalizationResult:
     """Fail closed unless one governed canonical observation exists per material.
 
-    Yahoo observations require an explicit FINAL_DAILY_CLOSE marker.  Intraday
+    Yahoo observations require a next-day confirmed historical Close. Intraday
     observations remain usable as audit history but cannot become daily values.
     """
     target = normalize_market_date(target_date)
@@ -123,7 +142,7 @@ def canonicalize_daily_observations(
     for material_id, candidates in grouped.items():
         valid = [item for item in candidates if _valid(item, target)]
         if material_id in YAHOO_MATERIALS:
-            valid = [item for item in valid if item.observation_kind == "FINAL_DAILY_CLOSE"]
+            valid = [item for item in valid if item.observation_kind == YAHOO_CONFIRMED]
             if not valid:
                 missing_final.append(material_id)
                 continue
@@ -138,10 +157,10 @@ def canonicalize_daily_observations(
             conflicts.append(material_id)
             continue
         duplicate_same += len(older)
-        reason = "YAHOO_FINAL_DAILY_CLOSE" if material_id in YAHOO_MATERIALS else "DAILY_SNAPSHOT"
+        reason = YAHOO_CONFIRMED if material_id in YAHOO_MATERIALS else "DAILY_SNAPSHOT"
         canonical.append(CanonicalDailyRecord(chosen, "CANONICAL", reason))
     if conflicts:
         return CanonicalizationResult("HUMAN_REVIEW_REQUIRED", target, (), duplicate_same, tuple(sorted(conflicts)), "CONFLICTING_OBSERVATION")
     if missing_final:
-        return CanonicalizationResult("CANONICALIZATION_INCOMPLETE", target, (), duplicate_same, (), "FINAL_DAILY_CLOSE_MISSING:" + ",".join(sorted(missing_final)))
+        return CanonicalizationResult("CANONICALIZATION_INCOMPLETE", target, (), duplicate_same, (), "YAHOO_DAILY_CLOSE_UNCONFIRMED:" + ",".join(sorted(missing_final)))
     return CanonicalizationResult("CANONICALIZATION_COMPLETE", target, tuple(canonical), duplicate_same)
