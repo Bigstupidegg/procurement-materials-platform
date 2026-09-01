@@ -8,3 +8,4 @@
 - SMM uses explicit Daily Snapshot dates. LME uses explicit delayed official source dates. No inferred dates or substitutions.
 - Canonicalization and Deferred Assembly are shadow-only until separately approved; assembly consumes canonical records only and requires 11/11 same-date records.
 - Use Codex for code and tests; use read-only source/Sheet/GitHub validation. Keep diagnostics redacted and never log credentials or raw values unnecessarily.
+- After every material checkpoint, Shadow run, commit/push, test result, or data-state change, refresh `.ai/C3_2_CURRENT_STATE.md` with only the latest recovery-critical state. Keep `.ai/` permanently ignored and local; never commit or push it.
