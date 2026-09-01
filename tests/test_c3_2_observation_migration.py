@@ -58,7 +58,8 @@ class ObservationMigrationTests(unittest.TestCase):
     def test_shadow_observation_does_not_block_legacy_reconciliation(self):
         plan = build_legacy_backfill_plan(MARKET_RAW_COLUMNS, [raw_row("one")])
         shadow = list(plan.expected_rows[0]); shadow[len(MARKET_RAW_COLUMNS)] = "shadow-confirmed"
-        self.assertEqual(reconcile_legacy_backfill(plan, V2_COLUMNS, [plan.expected_rows[0], shadow]).status, "READY")
+        result = reconcile_legacy_backfill(plan, V2_COLUMNS, [plan.expected_rows[0], shadow])
+        self.assertEqual((result.status, result.matched_count, result.append_count), ("READY", 1, 0))
 
     def test_duplicate_observation_id_fails_closed(self):
         plan = build_legacy_backfill_plan(MARKET_RAW_COLUMNS, [raw_row("one")])

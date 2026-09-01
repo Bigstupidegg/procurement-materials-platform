@@ -99,7 +99,7 @@ def reconcile_legacy_backfill(plan: MigrationPlan, headers: Sequence[object], ex
     mismatched = [key for key in set(existing) & set(expected) if existing[key] != expected[key]]
     if mismatched:
         return MigrationReconciliation(plan.source_count, len(existing_values), 0, 0, "FAIL_CLOSED", "OBSERVATION_VALUE_MISMATCH")
-    matched = len(existing)
+    matched = len(set(existing) & set(expected))
     return MigrationReconciliation(plan.source_count, len(existing_values), matched, plan.source_count - matched, "READY")
 
 
