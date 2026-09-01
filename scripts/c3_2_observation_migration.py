@@ -91,7 +91,9 @@ def reconcile_legacy_backfill(plan: MigrationPlan, headers: Sequence[object], ex
         if not observation_id or observation_id in existing:
             return MigrationReconciliation(plan.source_count, len(existing_values), 0, 0, "FAIL_CLOSED", "OBSERVATION_ID_NOT_UNIQUE")
         existing[observation_id] = row
-    unknown = set(existing) - set(expected)
+    # Later Shadow runs may append non-legacy observations.  Phase A only owns
+    # and reconciles deterministic legacy-* rows; it must not reject them.
+    unknown = {key for key in set(existing) - set(expected) if key.startswith("legacy-")}
     if unknown:
         return MigrationReconciliation(plan.source_count, len(existing_values), 0, 0, "FAIL_CLOSED", "UNEXPECTED_OBSERVATION_ID")
     mismatched = [key for key in set(existing) & set(expected) if existing[key] != expected[key]]

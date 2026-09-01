@@ -12,3 +12,6 @@ service_account.json
 # Company operational data must not be committed to this public repository
 runtime/
 company-data/
+
+# Local agent checkpoint and diagnostics
+.ai/

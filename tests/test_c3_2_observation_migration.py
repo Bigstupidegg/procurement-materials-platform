@@ -52,8 +52,13 @@ class ObservationMigrationTests(unittest.TestCase):
         plan = build_legacy_backfill_plan(MARKET_RAW_COLUMNS, [raw_row("one")])
         changed = list(plan.expected_rows[0]); changed[5] = "101"
         self.assertEqual(reconcile_legacy_backfill(plan, V2_COLUMNS, [changed]).failure_reason, "OBSERVATION_VALUE_MISMATCH")
-        unknown = list(plan.expected_rows[0]); unknown[len(MARKET_RAW_COLUMNS)] = "unknown"
+        unknown = list(plan.expected_rows[0]); unknown[len(MARKET_RAW_COLUMNS)] = "legacy-unknown"
         self.assertEqual(reconcile_legacy_backfill(plan, V2_COLUMNS, [unknown]).failure_reason, "UNEXPECTED_OBSERVATION_ID")
+
+    def test_shadow_observation_does_not_block_legacy_reconciliation(self):
+        plan = build_legacy_backfill_plan(MARKET_RAW_COLUMNS, [raw_row("one")])
+        shadow = list(plan.expected_rows[0]); shadow[len(MARKET_RAW_COLUMNS)] = "shadow-confirmed"
+        self.assertEqual(reconcile_legacy_backfill(plan, V2_COLUMNS, [plan.expected_rows[0], shadow]).status, "READY")
 
     def test_duplicate_observation_id_fails_closed(self):
         plan = build_legacy_backfill_plan(MARKET_RAW_COLUMNS, [raw_row("one")])
