@@ -15,6 +15,7 @@ WRAPPER = ROOT / "scripts" / "run_c3_1_live_dry_run.ps1"
 SCHEDULED_WRAPPER = ROOT / "scripts" / "run_c3_2_windows_readonly.ps1"
 PILOT_WRAPPER = ROOT / "scripts" / "run_c3_2_windows_pilot_dry_run.ps1"
 EVENING_LAUNCHER = ROOT / "scripts" / "run_c3_2_evening_observation.ps1"
+PENDING_RAW_LAUNCHER = ROOT / "scripts" / "run_c3_2_pending_raw_pilot.ps1"
 
 
 class PowerShellWrapperEncodingTests(unittest.TestCase):
@@ -46,6 +47,16 @@ class PowerShellWrapperEncodingTests(unittest.TestCase):
         text = payload.decode("ascii")
         self.assertIn('$env:ALLOW_GOOGLE_SHEET_WRITE = "0"', text)
         self.assertIn("Remove-Item Env:CONTROLLED_WRITE_APPROVAL", text)
+        self.assertNotIn('$env:ALLOW_GOOGLE_SHEET_WRITE = "1"', text)
+
+    def test_pending_raw_launcher_is_ascii_and_isolated_from_formal_write(self):
+        payload = PENDING_RAW_LAUNCHER.read_bytes()
+        text = payload.decode("ascii")
+        self.assertIn('c3_2_pending_raw_persistence.py', text)
+        self.assertIn('$env:ALLOW_PENDING_RAW_WRITE = "1"', text)
+        self.assertIn('$env:ALLOW_GOOGLE_SHEET_WRITE = "0"', text)
+        self.assertIn("Remove-Item Env:CONTROLLED_WRITE_APPROVAL", text)
+        self.assertNotIn('c3_2_pilot_dry_run.py', text)
         self.assertNotIn('$env:ALLOW_GOOGLE_SHEET_WRITE = "1"', text)
 
     def _run_evening_launcher(self, *, user_lookup_replacement: str, child_exit: int):
@@ -155,6 +166,50 @@ class PowerShellWrapperEncodingTests(unittest.TestCase):
             )
             return completed, marker.exists()
 
+    def _run_pending_raw_launcher(self, *, pilot_exit: int, log_directory: Path):
+        powershell = shutil.which("powershell.exe") or shutil.which("powershell")
+        if powershell is None or os.name != "nt":
+            self.skipTest("Windows PowerShell is available only on Windows")
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            scripts = root / "scripts"
+            scripts.mkdir()
+            launcher = scripts / PENDING_RAW_LAUNCHER.name
+            launcher.write_bytes(PENDING_RAW_LAUNCHER.read_bytes())
+            marker = root / "pending-ran.marker"
+            (scripts / "c3_2_pending_raw_persistence.py").write_text(
+                "from pathlib import Path\nimport os\nimport sys\n"
+                f"Path({str(marker)!r}).write_text('ran', encoding='ascii')\n"
+                "if os.environ.get('ALLOW_PENDING_RAW_WRITE') != '1': raise SystemExit(31)\n"
+                "if os.environ.get('ALLOW_GOOGLE_SHEET_WRITE') != '0': raise SystemExit(32)\n"
+                "if os.environ.get('CONTROLLED_WRITE_APPROVAL'): raise SystemExit(33)\n"
+                "print('PENDING_RAW_RESULT=PENDING_RAW_ONLY')\n"
+                "print('safe pending stderr', file=sys.stderr)\n"
+                f"raise SystemExit({pilot_exit})\n",
+                encoding="ascii",
+            )
+            (root / "service_account.json").write_text("{}", encoding="ascii")
+            shim_directory = root / "launcher"
+            shim_directory.mkdir()
+            (shim_directory / "py.cmd").write_text(f"@echo off\r\necho {sys.executable}\r\n", encoding="ascii")
+            environment = os.environ.copy()
+            environment["PATH"] = str(shim_directory) + os.pathsep + environment.get("PATH", "")
+            environment["ALLOW_GOOGLE_SHEET_WRITE"] = "1"
+            environment["ALLOW_PENDING_RAW_WRITE"] = "0"
+            environment["CONTROLLED_WRITE_APPROVAL"] = "test-approval"
+            completed = subprocess.run(
+                [powershell, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", str(launcher), "-SheetId", "test-sheet-id", "-LogDirectory", str(log_directory)],
+                cwd=root,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                env=environment,
+                timeout=30,
+                check=False,
+            )
+            return completed, marker.exists()
+
     def test_pilot_wrapper_preserves_python_exit_and_logs_both_streams(self):
         with tempfile.TemporaryDirectory() as temporary:
             log_directory = Path(temporary) / "logs"
@@ -190,6 +245,16 @@ class PowerShellWrapperEncodingTests(unittest.TestCase):
             self.assertTrue(ran_failure)
             self.assertNotEqual(failure.returncode, 0)
 
+    def test_pending_raw_launcher_forces_gates_and_preserves_python_exit(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            log_directory = Path(temporary) / "logs"
+            completed, child_ran = self._run_pending_raw_launcher(pilot_exit=7, log_directory=log_directory)
+            self.assertTrue(child_ran)
+            self.assertEqual(completed.returncode, 7)
+            log_text = next(log_directory.glob("c3_2_pending_raw_pilot-*.log")).read_text(encoding="utf-8")
+            self.assertIn("PENDING_RAW_RESULT=PENDING_RAW_ONLY", log_text)
+            self.assertIn("safe pending stderr", log_text)
+
     def test_windows_powershell_parser_accepts_wrappers(self):
         powershell = shutil.which("powershell.exe") or shutil.which("powershell")
         if powershell is None or os.name != "nt":
@@ -210,7 +275,7 @@ if ($errors.Count -gt 0) {
 """
         encoded = base64.b64encode(parser_script.encode("utf-16-le")).decode("ascii")
         environment = os.environ.copy()
-        for wrapper in (WRAPPER, SCHEDULED_WRAPPER, PILOT_WRAPPER, EVENING_LAUNCHER):
+        for wrapper in (WRAPPER, SCHEDULED_WRAPPER, PILOT_WRAPPER, EVENING_LAUNCHER, PENDING_RAW_LAUNCHER):
             environment["C3_PS1_PARSE_PATH"] = str(wrapper)
             completed = subprocess.run(
                 [powershell, "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded],
