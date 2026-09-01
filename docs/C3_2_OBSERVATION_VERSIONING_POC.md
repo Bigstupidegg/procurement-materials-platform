@@ -42,3 +42,15 @@ contract.  Because the proposed v2 store is append-only and separate, rollback
 does not delete or overwrite observations.  Any real schema creation, backfill,
 dual-read cutover, or canonical status persistence requires the Schema
 Migration Human Gate.
+
+## Phase A approval boundary
+
+Phase A creates `Market_Observation_V2` only.  Each existing `Market_Raw` row
+is copied without changing source fields, with a deterministic SHA-256
+`legacy-*` observation ID derived from its original row position and values.
+`observation_at` remains blank and both `observation_kind` and
+`canonical_status` are `LEGACY_UNVERIFIED`; no Yahoo legacy row is a final
+close or a canonical record.  The migration reads back every observation ID and
+its full row before reporting success.  It is safe to rerun after a partial
+append because matching IDs are not appended again; mismatched, duplicate, or
+unknown IDs fail closed.
