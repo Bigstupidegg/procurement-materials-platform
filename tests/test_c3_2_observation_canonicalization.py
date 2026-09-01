@@ -6,7 +6,7 @@ import unittest
 from scripts.c3_2_deferred_assembly import REQUIRED_MATERIALS, assemble_deferred_canonical_business_date
 from scripts.c3_2_observation_canonicalization import (
     YAHOO_CONFIRMED, YAHOO_UNCONFIRMED, RawObservation, canonicalize_daily_observations,
-    classify_yahoo_close,
+    classify_yahoo_close, confirm_yahoo_history_close,
 )
 
 
@@ -57,6 +57,11 @@ class ObservationCanonicalizationTests(unittest.TestCase):
         self.assertEqual(classify_yahoo_close(TARGET, evaluated_on=date(2026, 8, 31), historical_date_present=True, close_parseable=True), YAHOO_UNCONFIRMED)
         self.assertEqual(classify_yahoo_close(TARGET, evaluated_on=date(2026, 9, 1), historical_date_present=False, close_parseable=True), YAHOO_UNCONFIRMED)
         self.assertEqual(classify_yahoo_close(TARGET, evaluated_on=date(2026, 9, 1), historical_date_present=True, close_parseable=True), YAHOO_CONFIRMED)
+
+    def test_historical_adapter_requires_the_target_date_and_parseable_close(self):
+        self.assertEqual(confirm_yahoo_history_close(TARGET, evaluated_on=date(2026, 9, 1), history_rows=[("2026-08-30", 100.0)]), YAHOO_UNCONFIRMED)
+        self.assertEqual(confirm_yahoo_history_close(TARGET, evaluated_on=date(2026, 9, 1), history_rows=[(TARGET, "not-a-close")]), YAHOO_UNCONFIRMED)
+        self.assertEqual(confirm_yahoo_history_close(TARGET, evaluated_on=date(2026, 9, 1), history_rows=[(TARGET, 101.0)]), YAHOO_CONFIRMED)
 
     def test_same_value_versions_are_a_safe_duplicate(self):
         first = observation("SILVER_FUT", price=100.0, observed_at="2026-08-31T16:00:00+08:00")

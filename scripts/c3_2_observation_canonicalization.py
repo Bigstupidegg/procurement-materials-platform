@@ -18,7 +18,7 @@ except ModuleNotFoundError:  # imported as scripts.c3_2_observation_canonicaliza
 
 YAHOO_MATERIALS = frozenset({"BRENT_FUT", "SILVER_FUT", "GOLD_FUT"})
 DAILY_SNAPSHOT_SOURCES = frozenset({"LME", "SMM"})
-YAHOO_UNCONFIRMED = "INTRADAY_OR_UNCONFIRMED"
+YAHOO_UNCONFIRMED = "YAHOO_UNCONFIRMED"
 YAHOO_CONFIRMED = "YAHOO_DAILY_CLOSE_CONFIRMED"
 
 
@@ -74,6 +74,20 @@ def classify_yahoo_close(
     if parsed >= evaluated_on.isoformat():
         return YAHOO_UNCONFIRMED
     return YAHOO_CONFIRMED if historical_date_present and close_parseable else YAHOO_UNCONFIRMED
+
+
+def confirm_yahoo_history_close(source_date: object, *, evaluated_on: date, history_rows: Iterable[tuple[object, object]]) -> str:
+    """Classify a re-read Yahoo daily history result without settlement claims."""
+    target = normalize_market_date(source_date)
+    matching_close = [close for row_date, close in history_rows if normalize_market_date(row_date) == target]
+    parseable = False
+    for close in matching_close:
+        try:
+            Decimal(str(close))
+            parseable = True
+        except InvalidOperation:
+            continue
+    return classify_yahoo_close(target, evaluated_on=evaluated_on, historical_date_present=bool(matching_close), close_parseable=parseable)
 
 
 def observation_version_key(observation: RawObservation) -> tuple[str, str, str, str]:
