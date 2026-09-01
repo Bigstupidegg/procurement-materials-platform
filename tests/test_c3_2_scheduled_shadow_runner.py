@@ -21,7 +21,8 @@ class ScheduledShadowRunnerTests(unittest.TestCase):
         self.assertIn('$env:ALLOW_GOOGLE_SHEET_WRITE = "0"', text)
         self.assertIn('$env:ALLOW_PENDING_RAW_WRITE = "0"', text)
         self.assertIn("Remove-Item Env:CONTROLLED_WRITE_APPROVAL", text)
-        self.assertIn('if ($DryRun) { $args += "--dry-run" }', text)
+        self.assertIn('if ($DryRun) { $PythonArgs += "--dry-run" }', text)
+        self.assertIn("Tee-Object -FilePath $LogPath", text)
         self.assertNotIn('ALLOW_GOOGLE_SHEET_WRITE = "1"', text)
 
 

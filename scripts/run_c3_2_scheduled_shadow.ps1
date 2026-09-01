@@ -13,7 +13,11 @@ Remove-Item Env:CONTROLLED_WRITE_APPROVAL -ErrorAction SilentlyContinue
 $env:GOOGLE_SHEET_ID = $SheetId
 $env:GOOGLE_SERVICE_ACCOUNT_FILE = (Join-Path $RepositoryRoot "service_account.json")
 Set-Location -LiteralPath $RepositoryRoot
-$args = @("scripts\c3_2_scheduled_shadow_runner.py")
-if ($DryRun) { $args += "--dry-run" }
-& py -3 @args
-exit $LASTEXITCODE
+$PythonArgs = @("scripts\c3_2_scheduled_shadow_runner.py")
+if ($DryRun) { $PythonArgs += "--dry-run" }
+New-Item -ItemType Directory -Force -Path $LogDirectory | Out-Null
+$LogPath = Join-Path $LogDirectory ("c3_2_scheduled_shadow-" + (Get-Date -Format "yyyyMMdd-HHmmss") + ".log")
+& py -3 @PythonArgs *>&1 | Tee-Object -FilePath $LogPath
+$ChildExitCode = $LASTEXITCODE
+Write-Host "log_path=$LogPath exit_code=$ChildExitCode"
+exit $ChildExitCode
