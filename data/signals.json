@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-09-02T06:27:20Z",
+  "generatedAt": "2026-09-03T05:51:39Z",
   "isRealData": true,
-  "latestPeriod": "2026-07",
+  "latestPeriod": "2026-08",
   "primarySource": "WORLD_BANK_PINK_SHEET",
   "comparisonSource": "FRED",
   "signalPolicy": {
@@ -27,15 +27,13 @@
   "summary": {
     "materialCount": 7,
     "priorityCounts": {
-      "HIGH": 5,
-      "MEDIUM": 2,
+      "HIGH": 7,
+      "MEDIUM": 0,
       "LOW": 0
     },
     "signalCounts": {
-      "VERIFY_STRONG_INCREASE": 1,
-      "VERIFY_INCREASE": 1,
-      "NEGOTIATE_REDUCTION": 4,
-      "CHALLENGE_INCREASE": 1
+      "VERIFY_STRONG_INCREASE": 2,
+      "NEGOTIATE_REDUCTION": 5
     }
   },
   "materials": {
@@ -46,22 +44,22 @@
       "currency": "USD",
       "displayUnit": "公噸(MT)",
       "sourceUnit": "($/mt)",
-      "latestPeriod": "2026-07",
-      "latestValue": 3599,
+      "latestPeriod": "2026-08",
+      "latestValue": 3875,
       "changes": {
-        "oneMonthPercent": 1.695394,
-        "threeMonthPercent": 6.985731,
-        "sixMonthPercent": 12.013694,
-        "twelveMonthPercent": 30.256967
+        "oneMonthPercent": 7.668797,
+        "threeMonthPercent": 11.286617,
+        "sixMonthPercent": 16.576414,
+        "twelveMonthPercent": 38.938688
       },
       "twelveMonthStatistics": {
-        "average": 3243.5,
-        "high": 3599,
-        "low": 2789,
-        "latestVsAveragePercent": 10.960382,
+        "average": 3334,
+        "high": 3875,
+        "low": 2933,
+        "latestVsAveragePercent": 16.226755,
         "rangePositionPercent": 100,
         "positionLabel": "近12月高檔",
-        "monthlyReturnVolatilityPercent": 3.060022
+        "monthlyReturnVolatilityPercent": 3.338479
       },
       "trend": {
         "code": "BROAD_UPTREND",
@@ -85,9 +83,9 @@
         "note": "FRED僅作交叉核對，不會改寫World Bank趨勢訊號。"
       },
       "evidence": [
-        "3個月變化 +6.99%",
-        "6個月變化 +12.01%",
-        "最新價相對近12月平均 +10.96%",
+        "3個月變化 +11.29%",
+        "6個月變化 +16.58%",
+        "最新價相對近12月平均 +16.23%",
         "目前位於近12月價格區間的 100.0% 位置"
       ],
       "limitations": [
@@ -102,35 +100,35 @@
       "currency": "USD",
       "displayUnit": "公噸(MT)",
       "sourceUnit": "($/mt)",
-      "latestPeriod": "2026-07",
-      "latestValue": 13543,
+      "latestPeriod": "2026-08",
+      "latestValue": 14326,
       "changes": {
-        "oneMonthPercent": -0.066411,
-        "threeMonthPercent": 4.571076,
-        "sixMonthPercent": 4.080848,
-        "twelveMonthPercent": 38.604032
+        "oneMonthPercent": 5.781585,
+        "threeMonthPercent": 5.781585,
+        "sixMonthPercent": 10.616941,
+        "twelveMonthPercent": 48.148914
       },
       "twelveMonthStatistics": {
-        "average": 12089.333333,
-        "high": 13552,
-        "low": 9670,
-        "latestVsAveragePercent": 12.024374,
-        "rangePositionPercent": 99.768161,
+        "average": 12477.333333,
+        "high": 14326,
+        "low": 9984,
+        "latestVsAveragePercent": 14.8162,
+        "rangePositionPercent": 100,
         "positionLabel": "近12月高檔",
-        "monthlyReturnVolatilityPercent": 4.142043
+        "monthlyReturnVolatilityPercent": 4.208654
       },
       "trend": {
-        "code": "MIXED",
-        "label": "多空訊號交錯",
-        "summary": "不同觀察期間的方向不一致，需避免只引用單一月份。"
+        "code": "BROAD_UPTREND",
+        "label": "短中期同步上漲",
+        "summary": "一個月、三個月與六個月變化率皆為正值。"
       },
       "negotiationSignal": {
-        "code": "VERIFY_INCREASE",
-        "label": "核實成本傳導",
-        "priority": "MEDIUM",
-        "marketInterpretation": "市場出現上行壓力，但仍須確認供應商是否已在既有價格中吸收或提前採購。",
-        "recommendedAction": "先核對成本結構與採購落後期，再討論暫時性附加費、分段調整或價格重議機制。",
-        "supplierClaimCheck": "避免直接套用市場漲幅；合理成品漲幅應為材料占比乘以可歸屬的材料變化率。"
+        "code": "VERIFY_STRONG_INCREASE",
+        "label": "上漲壓力需核實",
+        "priority": "HIGH",
+        "marketInterpretation": "短中期市場價格明顯上升，可能形成成本壓力，但不等於供應商可按原料漲幅等比例調價。",
+        "recommendedAction": "要求供應商提供材料占比、實際採購月份、庫存週期及價格公式，計算原料變動對成品價格的合理傳導幅度。",
+        "supplierClaimCheck": "只承認與實際成本結構相符的影響；保留價格回落時對稱調降條款。"
       },
       "sourceCorroboration": {
         "status": "HIGH_AGREEMENT",
@@ -141,10 +139,10 @@
         "note": "FRED僅作交叉核對，不會改寫World Bank趨勢訊號。"
       },
       "evidence": [
-        "3個月變化 +4.57%",
-        "6個月變化 +4.08%",
-        "最新價相對近12月平均 +12.02%",
-        "目前位於近12月價格區間的 99.8% 位置"
+        "3個月變化 +5.78%",
+        "6個月變化 +10.62%",
+        "最新價相對近12月平均 +14.82%",
+        "目前位於近12月價格區間的 100.0% 位置"
       ],
       "limitations": [
         "訊號只反映World Bank原材料月度價格方向，不等於供應商成品成本變動。",
@@ -158,22 +156,22 @@
       "currency": "USD",
       "displayUnit": "公噸(MT)",
       "sourceUnit": "($/mt)",
-      "latestPeriod": "2026-07",
-      "latestValue": 3161,
+      "latestPeriod": "2026-08",
+      "latestValue": 3251,
       "changes": {
-        "oneMonthPercent": -8.083745,
-        "threeMonthPercent": -12.194444,
-        "sixMonthPercent": 0.60471,
-        "twelveMonthPercent": 21.297007
+        "oneMonthPercent": 2.8472,
+        "threeMonthPercent": -11.32024,
+        "sixMonthPercent": 6.068515,
+        "twelveMonthPercent": 25.182903
       },
       "twelveMonthStatistics": {
-        "average": 3098.666667,
+        "average": 3153.166667,
         "high": 3666,
-        "low": 2597,
-        "latestVsAveragePercent": 2.011618,
-        "rangePositionPercent": 52.759588,
+        "low": 2653,
+        "latestVsAveragePercent": 3.102701,
+        "rangePositionPercent": 59.032577,
         "positionLabel": "近12月中間區間",
-        "monthlyReturnVolatilityPercent": 5.561381
+        "monthlyReturnVolatilityPercent": 5.567182
       },
       "trend": {
         "code": "MIXED",
@@ -197,10 +195,10 @@
         "note": "FRED僅作交叉核對，不會改寫World Bank趨勢訊號。"
       },
       "evidence": [
-        "3個月變化 -12.19%",
-        "6個月變化 +0.60%",
-        "最新價相對近12月平均 +2.01%",
-        "目前位於近12月價格區間的 52.8% 位置"
+        "3個月變化 -11.32%",
+        "6個月變化 +6.07%",
+        "最新價相對近12月平均 +3.10%",
+        "目前位於近12月價格區間的 59.0% 位置"
       ],
       "limitations": [
         "訊號只反映World Bank原材料月度價格方向，不等於供應商成品成本變動。",
@@ -214,27 +212,27 @@
       "currency": "USD",
       "displayUnit": "公噸(MT)",
       "sourceUnit": "($/mt)",
-      "latestPeriod": "2026-07",
-      "latestValue": 16651,
+      "latestPeriod": "2026-08",
+      "latestValue": 16751,
       "changes": {
-        "oneMonthPercent": -5.327496,
-        "threeMonthPercent": -7.298742,
-        "sixMonthPercent": -6.291857,
-        "twelveMonthPercent": 10.755621
+        "oneMonthPercent": 0.600565,
+        "threeMonthPercent": -10.927364,
+        "sixMonthPercent": -2.457346,
+        "twelveMonthPercent": 12.054318
       },
       "twelveMonthStatistics": {
-        "average": 16477.25,
+        "average": 16627.416667,
         "high": 18806,
         "low": 14671,
-        "latestVsAveragePercent": 1.054484,
-        "rangePositionPercent": 47.883918,
+        "latestVsAveragePercent": 0.74325,
+        "rangePositionPercent": 50.302297,
         "positionLabel": "近12月中間區間",
-        "monthlyReturnVolatilityPercent": 6.754445
+        "monthlyReturnVolatilityPercent": 6.75657
       },
       "trend": {
-        "code": "BROAD_DOWNTREND",
-        "label": "短中期同步下跌",
-        "summary": "一個月、三個月與六個月變化率皆為負值。"
+        "code": "MIXED",
+        "label": "多空訊號交錯",
+        "summary": "不同觀察期間的方向不一致，需避免只引用單一月份。"
       },
       "negotiationSignal": {
         "code": "NEGOTIATE_REDUCTION",
@@ -253,10 +251,10 @@
         "note": "FRED僅作交叉核對，不會改寫World Bank趨勢訊號。"
       },
       "evidence": [
-        "3個月變化 -7.30%",
-        "6個月變化 -6.29%",
-        "最新價相對近12月平均 +1.05%",
-        "目前位於近12月價格區間的 47.9% 位置"
+        "3個月變化 -10.93%",
+        "6個月變化 -2.46%",
+        "最新價相對近12月平均 +0.74%",
+        "目前位於近12月價格區間的 50.3% 位置"
       ],
       "limitations": [
         "訊號只反映World Bank原材料月度價格方向，不等於供應商成品成本變動。",
@@ -270,22 +268,22 @@
       "currency": "USD",
       "displayUnit": "乾公噸單位(dmtu)",
       "sourceUnit": "($/dmtu)",
-      "latestPeriod": "2026-07",
-      "latestValue": 98.2,
+      "latestPeriod": "2026-08",
+      "latestValue": 96.3,
       "changes": {
-        "oneMonthPercent": -2.579365,
-        "threeMonthPercent": -7.445806,
-        "sixMonthPercent": -6.919431,
-        "twelveMonthPercent": 0.924974
+        "oneMonthPercent": -1.934827,
+        "threeMonthPercent": -11.325967,
+        "sixMonthPercent": -2.530364,
+        "twelveMonthPercent": -3.410231
       },
       "twelveMonthStatistics": {
-        "average": 103.008333,
+        "average": 102.725,
         "high": 108.6,
-        "low": 98.2,
-        "latestVsAveragePercent": -4.667907,
+        "low": 96.3,
+        "latestVsAveragePercent": -6.254563,
         "rangePositionPercent": 0,
         "positionLabel": "近12月低檔",
-        "monthlyReturnVolatilityPercent": 3.79775
+        "monthlyReturnVolatilityPercent": 3.641271
       },
       "trend": {
         "code": "BROAD_DOWNTREND",
@@ -309,9 +307,9 @@
         "note": "World Bank與FRED的鐵礦砂單位標示不同（dmtu與metric ton），未經正式換算規則確認前不計算差異。"
       },
       "evidence": [
-        "3個月變化 -7.45%",
-        "6個月變化 -6.92%",
-        "最新價相對近12月平均 -4.67%",
+        "3個月變化 -11.33%",
+        "6個月變化 -2.53%",
+        "最新價相對近12月平均 -6.25%",
         "目前位於近12月價格區間的 0.0% 位置"
       ],
       "limitations": [
@@ -326,27 +324,27 @@
       "currency": "USD",
       "displayUnit": "桶(bbl)",
       "sourceUnit": "($/bbl)",
-      "latestPeriod": "2026-07",
-      "latestValue": 83.4,
+      "latestPeriod": "2026-08",
+      "latestValue": 90.9,
       "changes": {
-        "oneMonthPercent": -2.34192,
-        "threeMonthPercent": -30.730897,
-        "sixMonthPercent": 24.850299,
-        "twelveMonthPercent": 17.464789
+        "oneMonthPercent": 8.992806,
+        "threeMonthPercent": -15.44186,
+        "sixMonthPercent": 27.848101,
+        "twelveMonthPercent": 33.284457
       },
       "twelveMonthStatistics": {
-        "average": 80.458333,
+        "average": 82.35,
         "high": 120.4,
         "low": 62.7,
-        "latestVsAveragePercent": 3.656137,
-        "rangePositionPercent": 35.875217,
+        "latestVsAveragePercent": 10.382514,
+        "rangePositionPercent": 48.873484,
         "positionLabel": "近12月中間區間",
-        "monthlyReturnVolatilityPercent": 16.287085
+        "monthlyReturnVolatilityPercent": 16.334837
       },
       "trend": {
-        "code": "MIXED",
-        "label": "多空訊號交錯",
-        "summary": "不同觀察期間的方向不一致，需避免只引用單一月份。"
+        "code": "DOWNTREND_REBOUND",
+        "label": "跌勢中的短期反彈",
+        "summary": "最近一個月回升，但三個月方向仍為下跌。"
       },
       "negotiationSignal": {
         "code": "NEGOTIATE_REDUCTION",
@@ -365,10 +363,10 @@
         "note": "FRED僅作交叉核對，不會改寫World Bank趨勢訊號。"
       },
       "evidence": [
-        "3個月變化 -30.73%",
-        "6個月變化 +24.85%",
-        "最新價相對近12月平均 +3.66%",
-        "目前位於近12月價格區間的 35.9% 位置"
+        "3個月變化 -15.44%",
+        "6個月變化 +27.85%",
+        "最新價相對近12月平均 +10.38%",
+        "目前位於近12月價格區間的 48.9% 位置"
       ],
       "limitations": [
         "訊號只反映World Bank原材料月度價格方向，不等於供應商成品成本變動。",
@@ -382,35 +380,35 @@
       "currency": "USD",
       "displayUnit": "MMBtu",
       "sourceUnit": "($/mmbtu)",
-      "latestPeriod": "2026-07",
-      "latestValue": 2.89,
+      "latestPeriod": "2026-08",
+      "latestValue": 2.77,
       "changes": {
-        "oneMonthPercent": -8.253968,
-        "threeMonthPercent": 4.33213,
-        "sixMonthPercent": -61.873351,
-        "twelveMonthPercent": -9.404389
+        "oneMonthPercent": -4.152249,
+        "threeMonthPercent": -5.460751,
+        "sixMonthPercent": -23.268698,
+        "twelveMonthPercent": -4.810997
       },
       "twelveMonthStatistics": {
-        "average": 3.5925,
+        "average": 3.580833,
         "high": 7.58,
         "low": 2.77,
-        "latestVsAveragePercent": -19.554628,
-        "rangePositionPercent": 2.494802,
+        "latestVsAveragePercent": -22.643705,
+        "rangePositionPercent": 0,
         "positionLabel": "近12月低檔",
-        "monthlyReturnVolatilityPercent": 29.719143
+        "monthlyReturnVolatilityPercent": 29.81415
       },
       "trend": {
-        "code": "UPTREND_PULLBACK",
-        "label": "漲勢中的短期回檔",
-        "summary": "最近一個月回落，但三個月方向仍為上漲。"
+        "code": "BROAD_DOWNTREND",
+        "label": "短中期同步下跌",
+        "summary": "一個月、三個月與六個月變化率皆為負值。"
       },
       "negotiationSignal": {
-        "code": "CHALLENGE_INCREASE",
-        "label": "挑戰漲價依據",
-        "priority": "MEDIUM",
-        "marketInterpretation": "市場方向偏弱或最新價格低於近12月平均，全面漲價的市場依據有限。",
-        "recommendedAction": "要求供應商拆分原料、加工、能源、匯率與運費影響，並以可驗證的基準期證明漲價幅度。",
-        "supplierClaimCheck": "不宜接受只寫『原料上漲』的概括理由；應核對實際材料占比及價格傳導時間。"
+        "code": "NEGOTIATE_REDUCTION",
+        "label": "降價議價機會",
+        "priority": "HIGH",
+        "marketInterpretation": "短中期市場價格明顯回落，供應商若仍沿用高價基期，應要求重新檢討。",
+        "recommendedAction": "要求供應商以相同材料、相同單位及相同基準月份重算，提出降價、折讓或價格回饋方案。",
+        "supplierClaimCheck": "若供應商提出漲價，應優先要求說明採購落後期、舊庫存消化及材料占比，不能只引用單月高點。"
       },
       "sourceCorroboration": {
         "status": "HIGH_AGREEMENT",
@@ -421,10 +419,10 @@
         "note": "FRED僅作交叉核對，不會改寫World Bank趨勢訊號。"
       },
       "evidence": [
-        "3個月變化 +4.33%",
-        "6個月變化 -61.87%",
-        "最新價相對近12月平均 -19.55%",
-        "目前位於近12月價格區間的 2.5% 位置"
+        "3個月變化 -5.46%",
+        "6個月變化 -23.27%",
+        "最新價相對近12月平均 -22.64%",
+        "目前位於近12月價格區間的 0.0% 位置"
       ],
       "limitations": [
         "訊號只反映World Bank原材料月度價格方向，不等於供應商成品成本變動。",
