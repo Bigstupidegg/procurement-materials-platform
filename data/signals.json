@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-09-03T05:51:39Z",
+  "generatedAt": "2026-09-03T06:31:17Z",
   "isRealData": true,
   "latestPeriod": "2026-08",
   "primarySource": "WORLD_BANK_PINK_SHEET",
@@ -358,8 +358,8 @@
         "status": "HIGH_AGREEMENT",
         "label": "兩來源高度一致",
         "confidence": "HIGH",
-        "latestDifferencePercentVsWorldBank": 0.431655,
-        "recent12MonthMeanAbsoluteDifferencePercent": 0.484128,
+        "latestDifferencePercentVsWorldBank": 0.19802,
+        "recent12MonthMeanAbsoluteDifferencePercent": 0.460307,
         "note": "FRED僅作交叉核對，不會改寫World Bank趨勢訊號。"
       },
       "evidence": [
@@ -414,8 +414,8 @@
         "status": "HIGH_AGREEMENT",
         "label": "兩來源高度一致",
         "confidence": "HIGH",
-        "latestDifferencePercentVsWorldBank": 0,
-        "recent12MonthMeanAbsoluteDifferencePercent": 0.305555,
+        "latestDifferencePercentVsWorldBank": 0.361011,
+        "recent12MonthMeanAbsoluteDifferencePercent": 0.335639,
         "note": "FRED僅作交叉核對，不會改寫World Bank趨勢訊號。"
       },
       "evidence": [
