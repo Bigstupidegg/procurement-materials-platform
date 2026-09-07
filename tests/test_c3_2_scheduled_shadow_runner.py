@@ -14,6 +14,7 @@ class ScheduledShadowRunnerTests(unittest.TestCase):
         self.assertIn("NORMAL_SKIP_NON_BUSINESS_DAY", text)
         self.assertIn("no_smm_backfill=TRUE", text)
         self.assertIn("TASK_SCHEDULER_START_WHEN_AVAILABLE", text)
+        self.assertIn("skipped_nonbusiness_source", text)
         self.assertIn("append_shadow_observation_plan", text)
         self.assertNotIn("Market_Raw", text)
         self.assertNotIn("ALLOW_GOOGLE_SHEET_WRITE\"] = \"1\"", text)

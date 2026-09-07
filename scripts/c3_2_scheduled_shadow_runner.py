@@ -25,6 +25,13 @@ def _raw(row: tuple[str, ...]) -> RawObservation:
     return RawObservation(row[index["observation_id"]], row[index["material_id"]], row[index["source_id"]], row[index["source_date"]], float(row[index["price"]]), row[index["currency"]], row[index["unit"]], row[index["market_type"]], row[index["observation_at"]], row[index["observation_kind"]], row[index["source_status"]], row[index["date_parse_status"]])
 
 
+def _business_source_date(value: object) -> bool:
+    try:
+        return datetime.fromisoformat(str(value)).date().weekday() < 5
+    except ValueError:
+        return False
+
+
 def run(*, sheet_id: str, credential_file: str, dry_run: bool) -> int:
     enforce_shadow_write_safety()
     import gspread
@@ -42,7 +49,8 @@ def run(*, sheet_id: str, credential_file: str, dry_run: bool) -> int:
     if not values or tuple(values[0]) != V2_COLUMNS:
         print("SCHEDULED_SHADOW=FAIL_CLOSED reason=V2_SCHEMA_MISMATCH")
         return 1
-    candidates = [build_shadow_observation_row(key, quote, evaluated_on=date.today(), collected_at=collected_at) for key, quote in quotes.items() if quote.ok]
+    candidates = [build_shadow_observation_row(key, quote, evaluated_on=date.today(), collected_at=collected_at) for key, quote in quotes.items() if quote.ok and _business_source_date(quote.observed_at)]
+    skipped_nonbusiness = sum(1 for quote in quotes.values() if quote.ok and not _business_source_date(quote.observed_at))
     plan = plan_shadow_observation_append(candidates, values[1:])
     if plan.status != "READY":
         print("SCHEDULED_SHADOW=FAIL_CLOSED reason=" + str(plan.failure_reason))
@@ -52,7 +60,7 @@ def run(*, sheet_id: str, credential_file: str, dry_run: bool) -> int:
     observations = [_raw(row) for row in candidates if row[4] == target]
     canonical = canonicalize_daily_observations(target, observations) if target else None
     assembly = assemble_deferred_canonical_business_date(target, canonical.canonical_records) if canonical else None
-    print("SCHEDULED_SHADOW mode=" + ("DRY_RUN" if dry_run else "V2_APPEND_ONLY") + " source_success=" + str(len(candidates)) + " v2_append=" + str(len(plan.rows)) + " duplicate_same=" + str(plan.duplicate_same_count))
+    print("SCHEDULED_SHADOW mode=" + ("DRY_RUN" if dry_run else "V2_APPEND_ONLY") + " source_success=" + str(len(candidates)) + " skipped_nonbusiness_source=" + str(skipped_nonbusiness) + " v2_append=" + str(len(plan.rows)) + " duplicate_same=" + str(plan.duplicate_same_count))
     print("SHADOW_CANONICAL target=" + (target or "UNAVAILABLE") + " status=" + (canonical.status if canonical else "UNAVAILABLE") + " assembly=" + (assembly.status if assembly else "UNAVAILABLE"))
     if dry_run:
         return 0
