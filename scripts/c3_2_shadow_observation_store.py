@@ -13,13 +13,13 @@ import os
 from typing import Iterable, Mapping, Sequence
 
 try:
-    from c3_2_observation_canonicalization import YAHOO_UNCONFIRMED, classify_yahoo_close
+    from c3_2_observation_canonicalization import YAHOO_CONFIRMED, YAHOO_UNCONFIRMED, classify_yahoo_close, confirm_yahoo_history_close
     from c3_2_observation_migration import V2_COLUMNS
     from c3_2_pending_raw_persistence import MARKET_RAW_COLUMNS
     from company_market_collector import normalize_market_date
     from company_market_core import DataContractError, MarketQuote
 except ModuleNotFoundError:
-    from scripts.c3_2_observation_canonicalization import YAHOO_UNCONFIRMED, classify_yahoo_close
+    from scripts.c3_2_observation_canonicalization import YAHOO_CONFIRMED, YAHOO_UNCONFIRMED, classify_yahoo_close, confirm_yahoo_history_close
     from scripts.c3_2_observation_migration import V2_COLUMNS
     from scripts.c3_2_pending_raw_persistence import MARKET_RAW_COLUMNS
     from scripts.company_market_collector import normalize_market_date
@@ -77,16 +77,13 @@ def shadow_observation_id(*, source_date: str, material_id: str, source_id: str,
     return "shadow-" + hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-def build_shadow_observation_row(key: str, quote: MarketQuote, *, evaluated_on: date, collected_at: str) -> tuple[str, ...]:
+def _build_observation_row(key: str, quote: MarketQuote, *, collected_at: str, kind: str) -> tuple[str, ...]:
     if key not in OBSERVATION_SPECS or not quote.ok:
         raise DataContractError("Only mapped successful observations may enter V2 Shadow.")
     source_date = normalize_market_date(quote.observed_at)
     if not source_date:
         raise DataContractError("Observation source date is required.")
     material_id, source_id, market_type, default_kind = OBSERVATION_SPECS[key]
-    kind = default_kind
-    if default_kind == YAHOO_UNCONFIRMED:
-        kind = classify_yahoo_close(source_date, evaluated_on=evaluated_on, historical_date_present=False, close_parseable=False)
     observation_id = shadow_observation_id(
         source_date=source_date, material_id=material_id, source_id=source_id, price=quote.value,
         currency=quote.currency, unit=quote.unit, market_type=market_type, observation_kind=kind,
@@ -97,6 +94,29 @@ def build_shadow_observation_row(key: str, quote: MarketQuote, *, evaluated_on: 
         "NOT_EVALUATED", "", "", "", "", "SHADOW", "C3.2-shadow-v1", collected_at,
     )
     return raw + (observation_id, collected_at, kind, "SHADOW_UNRESOLVED", kind, "", "", "C3.2_SHADOW_V1")
+
+
+def build_shadow_observation_row(key: str, quote: MarketQuote, *, evaluated_on: date, collected_at: str) -> tuple[str, ...]:
+    if key not in OBSERVATION_SPECS:
+        raise DataContractError("Only mapped observations may enter V2 Shadow.")
+    source_date = normalize_market_date(quote.observed_at)
+    _, _, _, default_kind = OBSERVATION_SPECS[key]
+    kind = default_kind
+    if default_kind == YAHOO_UNCONFIRMED:
+        kind = classify_yahoo_close(source_date, evaluated_on=evaluated_on, historical_date_present=False, close_parseable=False)
+    return _build_observation_row(key, quote, collected_at=collected_at, kind=kind)
+
+
+def build_yahoo_confirmed_observation_row(
+    key: str, quote: MarketQuote, *, evaluated_on: date, collected_at: str, history_rows: Iterable[tuple[object, object]]
+) -> tuple[str, ...]:
+    """Build only a proven next-day Yahoo historical Close version."""
+    if key not in OBSERVATION_SPECS or OBSERVATION_SPECS[key][3] != YAHOO_UNCONFIRMED:
+        raise DataContractError("Yahoo confirmation requires a mapped Yahoo Futures observation.")
+    source_date = normalize_market_date(quote.observed_at)
+    if confirm_yahoo_history_close(source_date, evaluated_on=evaluated_on, history_rows=history_rows) != YAHOO_CONFIRMED:
+        raise DataContractError("Yahoo historical Close is not eligible for confirmation.")
+    return _build_observation_row(key, quote, collected_at=collected_at, kind=YAHOO_CONFIRMED)
 
 
 def plan_shadow_observation_append(candidate_rows: Iterable[Sequence[object]], existing_rows: Iterable[Sequence[object]]) -> ShadowAppendPlan:

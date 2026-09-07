@@ -8,16 +8,16 @@ from zoneinfo import ZoneInfo
 
 try:
     from c3_2_deferred_assembly import assemble_deferred_canonical_business_date
-    from c3_2_observation_canonicalization import RawObservation, canonicalize_daily_observations
+    from c3_2_observation_canonicalization import RawObservation, YAHOO_UNCONFIRMED, canonicalize_daily_observations
     from c3_2_observation_migration import V2_COLUMNS
-    from c3_2_shadow_observation_store import append_shadow_observation_plan, build_shadow_observation_row, enforce_shadow_write_safety, plan_shadow_observation_append
-    from company_market_collector import fetch_browser_quotes, fetch_yfinance_quotes
+    from c3_2_shadow_observation_store import append_shadow_observation_plan, build_shadow_observation_row, build_yahoo_confirmed_observation_row, enforce_shadow_write_safety, plan_shadow_observation_append
+    from company_market_collector import fetch_browser_quotes, fetch_yfinance_historical_close_quotes, fetch_yfinance_quotes
 except ModuleNotFoundError:
     from scripts.c3_2_deferred_assembly import assemble_deferred_canonical_business_date
-    from scripts.c3_2_observation_canonicalization import RawObservation, canonicalize_daily_observations
+    from scripts.c3_2_observation_canonicalization import RawObservation, YAHOO_UNCONFIRMED, canonicalize_daily_observations
     from scripts.c3_2_observation_migration import V2_COLUMNS
-    from scripts.c3_2_shadow_observation_store import append_shadow_observation_plan, build_shadow_observation_row, enforce_shadow_write_safety, plan_shadow_observation_append
-    from scripts.company_market_collector import fetch_browser_quotes, fetch_yfinance_quotes
+    from scripts.c3_2_shadow_observation_store import append_shadow_observation_plan, build_shadow_observation_row, build_yahoo_confirmed_observation_row, enforce_shadow_write_safety, plan_shadow_observation_append
+    from scripts.company_market_collector import fetch_browser_quotes, fetch_yfinance_historical_close_quotes, fetch_yfinance_quotes
 
 
 def _raw(row: tuple[str, ...]) -> RawObservation:
@@ -30,6 +30,48 @@ def _business_source_date(value: object) -> bool:
         return datetime.fromisoformat(str(value)).date().weekday() < 5
     except ValueError:
         return False
+
+
+def _eligible_yahoo_confirmation_dates(observations: list[RawObservation], *, evaluated_on: date) -> list[str]:
+    """Return only previously stored, governed Yahoo observations eligible for re-read."""
+    return sorted({
+        observation.source_date for observation in observations
+        if observation.observation_kind == YAHOO_UNCONFIRMED
+        and observation.source_status in {"SUCCESS", "RETRY_SUCCESS"}
+        and _business_source_date(observation.source_date)
+        and observation.source_date < evaluated_on.isoformat()
+    })
+
+
+def _historical_yahoo_candidates(
+    observations: list[RawObservation], *, evaluated_on: date, collected_at: str, history_fetcher=fetch_yfinance_historical_close_quotes
+) -> list[tuple[str, ...]]:
+    targets = _eligible_yahoo_confirmation_dates(observations, evaluated_on=evaluated_on)
+    if not targets:
+        return []
+    needed = {(observation.source_id, observation.source_date) for observation in observations if observation.observation_kind == YAHOO_UNCONFIRMED and observation.source_date in targets}
+    candidates: list[tuple[str, ...]] = []
+    for (key, target), quote in history_fetcher(targets).items():
+        source_id = {"brent_yfinance": "YFINANCE_BZ=F", "silver_yfinance": "YFINANCE_SI=F", "gold_yfinance": "YFINANCE_GC=F"}.get(key, "")
+        if (source_id, target) not in needed or not quote.ok or quote.observed_at != target:
+            continue
+        candidates.append(build_yahoo_confirmed_observation_row(
+            key, quote, evaluated_on=evaluated_on, collected_at=collected_at, history_rows=[(target, quote.value)]
+        ))
+    return candidates
+
+
+def _evaluate_dates(rows: list[tuple[str, ...]], target_dates: list[str]) -> tuple[bool, list[str]]:
+    """Canonicalize stored V2 history by source date before any append occurs."""
+    observations = [_raw(row) for row in rows]
+    statuses: list[str] = []
+    for target in target_dates:
+        canonical = canonicalize_daily_observations(target, observations)
+        assembly = assemble_deferred_canonical_business_date(target, canonical.canonical_records)
+        statuses.append(target + ":" + canonical.status + ":" + assembly.status)
+        if canonical.status == "HUMAN_REVIEW_REQUIRED" or assembly.status == "HUMAN_REVIEW_REQUIRED":
+            return False, statuses
+    return True, statuses
 
 
 def run(*, sheet_id: str, credential_file: str, dry_run: bool) -> int:
@@ -49,19 +91,23 @@ def run(*, sheet_id: str, credential_file: str, dry_run: bool) -> int:
     if not values or tuple(values[0]) != V2_COLUMNS:
         print("SCHEDULED_SHADOW=FAIL_CLOSED reason=V2_SCHEMA_MISMATCH")
         return 1
+    existing_rows = [tuple(row) for row in values[1:]]
+    existing_observations = [_raw(row) for row in existing_rows]
     candidates = [build_shadow_observation_row(key, quote, evaluated_on=date.today(), collected_at=collected_at) for key, quote in quotes.items() if quote.ok and _business_source_date(quote.observed_at)]
+    candidates.extend(_historical_yahoo_candidates(existing_observations, evaluated_on=date.today(), collected_at=collected_at))
     skipped_nonbusiness = sum(1 for quote in quotes.values() if quote.ok and not _business_source_date(quote.observed_at))
-    plan = plan_shadow_observation_append(candidates, values[1:])
+    plan = plan_shadow_observation_append(candidates, existing_rows)
     if plan.status != "READY":
         print("SCHEDULED_SHADOW=FAIL_CLOSED reason=" + str(plan.failure_reason))
         return 1
     candidate_dates = sorted({row[4] for row in candidates})
-    target = max(candidate_dates) if candidate_dates else ""
-    observations = [_raw(row) for row in candidates if row[4] == target]
-    canonical = canonicalize_daily_observations(target, observations) if target else None
-    assembly = assemble_deferred_canonical_business_date(target, canonical.canonical_records) if canonical else None
+    target_dates = sorted(set(candidate_dates) | set(_eligible_yahoo_confirmation_dates(existing_observations, evaluated_on=date.today())))
+    safe, evaluation_statuses = _evaluate_dates(existing_rows + list(plan.rows), target_dates)
+    if not safe:
+        print("SCHEDULED_SHADOW=FAIL_CLOSED reason=CONFIRMED_CANONICAL_CONFLICT status=" + ",".join(evaluation_statuses))
+        return 1
     print("SCHEDULED_SHADOW mode=" + ("DRY_RUN" if dry_run else "V2_APPEND_ONLY") + " source_success=" + str(len(candidates)) + " skipped_nonbusiness_source=" + str(skipped_nonbusiness) + " v2_append=" + str(len(plan.rows)) + " duplicate_same=" + str(plan.duplicate_same_count))
-    print("SHADOW_CANONICAL target=" + (target or "UNAVAILABLE") + " status=" + (canonical.status if canonical else "UNAVAILABLE") + " assembly=" + (assembly.status if assembly else "UNAVAILABLE"))
+    print("SHADOW_CANONICAL_REEVALUATION=" + (",".join(evaluation_statuses) if evaluation_statuses else "UNAVAILABLE"))
     if dry_run:
         return 0
     result = append_shadow_observation_plan(sheet_id=sheet_id, credential_file=credential_file, plan=plan)

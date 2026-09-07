@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from html import unescape
 from dataclasses import dataclass
 import json
@@ -8,7 +8,7 @@ import os
 from pathlib import Path
 import re
 import time
-from typing import Callable, Sequence
+from typing import Callable, Iterable, Sequence
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
@@ -750,6 +750,50 @@ def fetch_yfinance_quotes() -> dict[str, MarketQuote]:
                 value=None,
                 error=str(exc),
             )
+    return quotes
+
+
+def fetch_yfinance_historical_close_quotes(source_dates: Iterable[str]) -> dict[tuple[str, str], MarketQuote]:
+    """Read explicitly requested Yahoo daily Close rows without inferring dates.
+
+    The caller retains only a returned quote whose requested source date is
+    present in Yahoo history.  Missing or unparsable dates are deliberately
+    absent from the result and therefore cannot be promoted.
+    """
+    import yfinance as yf
+
+    targets: list[str] = []
+    for value in source_dates:
+        parsed = normalize_market_date(value)
+        if parsed and parsed not in targets:
+            targets.append(parsed)
+
+    quotes: dict[tuple[str, str], MarketQuote] = {}
+    for target in targets:
+        try:
+            next_day = (date.fromisoformat(target) + timedelta(days=1)).isoformat()
+        except ValueError:
+            continue
+        for key, (name, symbol, multiplier, currency, unit) in YFINANCE_SPECS.items():
+            try:
+                history = yf.Ticker(symbol).history(start=target, end=next_day, auto_adjust=False)
+                if history.empty or "Close" not in history:
+                    continue
+                matching = [index for index in history.index if normalize_market_date(index) == target]
+                if not matching:
+                    continue
+                raw_value = float(history.loc[matching[-1], "Close"])
+                if not math.isfinite(raw_value):
+                    continue
+                quotes[(key, target)] = make_quote(
+                    key=key, name=name, source="Yahoo Finance / yfinance", instrument=symbol,
+                    term="Continuous Futures", quote_type="Close", currency=currency, unit=unit,
+                    value=round(raw_value * multiplier, 2), observed_at=target,
+                )
+            except Exception:
+                # A missing historical row is a normal non-confirmation, not a
+                # substitute for a source date or a reason to manufacture data.
+                continue
     return quotes
 
 

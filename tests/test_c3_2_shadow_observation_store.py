@@ -5,9 +5,9 @@ import os
 import unittest
 from unittest.mock import patch
 
-from scripts.c3_2_observation_canonicalization import YAHOO_UNCONFIRMED
+from scripts.c3_2_observation_canonicalization import YAHOO_CONFIRMED, YAHOO_UNCONFIRMED
 from scripts.c3_2_shadow_observation_store import (
-    build_shadow_observation_row,
+    build_shadow_observation_row, build_yahoo_confirmed_observation_row,
     enforce_shadow_write_safety,
     plan_shadow_observation_append,
 )
@@ -34,6 +34,21 @@ class ShadowObservationStoreTests(unittest.TestCase):
         reread = build_shadow_observation_row("brent_yfinance", quote(), evaluated_on=date(2026, 9, 1), collected_at="2026-09-01T11:00:00+08:00")
         plan = plan_shadow_observation_append([reread], [row])
         self.assertEqual((plan.status, len(plan.rows), plan.duplicate_same_count), ("READY", 0, 1))
+
+    def test_historical_yahoo_close_builds_a_distinct_confirmed_version(self):
+        row = build_yahoo_confirmed_observation_row(
+            "brent_yfinance", quote(value=91.0), evaluated_on=date(2026, 9, 2),
+            collected_at="2026-09-02T10:00:00+08:00", history_rows=[("2026-09-01", 91.0)],
+        )
+        self.assertEqual(row[24], YAHOO_CONFIRMED)
+        self.assertEqual(row[4], "2026-09-01")
+
+    def test_historical_yahoo_close_refuses_missing_target_date(self):
+        with self.assertRaisesRegex(Exception, "not eligible"):
+            build_yahoo_confirmed_observation_row(
+                "brent_yfinance", quote(), evaluated_on=date(2026, 9, 2),
+                collected_at="2026-09-02T10:00:00+08:00", history_rows=[("2026-08-31", 90.0)],
+            )
 
     def test_id_collision_with_different_value_fails_closed(self):
         row = build_shadow_observation_row("brent_yfinance", quote(), evaluated_on=date(2026, 9, 1), collected_at="2026-09-01T10:00:00+08:00")
