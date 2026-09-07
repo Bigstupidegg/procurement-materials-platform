@@ -5,7 +5,7 @@ from datetime import date
 import unittest
 
 from scripts.c3_2_observation_canonicalization import RawObservation, YAHOO_UNCONFIRMED
-from scripts.c3_2_scheduled_shadow_runner import _eligible_yahoo_confirmation_dates
+from scripts.c3_2_scheduled_shadow_runner import _eligible_yahoo_confirmation_dates, _open_shadow_source_dates
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -24,6 +24,19 @@ class ScheduledShadowRunnerTests(unittest.TestCase):
             "2026-09-03T16:30:00+08:00", YAHOO_UNCONFIRMED,
         )]
         self.assertEqual(_eligible_yahoo_confirmation_dates(observations, evaluated_on=date(2026, 9, 3)), [])
+
+    def test_open_shadow_dates_are_reconsidered_for_later_delayed_sources(self):
+        observations = [
+            RawObservation(
+                "shadow-smm", "CU_SMM_CATHODE", "SMM", "2026-09-03", 70.0, "CNY", "CNY/MT", "SPOT",
+                "2026-09-03T16:30:00+08:00", "DAILY_SNAPSHOT",
+            ),
+            RawObservation(
+                "legacy-row", "CU_LME_CASH", "LME", "2026-09-03", 70.0, "USD", "USD/MT", "SPOT",
+                "", "LEGACY_UNVERIFIED",
+            ),
+        ]
+        self.assertEqual(_open_shadow_source_dates(observations), ["2026-09-03"])
 
     def test_runner_uses_shadow_only_components(self):
         text = (ROOT / "scripts" / "c3_2_scheduled_shadow_runner.py").read_text(encoding="utf-8")

@@ -43,6 +43,20 @@ def _eligible_yahoo_confirmation_dates(observations: list[RawObservation], *, ev
     })
 
 
+def _open_shadow_source_dates(observations: list[RawObservation]) -> list[str]:
+    """Keep governed, incomplete source dates open for later source arrivals.
+
+    A 16:30 Taipei collection time is not a market date.  SMM, Yahoo and LME
+    can arrive on different schedules, so a later observation must cause the
+    original explicit source date to be considered again without backfill.
+    """
+    return sorted({
+        observation.source_date for observation in observations
+        if observation.record_id.startswith("shadow-")
+        and _business_source_date(observation.source_date)
+    })
+
+
 def _historical_yahoo_candidates(
     observations: list[RawObservation], *, evaluated_on: date, collected_at: str, history_fetcher=fetch_yfinance_historical_close_quotes
 ) -> list[tuple[str, ...]]:
@@ -101,7 +115,11 @@ def run(*, sheet_id: str, credential_file: str, dry_run: bool) -> int:
         print("SCHEDULED_SHADOW=FAIL_CLOSED reason=" + str(plan.failure_reason))
         return 1
     candidate_dates = sorted({row[4] for row in candidates})
-    target_dates = sorted(set(candidate_dates) | set(_eligible_yahoo_confirmation_dates(existing_observations, evaluated_on=date.today())))
+    target_dates = sorted(
+        set(candidate_dates)
+        | set(_eligible_yahoo_confirmation_dates(existing_observations, evaluated_on=date.today()))
+        | set(_open_shadow_source_dates(existing_observations))
+    )
     safe, evaluation_statuses = _evaluate_dates(existing_rows + list(plan.rows), target_dates)
     if not safe:
         print("SCHEDULED_SHADOW=FAIL_CLOSED reason=CONFIRMED_CANONICAL_CONFLICT status=" + ",".join(evaluation_statuses))
