@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-09-08T05:59:44Z",
+  "generatedAt": "2026-09-08T06:33:30Z",
   "dataMode": "WORLD_BANK_PRIMARY",
   "worldBank": {
     "status": "SUCCESS",
@@ -14,8 +14,8 @@
   "fred": {
     "status": "SUCCESS",
     "role": "INDEPENDENT_COMPARISON_ONLY",
-    "lastAttemptAt": "2026-09-07T06:39:10Z",
-    "lastSuccessAt": "2026-09-07T06:39:10Z",
+    "lastAttemptAt": "2026-09-08T06:33:30Z",
+    "lastSuccessAt": "2026-09-08T06:33:30Z",
     "latestCommonPeriod": "2026-07",
     "latestAvailablePeriod": "2026-08",
     "latestPeriods": {
