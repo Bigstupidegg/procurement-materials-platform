@@ -83,6 +83,14 @@ class DeferredAssemblyTests(unittest.TestCase):
         result = assemble_deferred_business_date(TARGET, [record(material) for material in REQUIRED_MATERIALS])
         self.assertEqual(result.business_date, TARGET)
 
+    def test_weekend_canonical_target_fails_closed(self):
+        sunday = "2026-09-06"
+        result = assemble_deferred_business_date(
+            sunday, [record(material, sunday) for material in REQUIRED_MATERIALS]
+        )
+        self.assertEqual(result.status, "ASSEMBLY_INCOMPLETE")
+        self.assertEqual(result.failure_reason, "NON_BUSINESS_CANONICAL_TARGET")
+
     def test_silver_contract_multiplier_is_preserved(self):
         self.assertEqual(YFINANCE_SPECS["silver_yfinance"][2], 100.0)
 

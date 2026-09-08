@@ -13,8 +13,9 @@ from scripts.c3_2_observation_canonicalization import (
 TARGET = "2026-08-31"
 
 
-def observation(material_id: str, *, price: float = 100.0, kind: str | None = None, observed_at: str = "2026-08-31T16:00:00+08:00") -> RawObservation:
+def observation(material_id: str, *, price: float = 100.0, kind: str | None = None, observed_at: str | None = None) -> RawObservation:
     yahoo = material_id in {"BRENT_FUT", "SILVER_FUT", "GOLD_FUT"}
+    observed_at = observed_at or ("2026-09-01T10:00:00+08:00" if yahoo else "2026-08-31T16:00:00+08:00")
     return RawObservation(
         record_id=f"{material_id}-{observed_at}", material_id=material_id,
         source_id=("YFINANCE_" + material_id if yahoo else "SMM" if material_id == "CU_SMM_CATHODE" else "LME"),
@@ -34,21 +35,25 @@ class ObservationCanonicalizationTests(unittest.TestCase):
     def test_yahoo_final_close_becomes_the_only_canonical_value(self):
         intraday = observation("BRENT_FUT", price=90.0, kind=YAHOO_UNCONFIRMED, observed_at="2026-08-31T10:00:00+08:00")
         final = observation("BRENT_FUT", price=91.0, kind=YAHOO_CONFIRMED, observed_at="2026-09-01T10:00:00+08:00")
-        result = canonicalize_daily_observations(TARGET, [intraday, final])
+        others = [observation(material) for material in REQUIRED_MATERIALS if material != "BRENT_FUT"]
+        result = canonicalize_daily_observations(TARGET, others + [intraday, final])
         self.assertEqual(result.status, "CANONICALIZATION_COMPLETE")
-        self.assertEqual(result.canonical_records[0].observation.price, 91.0)
-        self.assertEqual(result.canonical_records[0].canonical_reason, YAHOO_CONFIRMED)
+        selected = next(record for record in result.canonical_records if record.observation.material_id == "BRENT_FUT")
+        self.assertEqual(selected.observation.price, 91.0)
+        self.assertEqual(selected.canonical_reason, YAHOO_CONFIRMED)
 
     def test_next_day_confirmed_close_may_differ_from_intraday_without_conflict(self):
         intraday = observation("GOLD_FUT", price=100.0, kind=YAHOO_UNCONFIRMED)
         confirmed = observation("GOLD_FUT", price=101.0, kind=YAHOO_CONFIRMED, observed_at="2026-09-01T10:00:00+08:00")
-        result = canonicalize_daily_observations(TARGET, [intraday, confirmed])
+        others = [observation(material) for material in REQUIRED_MATERIALS if material != "GOLD_FUT"]
+        result = canonicalize_daily_observations(TARGET, others + [intraday, confirmed])
         self.assertEqual(result.status, "CANONICALIZATION_COMPLETE")
-        self.assertEqual(result.canonical_records[0].observation.price, 101.0)
+        selected = next(record for record in result.canonical_records if record.observation.material_id == "GOLD_FUT")
+        self.assertEqual(selected.observation.price, 101.0)
 
     def test_conflicting_final_closes_require_human_review(self):
-        first = observation("GOLD_FUT", price=100.0, observed_at="2026-08-31T16:00:00+08:00")
-        second = observation("GOLD_FUT", price=101.0, observed_at="2026-08-31T17:00:00+08:00")
+        first = observation("GOLD_FUT", price=100.0, observed_at="2026-09-01T16:00:00+08:00")
+        second = observation("GOLD_FUT", price=101.0, observed_at="2026-09-01T17:00:00+08:00")
         result = canonicalize_daily_observations(TARGET, [first, second])
         self.assertEqual(result.status, "HUMAN_REVIEW_REQUIRED")
         self.assertEqual(result.conflict_materials, ("GOLD_FUT",))
@@ -64,12 +69,24 @@ class ObservationCanonicalizationTests(unittest.TestCase):
         self.assertEqual(confirm_yahoo_history_close(TARGET, evaluated_on=date(2026, 9, 1), history_rows=[(TARGET, 101.0)]), YAHOO_CONFIRMED)
 
     def test_same_value_versions_are_a_safe_duplicate(self):
-        first = observation("SILVER_FUT", price=100.0, observed_at="2026-08-31T16:00:00+08:00")
-        second = observation("SILVER_FUT", price=100.0, observed_at="2026-08-31T17:00:00+08:00")
-        result = canonicalize_daily_observations(TARGET, [first, second])
+        first = observation("SILVER_FUT", price=100.0, observed_at="2026-09-01T16:00:00+08:00")
+        second = observation("SILVER_FUT", price=100.0, observed_at="2026-09-01T17:00:00+08:00")
+        others = [observation(material) for material in REQUIRED_MATERIALS if material != "SILVER_FUT"]
+        result = canonicalize_daily_observations(TARGET, others + [first, second])
         self.assertEqual(result.status, "CANONICALIZATION_COMPLETE")
         self.assertEqual(result.duplicate_same_count, 1)
-        self.assertEqual(result.canonical_records[0].observation.record_id, second.record_id)
+        selected = next(record for record in result.canonical_records if record.observation.material_id == "SILVER_FUT")
+        self.assertEqual(selected.observation.record_id, second.record_id)
+
+    def test_missing_required_material_never_reports_complete(self):
+        result = canonicalize_daily_observations(TARGET, [observation("CU_SMM_CATHODE")])
+        self.assertEqual(result.status, "CANONICALIZATION_INCOMPLETE")
+        self.assertIn("REQUIRED_SNAPSHOT_MISSING", result.failure_reason)
+
+    def test_weekend_canonical_target_fails_closed(self):
+        result = canonicalize_daily_observations("2026-09-06", [])
+        self.assertEqual(result.status, "CANONICALIZATION_INCOMPLETE")
+        self.assertEqual(result.failure_reason, "NON_BUSINESS_CANONICAL_TARGET")
 
     def test_deferred_assembly_accepts_canonical_records_only(self):
         result = canonicalize_daily_observations(TARGET, [observation(material) for material in REQUIRED_MATERIALS])

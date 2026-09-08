@@ -12,8 +12,10 @@ import os
 from typing import Iterable
 
 try:
+    from c3_2_market_calendar import explicit_weekday_source_date
     from company_market_collector import normalize_market_date
 except ModuleNotFoundError:  # imported as scripts.c3_2_deferred_assembly
+    from scripts.c3_2_market_calendar import explicit_weekday_source_date
     from scripts.company_market_collector import normalize_market_date
 
 
@@ -105,6 +107,8 @@ def assemble_deferred_business_date(
     target = normalize_market_date(target_date)
     if not target:
         return DeferredAssemblyResult("ASSEMBLY_INCOMPLETE", None, (), failure_reason="INVALID_TARGET_DATE")
+    if explicit_weekday_source_date(target) is None:
+        return DeferredAssemblyResult("ASSEMBLY_INCOMPLETE", None, (), failure_reason="NON_BUSINESS_CANONICAL_TARGET")
 
     records = tuple(pending_records)
     dated_required = [record for record in records if record.material_id in REQUIRED_MATERIALS]

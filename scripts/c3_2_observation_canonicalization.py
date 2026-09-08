@@ -11,8 +11,10 @@ from decimal import Decimal, InvalidOperation
 from typing import Iterable
 
 try:
+    from c3_2_market_calendar import DAILY_SNAPSHOT, assess_source_readiness, explicit_weekday_source_date
     from company_market_collector import normalize_market_date
 except ModuleNotFoundError:  # imported as scripts.c3_2_observation_canonicalization
+    from scripts.c3_2_market_calendar import DAILY_SNAPSHOT, assess_source_readiness, explicit_weekday_source_date
     from scripts.company_market_collector import normalize_market_date
 
 
@@ -20,6 +22,11 @@ YAHOO_MATERIALS = frozenset({"BRENT_FUT", "SILVER_FUT", "GOLD_FUT"})
 DAILY_SNAPSHOT_SOURCES = frozenset({"LME", "SMM"})
 YAHOO_UNCONFIRMED = "YAHOO_UNCONFIRMED"
 YAHOO_CONFIRMED = "YAHOO_DAILY_CLOSE_CONFIRMED"
+REQUIRED_MATERIALS = (
+    "CU_LME_CASH", "CU_LME_3M", "CU_SMM_CATHODE", "AL_LME_CASH",
+    "PB_LME_CASH", "NI_LME_CASH", "SN_LME_CASH", "ZN_LME_CASH",
+    "BRENT_FUT", "SILVER_FUT", "GOLD_FUT",
+)
 
 
 @dataclass(frozen=True)
@@ -144,24 +151,38 @@ def canonicalize_daily_observations(
     target = normalize_market_date(target_date)
     if not target:
         return CanonicalizationResult("CANONICALIZATION_INCOMPLETE", None, (), failure_reason="INVALID_TARGET_DATE")
+    if explicit_weekday_source_date(target) is None:
+        return CanonicalizationResult("CANONICALIZATION_INCOMPLETE", target, (), failure_reason="NON_BUSINESS_CANONICAL_TARGET")
     grouped: dict[str, list[RawObservation]] = {}
     for observation in observations:
-        if normalize_market_date(observation.source_date) == target:
+        if observation.material_id in REQUIRED_MATERIALS and normalize_market_date(observation.source_date) == target:
             grouped.setdefault(observation.material_id, []).append(observation)
 
     canonical: list[CanonicalDailyRecord] = []
     duplicate_same = 0
     conflicts: list[str] = []
     missing_final: list[str] = []
-    for material_id, candidates in grouped.items():
+    missing_snapshot: list[str] = []
+    invalid_maturity: list[str] = []
+    for material_id in REQUIRED_MATERIALS:
+        candidates = grouped.get(material_id, [])
         valid = [item for item in candidates if _valid(item, target)]
         if material_id in YAHOO_MATERIALS:
-            valid = [item for item in valid if item.observation_kind == YAHOO_CONFIRMED]
+            confirmed = [item for item in valid if item.observation_kind == YAHOO_CONFIRMED]
+            valid = [item for item in confirmed if assess_source_readiness(item).status == "READY"]
             if not valid:
+                if confirmed:
+                    invalid_maturity.append(material_id)
                 missing_final.append(material_id)
                 continue
-        elif not valid:
-            continue
+        else:
+            valid = [
+                item for item in valid
+                if item.observation_kind == DAILY_SNAPSHOT and assess_source_readiness(item).status == "READY"
+            ]
+            if not valid:
+                missing_snapshot.append(material_id)
+                continue
         if any(_timestamp(item.observation_at) is None for item in valid):
             return CanonicalizationResult("CANONICALIZATION_INCOMPLETE", target, (), failure_reason="INVALID_OBSERVATION_TIMESTAMP")
         valid.sort(key=lambda item: _timestamp(item.observation_at))
@@ -175,6 +196,13 @@ def canonicalize_daily_observations(
         canonical.append(CanonicalDailyRecord(chosen, "CANONICAL", reason))
     if conflicts:
         return CanonicalizationResult("HUMAN_REVIEW_REQUIRED", target, (), duplicate_same, tuple(sorted(conflicts)), "CONFLICTING_OBSERVATION")
-    if missing_final:
-        return CanonicalizationResult("CANONICALIZATION_INCOMPLETE", target, (), duplicate_same, (), "YAHOO_DAILY_CLOSE_UNCONFIRMED:" + ",".join(sorted(missing_final)))
+    if invalid_maturity:
+        return CanonicalizationResult("CANONICALIZATION_INCOMPLETE", target, (), duplicate_same, (), "YAHOO_CONFIRMATION_NOT_LATER_DAY:" + ",".join(sorted(invalid_maturity)))
+    if missing_final or missing_snapshot:
+        reasons: list[str] = []
+        if missing_snapshot:
+            reasons.append("REQUIRED_SNAPSHOT_MISSING:" + ",".join(sorted(missing_snapshot)))
+        if missing_final:
+            reasons.append("YAHOO_DAILY_CLOSE_UNCONFIRMED:" + ",".join(sorted(missing_final)))
+        return CanonicalizationResult("CANONICALIZATION_INCOMPLETE", target, (), duplicate_same, (), ";".join(reasons))
     return CanonicalizationResult("CANONICALIZATION_COMPLETE", target, tuple(canonical), duplicate_same)
