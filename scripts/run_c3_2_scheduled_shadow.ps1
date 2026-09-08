@@ -17,7 +17,20 @@ $PythonArgs = @("scripts\c3_2_scheduled_shadow_runner.py")
 if ($DryRun) { $PythonArgs += "--dry-run" }
 New-Item -ItemType Directory -Force -Path $LogDirectory | Out-Null
 $LogPath = Join-Path $LogDirectory ("c3_2_scheduled_shadow-" + (Get-Date -Format "yyyyMMdd-HHmmss") + ".log")
-& py -3 @PythonArgs *>&1 | Tee-Object -FilePath $LogPath
-$ChildExitCode = $LASTEXITCODE
+Get-Command py -ErrorAction Stop | Out-Null
+$NativeErrorActionPreference = $ErrorActionPreference
+try {
+    # Windows PowerShell turns native stderr into NativeCommandError records.
+    # Capture those records for the log, but let the Python exit code decide
+    # whether the native process itself succeeded.
+    $ErrorActionPreference = "Continue"
+    $NativeOutput = & py -3 @PythonArgs *>&1
+    $ChildExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $NativeErrorActionPreference
+}
+if ($null -eq $ChildExitCode) { throw "Native Python did not report an exit code." }
+$NativeOutput | Tee-Object -FilePath $LogPath
 Write-Host "log_path=$LogPath exit_code=$ChildExitCode"
 exit $ChildExitCode

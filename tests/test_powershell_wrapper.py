@@ -16,6 +16,7 @@ SCHEDULED_WRAPPER = ROOT / "scripts" / "run_c3_2_windows_readonly.ps1"
 PILOT_WRAPPER = ROOT / "scripts" / "run_c3_2_windows_pilot_dry_run.ps1"
 EVENING_LAUNCHER = ROOT / "scripts" / "run_c3_2_evening_observation.ps1"
 PENDING_RAW_LAUNCHER = ROOT / "scripts" / "run_c3_2_pending_raw_pilot.ps1"
+SHADOW_SCHEDULED_LAUNCHER = ROOT / "scripts" / "run_c3_2_scheduled_shadow.ps1"
 
 
 class PowerShellWrapperEncodingTests(unittest.TestCase):
@@ -58,6 +59,15 @@ class PowerShellWrapperEncodingTests(unittest.TestCase):
         self.assertIn("Remove-Item Env:CONTROLLED_WRITE_APPROVAL", text)
         self.assertNotIn('c3_2_pilot_dry_run.py', text)
         self.assertNotIn('$env:ALLOW_GOOGLE_SHEET_WRITE = "1"', text)
+
+    def test_scheduled_shadow_launcher_handles_native_stderr_by_exit_code(self):
+        payload = SHADOW_SCHEDULED_LAUNCHER.read_bytes()
+        text = payload.decode("ascii")
+        self.assertIn("Get-Command py -ErrorAction Stop", text)
+        self.assertIn('$ErrorActionPreference = "Continue"', text)
+        self.assertIn("$NativeOutput = & py -3 @PythonArgs *>&1", text)
+        self.assertIn("$ChildExitCode = $LASTEXITCODE", text)
+        self.assertIn("$NativeOutput | Tee-Object -FilePath $LogPath", text)
 
     def _run_evening_launcher(self, *, user_lookup_replacement: str, child_exit: int):
         powershell = shutil.which("powershell.exe") or shutil.which("powershell")
@@ -166,6 +176,48 @@ class PowerShellWrapperEncodingTests(unittest.TestCase):
             )
             return completed, marker.exists()
 
+    def _run_scheduled_shadow_launcher(self, *, native_exit: int, log_directory: Path):
+        powershell = shutil.which("powershell.exe") or shutil.which("powershell")
+        if powershell is None or os.name != "nt":
+            self.skipTest("Windows PowerShell is available only on Windows")
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            scripts = root / "scripts"
+            scripts.mkdir()
+            launcher = scripts / SHADOW_SCHEDULED_LAUNCHER.name
+            launcher_text = SHADOW_SCHEDULED_LAUNCHER.read_text(encoding="ascii")
+            launcher_text = launcher_text.replace(
+                '[Environment]::GetEnvironmentVariable("GOOGLE_SHEET_ID", "User")',
+                '"test-sheet-id"',
+            )
+            launcher.write_text(launcher_text, encoding="ascii")
+            shim_directory = root / "launcher"
+            shim_directory.mkdir()
+            (shim_directory / "py.cmd").write_text(
+                "@echo off\r\n"
+                "echo synthetic native stdout\r\n"
+                "echo synthetic native warning 1>&2\r\n"
+                f"exit /b {native_exit}\r\n",
+                encoding="ascii",
+            )
+            environment = os.environ.copy()
+            environment["PATH"] = str(shim_directory) + os.pathsep + environment.get("PATH", "")
+            environment["ALLOW_GOOGLE_SHEET_WRITE"] = "1"
+            environment["ALLOW_PENDING_RAW_WRITE"] = "1"
+            environment["CONTROLLED_WRITE_APPROVAL"] = "test-approval"
+            completed = subprocess.run(
+                [powershell, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", str(launcher), "-LogDirectory", str(log_directory)],
+                cwd=root,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                env=environment,
+                timeout=30,
+                check=False,
+            )
+            return completed
+
     def _run_pending_raw_launcher(self, *, pilot_exit: int, log_directory: Path):
         powershell = shutil.which("powershell.exe") or shutil.which("powershell")
         if powershell is None or os.name != "nt":
@@ -245,6 +297,31 @@ class PowerShellWrapperEncodingTests(unittest.TestCase):
             self.assertTrue(ran_failure)
             self.assertNotEqual(failure.returncode, 0)
 
+    def test_scheduled_shadow_launcher_succeeds_on_native_stderr_with_zero_exit(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            log_directory = Path(temporary) / "logs"
+            completed = self._run_scheduled_shadow_launcher(native_exit=0, log_directory=log_directory)
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertIn("exit_code=0", completed.stdout)
+            log_text = next(log_directory.glob("c3_2_scheduled_shadow-*.log")).read_text(encoding="utf-16")
+            self.assertIn("synthetic native stdout", log_text)
+            self.assertIn("synthetic native warning", log_text)
+
+    def test_scheduled_shadow_launcher_preserves_native_nonzero_exit(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            log_directory = Path(temporary) / "logs"
+            completed = self._run_scheduled_shadow_launcher(native_exit=7, log_directory=log_directory)
+            self.assertEqual(completed.returncode, 7)
+            log_text = next(log_directory.glob("c3_2_scheduled_shadow-*.log")).read_text(encoding="utf-16")
+            self.assertIn("synthetic native warning", log_text)
+
+    def test_scheduled_shadow_launcher_fails_on_genuine_powershell_error(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            blocked_log_path = Path(temporary) / "not-a-directory"
+            blocked_log_path.write_text("occupied", encoding="ascii")
+            completed = self._run_scheduled_shadow_launcher(native_exit=0, log_directory=blocked_log_path)
+            self.assertNotEqual(completed.returncode, 0)
+
     def test_pending_raw_launcher_forces_gates_and_preserves_python_exit(self):
         with tempfile.TemporaryDirectory() as temporary:
             log_directory = Path(temporary) / "logs"
@@ -275,7 +352,7 @@ if ($errors.Count -gt 0) {
 """
         encoded = base64.b64encode(parser_script.encode("utf-16-le")).decode("ascii")
         environment = os.environ.copy()
-        for wrapper in (WRAPPER, SCHEDULED_WRAPPER, PILOT_WRAPPER, EVENING_LAUNCHER, PENDING_RAW_LAUNCHER):
+        for wrapper in (WRAPPER, SCHEDULED_WRAPPER, PILOT_WRAPPER, EVENING_LAUNCHER, PENDING_RAW_LAUNCHER, SHADOW_SCHEDULED_LAUNCHER):
             environment["C3_PS1_PARSE_PATH"] = str(wrapper)
             completed = subprocess.run(
                 [powershell, "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded],
