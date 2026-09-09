@@ -90,3 +90,27 @@ The scheduled launcher may be paused only at a separate operational Human Gate.
 Passing C3.2-6 proves Shadow-only readiness behavior. Persisting canonical
 decisions, enabling Deferred Assembly persistence, or writing A:L/Production
 remains the next Human Gate and requires separate explicit approval.
+
+## Human Gate closeout
+
+C3.2-6 passed Human Gate on the strength of the natural unattended Shadow
+execution at 2026-09-09 16:30 Asia/Taipei. Task Scheduler time-triggered one
+instance; its action returned zero and the runner completed with
+`V2_READBACK status=APPEND_COMPLETE appended=11`. The observed run kept
+execution time, local calendar context, source market dates, collector
+availability, and canonical eligibility separate: delayed LME observations
+kept their explicit 2026-09-08 source date, SMM retained its explicit
+2026-09-09 snapshot date, and same-day Yahoo values remained
+`YAHOO_UNCONFIRMED`. All appended records remained `SHADOW_UNRESOLVED`.
+
+Closeout reconciliation is V2 227 rows with 69 `SHADOW_UNRESOLVED` rows,
+`Market_Raw` 158 rows, and `Run_Audit` 10 rows. Production/A:L, canonical
+persistence, canonical promotion, and Deferred Assembly persistence remain
+disabled. The accepted operational recovery commit before this documentation
+closeout is `e198db5`.
+
+Residual risks remain explicit before any future Production or Canonical
+Promotion decision: an authoritative holiday-calendar source is **NOT
+VERIFIED**, and a source-native publication timestamp distinct from collector
+availability is **NOT VERIFIED**. These uncertainties must not be inferred
+or bypassed.
