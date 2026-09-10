@@ -68,6 +68,9 @@ class PowerShellWrapperEncodingTests(unittest.TestCase):
         self.assertIn("$NativeOutput = & py -3 @PythonArgs *>&1", text)
         self.assertIn("$ChildExitCode = $LASTEXITCODE", text)
         self.assertIn("$NativeOutput | Tee-Object -FilePath $LogPath", text)
+        self.assertIn("WrapperExecutionId", text)
+        self.assertIn("run_c3_2_validator.ps1", text)
+        self.assertIn("Start-Process", text)
 
     def _run_evening_launcher(self, *, user_lookup_replacement: str, child_exit: int):
         powershell = shutil.which("powershell.exe") or shutil.which("powershell")

@@ -70,6 +70,8 @@ class ScheduledShadowRunnerTests(unittest.TestCase):
         self.assertIn('$ErrorActionPreference = "Continue"', text)
         self.assertIn("$NativeOutput = & py -3 @PythonArgs *>&1", text)
         self.assertIn("$ChildExitCode = $LASTEXITCODE", text)
+        self.assertIn("WrapperExecutionId", text)
+        self.assertIn("C3_2_RUNNER_SUMMARY", (ROOT / "scripts" / "c3_2_scheduled_shadow_runner.py").read_text(encoding="utf-8"))
         self.assertIn("Tee-Object -FilePath $LogPath", text)
         self.assertNotIn('ALLOW_GOOGLE_SHEET_WRITE = "1"', text)
 

@@ -1,0 +1,14 @@
+{
+  "schema_version": "c3_2_7.validator.config.v1",
+  "scheduler_task_name": "ProcurementMaterialsPlatform-C3_2_5-ShadowPilot",
+  "scheduler_task_path": "\\ProcurementMaterialsPlatform-C3_2_5-ShadowPilot",
+  "timezone": "Asia/Taipei",
+  "slot_time": "16:30:00",
+  "natural_window_seconds": 120,
+  "completion_warning_seconds": 600,
+  "completion_blocked_seconds": 900,
+  "start_when_available": true,
+  "multiple_instances_policy": "IgnoreNew",
+  "retention_days": 400,
+  "run_id_namespace": "c3_2_7.v1"
+}

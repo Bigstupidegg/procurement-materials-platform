@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "C3.2-7 evidence report",
+  "type": "object",
+  "required": ["schema_version", "report_id", "report_revision", "report_created_at", "report_sha256", "run_id", "wrapper_execution_id", "scheduled_slot", "execution_kind", "scheduler_task_name", "scheduler_instance_id", "scheduler_trigger_kind", "scheduler_execution_datetime", "validator_execution_datetime", "scheduler_result", "wrapper_result", "runner_result", "validator_result", "runner_log_reference", "runner_log_sha256", "date_context", "source_readiness", "canonical_evaluation", "append_result", "readback_result", "append_only_status", "production_status", "a_l_change", "canonical_persistence_status", "repository_version", "warnings", "failures", "not_verified", "blocked", "evidence_references", "final_result", "pass_scope"],
+  "properties": {
+    "schema_version": {"const": "c3_2_7.evidence.v1"},
+    "final_result": {"enum": ["PASS", "WARNING", "FAIL", "BLOCKED"]},
+    "pass_scope": {"enum": ["SHADOW_OPERATIONAL_ONLY", null]},
+    "warnings": {"type": "array"}, "failures": {"type": "array"},
+    "not_verified": {"type": "array"}, "blocked": {"type": "array"}
+  }
+}

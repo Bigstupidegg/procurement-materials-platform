@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from datetime import date, datetime
 import os
 from zoneinfo import ZoneInfo
@@ -150,8 +151,19 @@ def run(*, sheet_id: str, credential_file: str, dry_run: bool) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--wrapper-execution-id", default=os.environ.get("C3_2_WRAPPER_EXECUTION_ID", ""))
     args = parser.parse_args()
-    return run(sheet_id=os.environ.get("GOOGLE_SHEET_ID", ""), credential_file=os.environ.get("GOOGLE_SERVICE_ACCOUNT_FILE", "service_account.json"), dry_run=args.dry_run)
+    result = run(sheet_id=os.environ.get("GOOGLE_SHEET_ID", ""), credential_file=os.environ.get("GOOGLE_SERVICE_ACCOUNT_FILE", "service_account.json"), dry_run=args.dry_run)
+    # This is deliberately a small, non-sensitive runner provenance record.
+    # Detailed validation always re-reads the immutable wrapper log/capture.
+    print("C3_2_RUNNER_SUMMARY=" + json.dumps({
+        "schema_version": "c3_2_7.runner_summary.v1",
+        "wrapper_execution_id": args.wrapper_execution_id,
+        "runner_result": result,
+        "canonical_persistence": "DISABLED",
+        "deferred_assembly_persistence": "DISABLED",
+    }, sort_keys=True))
+    return result
 
 
 if __name__ == "__main__":
