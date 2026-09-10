@@ -17,6 +17,7 @@ PILOT_WRAPPER = ROOT / "scripts" / "run_c3_2_windows_pilot_dry_run.ps1"
 EVENING_LAUNCHER = ROOT / "scripts" / "run_c3_2_evening_observation.ps1"
 PENDING_RAW_LAUNCHER = ROOT / "scripts" / "run_c3_2_pending_raw_pilot.ps1"
 SHADOW_SCHEDULED_LAUNCHER = ROOT / "scripts" / "run_c3_2_scheduled_shadow.ps1"
+SHADOW_FINALIZER = ROOT / "scripts" / "run_c3_2_validator.ps1"
 
 
 class PowerShellWrapperEncodingTests(unittest.TestCase):
@@ -67,7 +68,7 @@ class PowerShellWrapperEncodingTests(unittest.TestCase):
         self.assertIn('$ErrorActionPreference = "Continue"', text)
         self.assertIn("$NativeOutput = & py -3 @PythonArgs *>&1", text)
         self.assertIn("$ChildExitCode = $LASTEXITCODE", text)
-        self.assertIn("$NativeOutput | Tee-Object -FilePath $LogPath", text)
+        self.assertIn("[System.IO.File]::WriteAllText($LogPath", text)
         self.assertIn("WrapperExecutionId", text)
         self.assertIn("run_c3_2_validator.ps1", text)
         self.assertIn("Start-Process", text)
@@ -179,7 +180,7 @@ class PowerShellWrapperEncodingTests(unittest.TestCase):
             )
             return completed, marker.exists()
 
-    def _run_scheduled_shadow_launcher(self, *, native_exit: int, log_directory: Path):
+    def _run_scheduled_shadow_launcher(self, *, native_exit: int, log_directory: Path, post_run_failure: bool = False):
         powershell = shutil.which("powershell.exe") or shutil.which("powershell")
         if powershell is None or os.name != "nt":
             self.skipTest("Windows PowerShell is available only on Windows")
@@ -193,6 +194,11 @@ class PowerShellWrapperEncodingTests(unittest.TestCase):
                 '[Environment]::GetEnvironmentVariable("GOOGLE_SHEET_ID", "User")',
                 '"test-sheet-id"',
             )
+            if post_run_failure:
+                launcher_text = launcher_text.replace(
+                    'New-Item -ItemType Directory -Force -Path $CaptureDirectory | Out-Null',
+                    'throw "synthetic post-run capture failure"',
+                )
             launcher.write_text(launcher_text, encoding="ascii")
             shim_directory = root / "launcher"
             shim_directory.mkdir()
@@ -208,6 +214,8 @@ class PowerShellWrapperEncodingTests(unittest.TestCase):
             environment["ALLOW_GOOGLE_SHEET_WRITE"] = "1"
             environment["ALLOW_PENDING_RAW_WRITE"] = "1"
             environment["CONTROLLED_WRITE_APPROVAL"] = "test-approval"
+            environment["C3_2_FIXTURE_MODE"] = "1"
+            environment["C3_2_EVIDENCE_ROOT"] = str(root / "fixture-evidence")
             completed = subprocess.run(
                 [powershell, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", str(launcher), "-LogDirectory", str(log_directory)],
                 cwd=root,
@@ -306,7 +314,7 @@ class PowerShellWrapperEncodingTests(unittest.TestCase):
             completed = self._run_scheduled_shadow_launcher(native_exit=0, log_directory=log_directory)
             self.assertEqual(completed.returncode, 0, completed.stderr)
             self.assertIn("exit_code=0", completed.stdout)
-            log_text = next(log_directory.glob("c3_2_scheduled_shadow-*.log")).read_text(encoding="utf-16")
+            log_text = next(log_directory.glob("c3_2_scheduled_shadow-*.log")).read_text(encoding="utf-8")
             self.assertIn("synthetic native stdout", log_text)
             self.assertIn("synthetic native warning", log_text)
 
@@ -315,8 +323,24 @@ class PowerShellWrapperEncodingTests(unittest.TestCase):
             log_directory = Path(temporary) / "logs"
             completed = self._run_scheduled_shadow_launcher(native_exit=7, log_directory=log_directory)
             self.assertEqual(completed.returncode, 7)
-            log_text = next(log_directory.glob("c3_2_scheduled_shadow-*.log")).read_text(encoding="utf-16")
+            log_text = next(log_directory.glob("c3_2_scheduled_shadow-*.log")).read_text(encoding="utf-8")
             self.assertIn("synthetic native warning", log_text)
+
+    def test_scheduled_shadow_launcher_preserves_nonzero_through_post_run_failures(self):
+        for runner_exit in (7, 9):
+            with self.subTest(runner_exit=runner_exit), tempfile.TemporaryDirectory() as temporary:
+                completed = self._run_scheduled_shadow_launcher(native_exit=runner_exit, log_directory=Path(temporary) / "logs", post_run_failure=True)
+                self.assertEqual(completed.returncode, runner_exit)
+                self.assertIn("exit_origin=RUNNER", completed.stdout)
+
+    def test_scheduled_fixture_does_not_touch_authoritative_evidence_root(self):
+        authoritative = Path(os.environ.get("LOCALAPPDATA", "")) / "ProcurementMaterialsPlatform" / "evidence" / "c3_2_7"
+        before = sorted(str(path.relative_to(authoritative)) for path in authoritative.rglob("*") if path.is_file()) if authoritative.exists() else []
+        with tempfile.TemporaryDirectory() as temporary:
+            completed = self._run_scheduled_shadow_launcher(native_exit=0, log_directory=Path(temporary) / "logs")
+            self.assertEqual(completed.returncode, 0)
+        after = sorted(str(path.relative_to(authoritative)) for path in authoritative.rglob("*") if path.is_file()) if authoritative.exists() else []
+        self.assertEqual(after, before)
 
     def test_scheduled_shadow_launcher_fails_on_genuine_powershell_error(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -355,7 +379,7 @@ if ($errors.Count -gt 0) {
 """
         encoded = base64.b64encode(parser_script.encode("utf-16-le")).decode("ascii")
         environment = os.environ.copy()
-        for wrapper in (WRAPPER, SCHEDULED_WRAPPER, PILOT_WRAPPER, EVENING_LAUNCHER, PENDING_RAW_LAUNCHER, SHADOW_SCHEDULED_LAUNCHER):
+        for wrapper in (WRAPPER, SCHEDULED_WRAPPER, PILOT_WRAPPER, EVENING_LAUNCHER, PENDING_RAW_LAUNCHER, SHADOW_SCHEDULED_LAUNCHER, SHADOW_FINALIZER):
             environment["C3_PS1_PARSE_PATH"] = str(wrapper)
             completed = subprocess.run(
                 [powershell, "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded],
@@ -372,6 +396,21 @@ if ($errors.Count -gt 0) {
                 0,
                 f"Windows PowerShell parser rejected {wrapper.name}:\n{completed.stderr}",
             )
+
+    def test_detached_finalizer_fixture_invocation_passes_events_to_validator(self):
+        powershell = shutil.which("powershell.exe") or shutil.which("powershell")
+        if powershell is None or os.name != "nt": self.skipTest("Windows PowerShell is required")
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); scripts = root / "scripts"; scripts.mkdir()
+            finalizer = scripts / SHADOW_FINALIZER.name; finalizer.write_bytes(SHADOW_FINALIZER.read_bytes())
+            capture = root / "capture.json"; capture.write_text("{}", encoding="utf-8")
+            events = root / "events.json"; events.write_text('{"events":[]}', encoding="utf-8")
+            marker = root / "validator-args.txt"; shim = root / "shim"; shim.mkdir()
+            (shim / "py.cmd").write_text('@echo off\r\necho %* > "%C3_FINALIZER_MARKER%"\r\nexit /b 0\r\n', encoding="ascii")
+            environment = os.environ.copy(); environment["PATH"] = str(shim) + os.pathsep + environment.get("PATH", ""); environment["C3_FINALIZER_MARKER"] = str(marker)
+            completed = subprocess.run([powershell, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", str(finalizer), "-CapturePath", str(capture), "-WaitSeconds", "0", "-SchedulerEventsFixturePath", str(events)], cwd=root, capture_output=True, text=True, env=environment, timeout=30, check=False)
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertIn("--events", marker.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

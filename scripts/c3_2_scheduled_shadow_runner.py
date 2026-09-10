@@ -5,6 +5,7 @@ import argparse
 import json
 from datetime import date, datetime
 import os
+import hashlib
 from zoneinfo import ZoneInfo
 
 try:
@@ -26,6 +27,13 @@ except ModuleNotFoundError:
 def _raw(row: tuple[str, ...]) -> RawObservation:
     index = {name: position for position, name in enumerate(V2_COLUMNS)}
     return RawObservation(row[index["observation_id"]], row[index["material_id"]], row[index["source_id"]], row[index["source_date"]], float(row[index["price"]]), row[index["currency"]], row[index["unit"]], row[index["market_type"]], row[index["observation_at"]], row[index["observation_kind"]], row[index["source_status"]], row[index["date_parse_status"]])
+
+
+_LAST_EVIDENCE: dict[str, object] = {}
+
+
+def _rows_digest(rows: list[tuple[str, ...]]) -> str:
+    return hashlib.sha256(json.dumps(rows, ensure_ascii=True, separators=(",", ":")).encode("utf-8")).hexdigest()
 
 
 def _business_source_date(value: object) -> bool:
@@ -96,12 +104,23 @@ def _evaluate_dates(rows: list[tuple[str, ...]], target_dates: list[str]) -> tup
 
 
 def run(*, sheet_id: str, credential_file: str, dry_run: bool) -> int:
+    global _LAST_EVIDENCE
+    _LAST_EVIDENCE = {
+        "source_readiness": {"status": "NOT_EVALUATED"},
+        "canonical_evaluation": {"status": "NOT_EVALUATED", "persistence": "DISABLED", "promotion": "DISABLED", "deferred_assembly_persistence": "DISABLED"},
+        "append": {"status": "NOT_EVALUATED"},
+    }
     enforce_shadow_write_safety()
     import gspread
 
     execution = execution_date_context(datetime.now(ZoneInfo("Asia/Taipei")))
     collected_at = execution.scheduler_execution_at
     evaluated_on = date.fromisoformat(execution.local_calendar_date)
+    _LAST_EVIDENCE["date_context"] = {
+        "scheduler_execution_at": collected_at, "local_calendar_date": execution.local_calendar_date,
+        "local_business_date": execution.local_business_date, "local_calendar_status": execution.local_calendar_status,
+        "canonical_target_basis": execution.canonical_target_basis,
+    }
     print(
         "DATE_CONTEXT scheduler_execution_at=" + collected_at
         + " local_calendar_date=" + execution.local_calendar_date
@@ -110,6 +129,9 @@ def run(*, sheet_id: str, credential_file: str, dry_run: bool) -> int:
         + " canonical_target_basis=" + execution.canonical_target_basis
     )
     if execution.local_calendar_status == "WEEKEND":
+        _LAST_EVIDENCE["source_readiness"] = {"status": "NORMAL_SKIP_NON_BUSINESS_DAY"}
+        _LAST_EVIDENCE["canonical_evaluation"] = {"status": "NOT_APPLICABLE", "persistence": "DISABLED", "promotion": "DISABLED", "deferred_assembly_persistence": "DISABLED"}
+        _LAST_EVIDENCE["append"] = {"status": "NOT_APPLICABLE", "pre_count": 0, "post_count": 0, "planned_count": 0, "actual_count": 0, "pre_digest": _rows_digest([]), "post_prefix_digest": _rows_digest([]), "appended_ids": [], "readback_ids": []}
         print("SCHEDULED_SHADOW=NORMAL_SKIP_NON_BUSINESS_DAY execution_at=" + collected_at + " no_smm_backfill=TRUE")
         return 0
     print("SCHEDULED_SHADOW_EXECUTION execution_at=" + collected_at + " missed_recovery=TASK_SCHEDULER_START_WHEN_AVAILABLE")
@@ -122,6 +144,7 @@ def run(*, sheet_id: str, credential_file: str, dry_run: bool) -> int:
         print("SCHEDULED_SHADOW=FAIL_CLOSED reason=V2_SCHEMA_MISMATCH")
         return 1
     existing_rows = [tuple(row) for row in values[1:]]
+    pre_digest = _rows_digest(existing_rows)
     existing_observations = [_raw(row) for row in existing_rows]
     candidates = [build_shadow_observation_row(key, quote, evaluated_on=evaluated_on, collected_at=collected_at) for key, quote in quotes.items() if quote.ok and _business_source_date(quote.observed_at)]
     candidates.extend(_historical_yahoo_candidates(existing_observations, evaluated_on=evaluated_on, collected_at=collected_at))
@@ -136,14 +159,35 @@ def run(*, sheet_id: str, credential_file: str, dry_run: bool) -> int:
         | set(_open_shadow_source_dates(existing_observations + planned_observations))
     )
     safe, evaluation_statuses = _evaluate_dates(existing_rows + list(plan.rows), target_dates)
+    readiness_counts: dict[str, dict[str, int]] = {}
+    for observation in existing_observations + planned_observations:
+        if observation.source_date not in target_dates:
+            continue
+        family = "YAHOO" if observation.source_id.startswith("YFINANCE_") else "SMM" if observation.source_id.startswith("SMM") else "LME" if observation.source_id.startswith("LME") else "OTHER"
+        state = assess_source_readiness(observation).status
+        readiness_counts.setdefault(family, {})[state] = readiness_counts.setdefault(family, {}).get(state, 0) + 1
+    _LAST_EVIDENCE["source_readiness"] = {"status": "EVALUATED", "by_source": readiness_counts, "candidate_count": len(candidates), "skipped_nonbusiness_count": skipped_nonbusiness, "target_count": len(target_dates), "source_native_publication_timestamp": "NOT_VERIFIED"}
+    _LAST_EVIDENCE["canonical_evaluation"] = {"status": "SAFE" if safe else "HUMAN_REVIEW_REQUIRED", "evaluated_target_count": len(target_dates), "persistence": "DISABLED", "promotion": "DISABLED", "deferred_assembly_persistence": "DISABLED"}
     if not safe:
         print("SCHEDULED_SHADOW=FAIL_CLOSED reason=CONFIRMED_CANONICAL_CONFLICT status=" + ",".join(evaluation_statuses))
         return 1
     print("SCHEDULED_SHADOW mode=" + ("DRY_RUN" if dry_run else "V2_APPEND_ONLY") + " source_success=" + str(len(candidates)) + " skipped_nonbusiness_source=" + str(skipped_nonbusiness) + " v2_append=" + str(len(plan.rows)) + " duplicate_same=" + str(plan.duplicate_same_count))
     print("SHADOW_CANONICAL_REEVALUATION=" + (",".join(evaluation_statuses) if evaluation_statuses else "UNAVAILABLE"))
     if dry_run:
+        _LAST_EVIDENCE["append"] = {"status": "DRY_RUN_NOT_PERSISTED", "pre_count": len(existing_rows), "post_count": len(existing_rows), "planned_count": len(plan.rows), "actual_count": 0, "pre_digest": pre_digest, "post_prefix_digest": pre_digest, "appended_ids": [], "readback_ids": []}
         return 0
     result = append_shadow_observation_plan(sheet_id=sheet_id, credential_file=credential_file, plan=plan)
+    id_index = V2_COLUMNS.index("observation_id")
+    appended_ids = [row[id_index] for row in result.rows]
+    post_values = v2.get_all_values()
+    post_rows = [tuple(row) for row in post_values[1:]]
+    readback_ids = [row[id_index] for row in post_rows if len(row) > id_index and row[id_index] in set(appended_ids)]
+    _LAST_EVIDENCE["append"] = {
+        "status": result.status, "pre_count": len(existing_rows), "post_count": len(post_rows),
+        "planned_count": len(plan.rows), "actual_count": len(result.rows), "pre_digest": pre_digest,
+        "post_prefix_digest": _rows_digest(post_rows[:len(existing_rows)]), "appended_ids": appended_ids,
+        "readback_ids": readback_ids,
+    }
     print("V2_READBACK status=" + result.status + " appended=" + str(len(result.rows)))
     return 0 if result.status == "APPEND_COMPLETE" or not result.rows else 1
 
@@ -162,6 +206,7 @@ def main() -> int:
         "runner_result": result,
         "canonical_persistence": "DISABLED",
         "deferred_assembly_persistence": "DISABLED",
+        **_LAST_EVIDENCE,
     }, sort_keys=True))
     return result
 

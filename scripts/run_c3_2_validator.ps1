@@ -1,6 +1,7 @@
 param(
     [Parameter(Mandatory = $true)][string]$CapturePath,
-    [int]$WaitSeconds = 15
+    [int]$WaitSeconds = 15,
+    [string]$SchedulerEventsFixturePath = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -11,10 +12,20 @@ Set-Location -LiteralPath $RepositoryRoot
 Start-Sleep -Seconds $WaitSeconds
 $EventPath = [System.IO.Path]::ChangeExtension($CapturePath, ".scheduler-events.json")
 try {
-    $records = Get-WinEvent -LogName "Microsoft-Windows-TaskScheduler/Operational" -MaxEvents 256 -ErrorAction Stop |
-        Where-Object { $_.Message -like "*ProcurementMaterialsPlatform-C3_2_5-ShadowPilot*" } |
-        ForEach-Object { [ordered]@{ task_name = "ProcurementMaterialsPlatform-C3_2_5-ShadowPilot"; record_id = $_.RecordId; event_id = $_.Id; event_xml = $_.ToXml(); observed_at = $_.TimeCreated.ToUniversalTime().ToString("o") } }
-    [System.IO.File]::WriteAllText($EventPath, (@{ events = @($records) } | ConvertTo-Json -Depth 6 -Compress), (New-Object System.Text.UTF8Encoding($false)))
+    if ($SchedulerEventsFixturePath) {
+        $EventBytes = [System.IO.File]::ReadAllBytes($SchedulerEventsFixturePath)
+    } else {
+        $filter = @{ LogName = "Microsoft-Windows-TaskScheduler/Operational"; Id = @(100, 102, 107, 114, 200, 201); StartTime = (Get-Date).AddHours(-30) }
+        $records = Get-WinEvent -FilterHashtable $filter -MaxEvents 512 -ErrorAction Stop |
+            ForEach-Object { [ordered]@{ record_id = $_.RecordId; event_id = $_.Id; event_xml = $_.ToXml(); observed_at = $_.TimeCreated.ToUniversalTime().ToString("o") } }
+        $EventBytes = (New-Object System.Text.UTF8Encoding($false)).GetBytes((@{ events = @($records) } | ConvertTo-Json -Depth 6 -Compress))
+    }
+    try {
+        $EventStream = [System.IO.File]::Open($EventPath, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
+        try { $EventStream.Write($EventBytes, 0, $EventBytes.Length); $EventStream.Flush() } finally { $EventStream.Dispose() }
+    } catch [System.IO.IOException] {
+        if (-not (Test-Path -LiteralPath $EventPath)) { throw }
+    }
     & py -3 scripts\c3_2_run_validator.py --capture $CapturePath --events $EventPath --stage final
 } catch {
     & py -3 scripts\c3_2_run_validator.py --capture $CapturePath --stage final
