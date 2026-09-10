@@ -76,6 +76,8 @@ Codex may add or modify only:
 - `scripts/run_c3_2_scheduled_shadow.ps1` (minimal orchestration/evidence hook).
 - `scripts/c3_2_scheduled_shadow_runner.py` (minimal run identity and structured
   evidence emission; no business-behavior change).
+- `scripts/company-market-requirements.txt` (only to add the pinned,
+  standards-compliant runtime JSON Schema validator required below).
 - `config/c3_2_validator.json` (new, versioned non-secret policy values).
 - `config/c3_2_evidence_report.schema.json` (new).
 - `tests/test_c3_2_run_validator.py` (new).
@@ -384,3 +386,216 @@ Return to Work with:
 Implementation ownership is **Work -> Codex -> Work**. Codex performs the
 bounded code/test work; Work independently reviews the diff, tests, evidence
 fixtures, safety state, and any separately approved natural Shadow validation.
+
+## Third corrective implementation addendum (authoritative)
+
+This addendum supersedes less-specific earlier C3.2-7 identity, runtime
+validation, capture, and missed-run statements. It exists because independent
+Work revalidation of `1aaa750` reproduced contract failures that earlier
+helper-oriented tests did not cover. Codex must implement exactly this addendum
+and must not infer alternative policy from chat history.
+
+### 1. Authoritative run identity contract
+
+The only authoritative Scheduler execution identity is this five-part tuple:
+
+| Field | Meaning and source |
+| --- | --- |
+| `scheduler_task_name` | Configured Task Scheduler task name/path, observed from task XML and Scheduler event XML. |
+| `scheduler_instance_id` | Required Task Scheduler Operational `Correlation.ActivityID` GUID, normalized without braces. |
+| `scheduler_trigger_event_record_id` | Required EventRecordID for the unique trigger event. |
+| `scheduler_trigger_timestamp` | Required UTC `SystemTime` of that trigger event. |
+| `trigger_kind` | `TIME` only for Event 107; `RECOVERY` only for Event 114; `MANUAL` only from explicit user-trigger evidence. |
+
+`scheduler_instance_id` is the primary Scheduler identity. The other fields
+prevent an Activity GUID from being detached from its trigger provenance. The
+versioned `run_id` is SHA-256 over the configured namespace, task path, and
+all Scheduler identity fields; it is an evidence/report identity, not an input
+chosen by the wrapper.
+
+`wrapper_execution_id` is a fresh UUID generated before Python starts. It is a
+child-process identity only. The wrapper passes it verbatim to the runner, and
+the runner’s sole initial identity is that same value; a process ID is
+diagnostic only and cannot be used as a run identity.
+
+The wrapper capture must contain `wrapper_execution_id`, wrapper start/end,
+runner result, runner-summary digest, runner-log path/digest, and repository
+version. The normalized Scheduler evidence and validator input must contain
+the complete Scheduler tuple and action/start/result/end timestamps. The
+structured runner terminal summary must contain `wrapper_execution_id`, runner
+result, schema version, and all required operational groups. After selecting a
+unique Scheduler instance, the detached finalizer must emit exactly one
+structured **evidence-terminal binding record** in the wrapper log (or an
+immutable explicitly referenced companion log) containing the complete
+Scheduler tuple, `wrapper_execution_id`, runner-summary digest, final-log
+digest, and derived `run_id`. The final report repeats those fields.
+
+PASS requires all of these assertions:
+
+1. one eligible Scheduler tuple maps to one action interval;
+2. that interval contains the captured wrapper interval;
+3. the capture UUID equals the runner terminal UUID;
+4. the capture runner-summary/log digests equal re-read bytes;
+5. the evidence-terminal Scheduler tuple equals normalized Scheduler evidence;
+6. the terminal UUID/digests equal capture/runner evidence; and
+7. report `run_id` is recomputed from the terminal/normalized tuple and equals
+   the report value.
+
+Any absent, ambiguous, or unequal mandatory binding is `BLOCKED`; a
+schema-valid but contradictory or reused identity/digest is `FAIL`. Fixture
+mode alone may use declared synthetic identity values, but must set
+`fixture_evidence.non_operational=true`, use `fixture://` references, and end
+`BLOCKED`. No identity member may be omitted in an end-to-end fixture; a
+fixture intentionally omitting one is invalid evidence and must be BLOCKED.
+Fixtures must never reach an operational PASS. A log/capture from Scheduler
+instance A used with instance B therefore has a terminal tuple or digest
+mismatch and is rejected deterministically.
+
+### 2. Runtime validation layers
+
+Implement three non-overlapping layers, in this order:
+
+1. **JSON Schema layer.** Load the checked-in
+   `config/c3_2_evidence_report.schema.json` at runtime and validate with a
+   standards-compliant Draft 2020-12 implementation plus format checking. Add
+   the required pinned dependency only in
+   `scripts/company-market-requirements.txt`. This layer alone enforces the
+   schema: required/unknown properties, types and nullability, enums, UTC or
+   offset timestamps, GUID/record-ID/hash patterns, assertion structure, and
+   evidence-reference syntax. Do not retain a hand-written partial schema
+   validator that purports to duplicate it.
+2. **Cross-field contract layer.** After schema success, recompute and compare
+   identities, hashes, report hash/run ID, timestamp ordering, Scheduler
+   trigger/action/result/end relationships, wrapper interval containment,
+   runner/wrapper results, and `exit_origin`. It also rejects a nonzero Event
+   201 result even when Event 102 exists.
+3. **Operational semantic layer.** After cross-field success, inspect the
+   content of mandatory groups as defined below. It may not accept an empty
+   object, an empty map/list where evidence is required, an arbitrary status,
+   or a field that merely has the right JSON type.
+
+The structural/schema layer is unavailable or internally invalid only if the
+checked-in schema/validator cannot load (`72`). Malformed, missing, or
+unusable runtime evidence yields `BLOCKED`/`71`; observed contradictory,
+tampered, duplicate, nonzero, or unauthorized evidence yields `FAIL`/`70`.
+Neither outcome can be PASS. A permitted limitation is an explicit
+`NOT_VERIFIED` assertion, but cannot substitute for mandatory run evidence.
+
+### 3. Real Scheduler missed-run derivation
+
+For each evaluated slot `S`, calculate `S` and `next_slot(S)` from the
+verified daily 16:30 Asia/Taipei task trigger. Query the Task Scheduler
+Operational log for the configured task and IDs 100, 102, 107, 114, 200, and
+201 over `[S - 2 minutes, next_slot(S) + 15 minutes]`; retain XML plus record
+metadata sufficient to verify the query. Group by Activity GUID, never by
+localized rendered message or timestamp alone.
+
+Negative evidence is sufficient only when the log is enabled/readable, the
+query succeeds, retention demonstrably covers from before `S` through at
+least `next_slot(S)`, and coverage boundaries are recorded. If this proof is
+missing or event XML is ambiguous, the result is `BLOCKED`, not missed.
+
+| Situation | Deterministic classification |
+| --- | --- |
+| Exactly one Event 107 trigger in `[S, S+2m)` with success | `NATURAL`; completion <=10m is eligible for PASS, >10m and <=15m is WARNING. |
+| Event 107 candidate has no terminal evidence by `S+15m` | BLOCKED unless an explicit Scheduler/runner failure proves FAIL. |
+| Exactly one Event 114, no qualifying 107/user trigger, after `S+2m` and before `next_slot(S)`, with `StartWhenAvailable=true` | `RECOVERY`, WARNING only; never natural PASS. |
+| Verified coverage reaches `next_slot(S)` and no natural or uniquely attributable recovery exists | `MISSED`, FAIL. |
+| Two or more natural/recovery instances map to `S` | `DUPLICATE`, FAIL. |
+| Event 201 carries nonzero result, with or without Event 102 | FAIL. |
+| Log/query/retention unavailable or candidates cannot map uniquely | BLOCKED. |
+
+A finalizer before `next_slot(S)` may report current completion evidence but
+cannot manufacture a missed outcome. A later read-only validator invocation
+must derive the prior-slot result when coverage reaches that boundary. No
+injected `missed_slot`/`evidence_complete` fixture field may be accepted by
+operational code.
+
+### 4. Mandatory capture semantic contract
+
+All content below is required after the JSON Schema layer; the exact runner
+data may be redacted to identifiers, dates, statuses, counts, and digests.
+
+| Group | Minimum operational content | Missing/empty/contradictory outcome |
+| --- | --- | --- |
+| `date_context` | timezone-aware scheduler execution timestamp; local calendar date/status; local business date or explicit unresolved status; `canonical_target_basis=EXPLICIT_SOURCE_MARKET_DATE_ONLY`. | Missing/empty/unparseable: BLOCKED. Inferred/contradictory basis: FAIL. |
+| `source_readiness` | `EVALUATED` with non-empty source-family readiness/status entries, target/candidate counts, and explicit source dates where evaluated; or an explicit valid normal-skip state. Preserve publication timestamp as NOT_VERIFIED where unavailable. | Missing/empty/unknown status: BLOCKED. Contradictory/invalid source evidence: FAIL. |
+| `canonical_evaluation` | decision status; evaluated target count or explicit not-applicable reason; `persistence`, `promotion`, and `deferred_assembly_persistence` explicitly `DISABLED`/`NONE`. | Missing/empty: BLOCKED. Any enabled/persisted/promoted state: FAIL. |
+| `append` / read-back | explicit status; pre/post counts; planned/actual counts; pre and post-prefix SHA-256 digest; appended IDs and exact read-back IDs, or explicit zero/normal-skip proof. | Missing/empty/unparseable: BLOCKED. Count/ID/digest mismatch, mutation, reorder, or deletion: FAIL. |
+| Production controls | observed write gates `0`, cleared approval, approved runner path/repository version; `production_status=DISABLED_BY_CONTROL`; `a_l_change=NOT_VERIFIED`. | Missing evidence: BLOCKED. Gate/runner mismatch or claim of actual A:L no-change: FAIL. |
+| Canonical/deferred state | explicit disabled/no-persist values from the runner/capture. | Missing: BLOCKED. Any persistence/promotion enablement: FAIL. |
+| Runner and evidence terminal | exactly one structured runner terminal plus exactly one structured evidence-terminal binding record, with identity/digest fields required above. | Missing, multiple, malformed, or empty: BLOCKED. Mismatch/reuse/tampering: FAIL. |
+
+### 5. Corrected tests
+
+The previous tests could pass because they exercised helper functions and
+fixture-only injected indicators, while the production path neither bound a
+Scheduler instance into its terminal record nor executed the complete JSON
+Schema and semantic contracts. The corrected tests must use deterministic
+fixtures through the real parser/validator interfaces.
+
+Add an end-to-end fixture path:
+
+`historical Scheduler XML -> normalization/aggregation -> wrapper capture +
+runner terminal + evidence-terminal binding -> runtime JSON Schema ->
+cross-field validation -> semantic validation -> final result`.
+
+It must cover, with deterministic expected results:
+
+- a valid capture/log reused under a different Scheduler instance (`FAIL`);
+- invalid `execution_kind`, `exit_origin`, and nested assertion/evidence
+  reference values (rejected before PASS);
+- empty and malformed date/source/canonical/append groups (`BLOCKED`);
+- XML-derived proven missed slot (`FAIL`) and unavailable coverage (`BLOCKED`);
+- duplicate historical Scheduler execution (`FAIL`);
+- Event 102 plus nonzero Event 201 (`FAIL`); and
+- Event 114 recovery that cannot be classified `NATURAL` or PASS.
+
+Retain existing tests for runner-exit precedence, atomic publication,
+idempotency/conflict preservation, and fixture isolation. Tests may write only
+temporary fixture roots and must assert no generated evidence is persisted to
+the operational local evidence root.
+
+### 6. Minimum third corrective code scope
+
+Expected changes are limited to:
+
+- `scripts/c3_2_run_validator.py`: replace the shallow schema routine with the
+  real schema layer; add identity/cross-field/semantic layers and evidence-based
+  missed-slot derivation.
+- `config/c3_2_evidence_report.schema.json`: version/extend identity, terminal
+  binding, ID, timestamp, assertion, and reference definitions.
+- `scripts/run_c3_2_scheduled_shadow.ps1`: capture and emit/append the final
+  evidence-terminal binding record without changing the runner exit precedence
+  or any write gate.
+- `scripts/run_c3_2_validator.ps1`: query the exact historical Scheduler range
+  and coverage metadata required for slot derivation; remain read-only.
+- `scripts/c3_2_scheduled_shadow_runner.py`: emit only the additional
+  non-sensitive runner terminal fields required for the binding.
+- `scripts/company-market-requirements.txt`: only the pinned JSON Schema
+  validator dependency.
+- the three listed C3.2-7 test modules: add end-to-end and adversarial cases.
+
+No other tracked runtime/persistence/source/Scheduler file is authorized. Do
+not redesign runner exits, atomic publishing, idempotency, or fixture isolation
+except for additions strictly necessary to carry the binding fields.
+
+### 7. Third-fix acceptance checklist
+
+1. One final operational report is uniquely bound to one Scheduler execution.
+2. Reused log/capture across Scheduler instances fails.
+3. Runtime uses the authoritative checked-in JSON Schema.
+4. Invalid enums and nested contract/reference values are rejected.
+5. Semantic-empty mandatory groups block/fail and cannot PASS.
+6. Missed execution is derived from real Scheduler XML/coverage, not fixture
+   flags.
+7. Recovery cannot become natural PASS.
+8. Nonzero Event 201 cannot be overridden by Event 102.
+9. Existing runner-exit precedence remains correct.
+10. Atomic/idempotent publication remains correct.
+11. Fixtures remain isolated from operational evidence.
+12. Targeted adversarial tests pass.
+13. Full regression and changed-file syntax checks pass.
+14. Scheduler, Sheet/business data, Production/A:L, canonical/deferred
+    persistence, and credentials remain unchanged/disabled.
+15. Natural-run acceptance remains a separately approved later Human Gate.
