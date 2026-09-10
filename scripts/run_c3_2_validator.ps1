@@ -24,10 +24,10 @@ try {
         $SlotUtc = [System.TimeZoneInfo]::ConvertTimeToUtc($SlotLocal, $Taipei)
         $CoverageStart = $SlotUtc.AddMinutes(-2); $CoverageRequiredEnd = $SlotUtc.AddDays(1).AddMinutes(15)
         $filter = @{ LogName = "Microsoft-Windows-TaskScheduler/Operational"; Id = @(100, 102, 107, 114, 200, 201); StartTime = $CoverageStart; EndTime = $CoverageRequiredEnd }
-        $records = Get-WinEvent -FilterHashtable $filter -MaxEvents 512 -ErrorAction Stop |
+        $records = Get-WinEvent -FilterHashtable $filter -ErrorAction Stop |
             ForEach-Object { [ordered]@{ record_id = $_.RecordId; event_id = $_.Id; event_xml = $_.ToXml(); observed_at = $_.TimeCreated.ToUniversalTime().ToString("o") } }
         $now = (Get-Date).ToUniversalTime()
-        $EventBytes = (New-Object System.Text.UTF8Encoding($false)).GetBytes((@{ events = @($records); coverage = @{ slot = $SlotUtc.ToString("o"); log_enabled = $true; readable = $true; query_succeeded = $true; coverage_start = $CoverageStart.ToString("o"); coverage_end = $now.ToString("o"); required_end = $CoverageRequiredEnd.ToString("o") } } | ConvertTo-Json -Depth 6 -Compress))
+        $EventBytes = (New-Object System.Text.UTF8Encoding($false)).GetBytes((@{ events = @($records); coverage = @{ slot = $SlotUtc.ToString("o"); log_enabled = $true; readable = $true; query_succeeded = $true; enumeration_complete = $true; retention_proven = $false; coverage_start = $CoverageStart.ToString("o"); coverage_end = $now.ToString("o"); required_end = $CoverageRequiredEnd.ToString("o") } } | ConvertTo-Json -Depth 6 -Compress))
     }
     try {
         $EventStream = [System.IO.File]::Open($EventPath, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)

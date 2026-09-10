@@ -37,7 +37,7 @@ def capture(**overrides):
         "date_context": {"scheduler_execution_at": "2026-09-09T16:30:01+08:00", "local_calendar_date": "2026-09-09", "local_calendar_status": "BUSINESS_DAY", "local_business_date": "2026-09-09", "canonical_target_basis": "EXPLICIT_SOURCE_MARKET_DATE_ONLY"},
         "source_readiness": {"status": "EVALUATED", "by_source": {"SMM": {"READY": 1}}, "candidate_count": 1, "target_count": 1, "source_native_publication_timestamp": "NOT_VERIFIED"},
         "canonical_evaluation": {"persistence": "DISABLED", "promotion": "DISABLED", "deferred_assembly_persistence": "DISABLED", "status": "SAFE", "evaluated_target_count": 1},
-        "append": {"pre_count": 10, "post_count": 12, "planned_count": 2, "actual_count": 2, "pre_digest": "b" * 64, "post_prefix_digest": "b" * 64, "appended_ids": ["id-1", "id-2"], "readback_ids": ["id-1", "id-2"]},
+        "append": {"status": "APPEND_COMPLETE", "pre_count": 10, "post_count": 12, "planned_count": 2, "actual_count": 2, "pre_digest": "b" * 64, "post_prefix_digest": "b" * 64, "appended_ids": ["id-1", "id-2"], "readback_ids": ["id-1", "id-2"]},
         "evidence_references": ["safe-log-digest"],
     }
     value.update(overrides)
@@ -124,12 +124,42 @@ class RunValidatorTests(unittest.TestCase):
         report = self.report(); report["execution_kind"] = "OTHER"; self.assertTrue(validate_report_schema(report))
         report = self.report(); report["wrapper_execution_id"] = "not-a-uuid"; self.assertTrue(validate_report_schema(report))
         report = self.report(); report["evidence_terminal"]["evidence_reference"] = "bad value"; self.assertTrue(validate_report_schema(report))
+        report = self.report(); report["date_context"]["evidence_reference"] = "bad value"; self.assertTrue(validate_report_schema(report))
+        report = self.report(); report["date_context"]["evidence_reference"] = ""; self.assertTrue(validate_report_schema(report))
+        report = self.report(); report["date_context"]["unexpected"] = "x"; self.assertTrue(validate_report_schema(report))
+
+    def test_coverage_requires_full_interval_and_complete_collection(self):
+        def coverage(end, **overrides):
+            value = {"slot": "2026-09-08T16:30:00+08:00", "log_enabled": True, "readable": True, "query_succeeded": True, "retention_proven": True, "enumeration_complete": True, "coverage_start": "2026-09-08T16:28:00+08:00", "coverage_end": end}
+            value.update(overrides); return {"events": [], "coverage": value}
+        now = datetime(2026, 9, 10, tzinfo=UTC)
+        self.assertEqual(correlate_scheduler(coverage("2026-09-09T16:30:00+08:00"), CONFIG, now)["blocked"], "SCHEDULER_COVERAGE_INCOMPLETE")
+        self.assertEqual(correlate_scheduler(coverage("2026-09-09T16:44:59+08:00"), CONFIG, now)["blocked"], "SCHEDULER_COVERAGE_INCOMPLETE")
+        self.assertEqual(correlate_scheduler(coverage("2026-09-09T16:45:00+08:00"), CONFIG, now)["fail"], "MISSED_SCHEDULED_SLOT")
+        self.assertEqual(correlate_scheduler(coverage("2026-09-09T16:45:00+08:00", readable=False), CONFIG, now)["blocked"], "SCHEDULER_COVERAGE_INCOMPLETE")
+        self.assertEqual(correlate_scheduler(coverage("2026-09-09T16:45:00+08:00", enumeration_complete=False), CONFIG, now)["blocked"], "SCHEDULER_COVERAGE_INCOMPLETE")
+        paged = [dict(event(task_name="other-task", instance=f"filler-{index}", record=str(index))) for index in range(512)] + [event()]
+        self.assertEqual(correlate_scheduler(paged, CONFIG, now)["kind"], "NATURAL")
+        finalizer = (ROOT / "scripts" / "run_c3_2_validator.ps1").read_text(encoding="ascii")
+        self.assertNotIn("MaxEvents", finalizer)
+
+    def test_semantic_missing_and_malformed_evidence_blocks(self):
+        cases = [
+            capture(date_context={"scheduler_execution_at": "2026-09-09T16:30:01+08:00", "local_calendar_date": "2026-09-09", "local_calendar_status": "BUSINESS_DAY", "canonical_target_basis": "EXPLICIT_SOURCE_MARKET_DATE_ONLY"}),
+            capture(source_readiness={"status": "EVALUATED", "by_source": {"SMM": {}}, "candidate_count": 1, "target_count": 1}),
+            capture(append={"pre_count": "bad"}), capture(runner_summary_digest=None),
+            capture(canonical_evaluation={}), capture(control_path={}),
+        ]
+        for item in cases:
+            with self.subTest(item=item): self.assertEqual(self.report(item)["final_result"], "BLOCKED")
+        unsafe = capture(canonical_evaluation={"status": "SAFE", "evaluated_target_count": 1, "persistence": "ENABLED", "promotion": "DISABLED", "deferred_assembly_persistence": "DISABLED"})
+        self.assertEqual(self.report(unsafe)["final_result"], "FAIL")
 
     def test_scheduler_missing_identity_action_and_proven_miss(self):
         self.assertEqual(correlate_scheduler([event(instance="")], CONFIG, datetime.now(UTC))["blocked"], "SCHEDULER_INSTANCE_ID_MISSING")
         self.assertEqual(correlate_scheduler([event(record="")], CONFIG, datetime.now(UTC))["blocked"], "SCHEDULER_TRIGGER_RECORD_ID_MISSING")
         self.assertEqual(correlate_scheduler([event(action_completion=None)], CONFIG, datetime.now(UTC))["blocked"], "SCHEDULER_ACTION_EVIDENCE_INCOMPLETE")
-        missed = correlate_scheduler({"events": [], "coverage": {"slot": "2026-09-08T16:30:00+08:00", "log_enabled": True, "readable": True, "query_succeeded": True, "coverage_start": "2026-09-08T16:28:00+08:00", "coverage_end": "2026-09-09T16:30:00+08:00"}}, CONFIG, datetime(2026, 9, 10, tzinfo=UTC))
+        missed = correlate_scheduler({"events": [], "coverage": {"slot": "2026-09-08T16:30:00+08:00", "log_enabled": True, "readable": True, "query_succeeded": True, "retention_proven": True, "enumeration_complete": True, "coverage_start": "2026-09-08T16:28:00+08:00", "coverage_end": "2026-09-09T16:45:00+08:00"}}, CONFIG, datetime(2026, 9, 10, tzinfo=UTC))
         self.assertEqual(missed["fail"], "MISSED_SCHEDULED_SLOT")
 
     def test_missed_duplicate_and_ambiguous_are_fail_closed(self):
@@ -172,7 +202,7 @@ class RunValidatorTests(unittest.TestCase):
             {"post_count": 13}, {"post_prefix_digest": "changed"}, {"readback_ids": ["id-2", "id-1"]}, {"appended_ids": ["id-1", "id-1"]},
         ):
             item = capture(); item["append"].update(changed)
-            self.assertEqual(self.report(item)["final_result"], "FAIL")
+            self.assertIn(self.report(item)["final_result"], {"FAIL", "BLOCKED"})
         item = capture(); item["append"] = {"pre_count": 1}
         self.assertEqual(self.report(item)["final_result"], "BLOCKED")
 
@@ -181,7 +211,7 @@ class RunValidatorTests(unittest.TestCase):
         self.assertEqual(report["production_status"]["value"], "DISABLED_BY_CONTROL")
         self.assertEqual(report["a_l_change"]["value"], "NOT_VERIFIED")
         unsafe = self.report(capture(control_path={}))
-        self.assertEqual(unsafe["final_result"], "FAIL")
+        self.assertEqual(unsafe["final_result"], "BLOCKED")
 
     def test_atomic_idempotency_conflict_and_redaction(self):
         with tempfile.TemporaryDirectory() as temporary:

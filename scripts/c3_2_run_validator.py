@@ -131,8 +131,9 @@ def correlate_scheduler(events: list[dict[str, Any]] | dict[str, Any], config: d
     valid = [event for event in events if event.get("task_name") == config["scheduler_task_name"] and parse_datetime(event.get("start"))]
     if not valid:
         slot = parse_datetime(coverage.get("slot"))
-        complete = coverage.get("log_enabled") is True and coverage.get("readable") is True and coverage.get("query_succeeded") is True and parse_datetime(coverage.get("coverage_start")) and parse_datetime(coverage.get("coverage_end"))
-        if slot and now >= slot + timedelta(days=1) and complete and parse_datetime(coverage["coverage_start"]) <= slot - timedelta(minutes=2) and parse_datetime(coverage["coverage_end"]) >= slot + timedelta(days=1):
+        complete = coverage.get("log_enabled") is True and coverage.get("readable") is True and coverage.get("query_succeeded") is True and coverage.get("retention_proven") is True and coverage.get("enumeration_complete") is True and parse_datetime(coverage.get("coverage_start")) and parse_datetime(coverage.get("coverage_end"))
+        required_end = slot + timedelta(days=1, minutes=15) if slot else None
+        if slot and now >= required_end and complete and parse_datetime(coverage["coverage_start"]) <= slot - timedelta(minutes=2) and parse_datetime(coverage["coverage_end"]) >= required_end:
             return {"kind": "MISSED", "fail": "MISSED_SCHEDULED_SLOT", "event": {"scheduled_slot": slot.isoformat(), "task_name": config["scheduler_task_name"]}}
         if slot and now >= slot + timedelta(days=1):
             return {"kind": "AMBIGUOUS", "blocked": "SCHEDULER_COVERAGE_INCOMPLETE"}
@@ -267,8 +268,9 @@ def validate_report_schema(report: dict[str, Any], schema: dict[str, Any] | None
 
 def _append_checks(capture: dict[str, Any], failures: list[str], blocked: list[str]) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     append = capture.get("append", {})
-    required = ("pre_count", "post_count", "planned_count", "actual_count", "pre_digest", "post_prefix_digest", "appended_ids", "readback_ids")
-    if any(key not in append for key in required):
+    required = ("status", "pre_count", "post_count", "planned_count", "actual_count", "pre_digest", "post_prefix_digest", "appended_ids", "readback_ids")
+    typed = isinstance(append, dict) and all(isinstance(append.get(key), int) for key in ("pre_count", "post_count", "planned_count", "actual_count")) and all(isinstance(append.get(key), str) and re.fullmatch(r"[0-9a-f]{64}", append[key]) for key in ("pre_digest", "post_prefix_digest")) and all(isinstance(append.get(key), list) for key in ("appended_ids", "readback_ids"))
+    if not isinstance(append, dict) or any(key not in append for key in required) or not typed:
         blocked.append("V2_APPEND_READBACK_EVIDENCE_MISSING")
     else:
         if append["post_count"] - append["pre_count"] != append["actual_count"]: failures.append("V2_UNEXPECTED_ROW_DELTA")
@@ -282,16 +284,16 @@ def _append_checks(capture: dict[str, Any], failures: list[str], blocked: list[s
 
 def _semantic_checks(capture: dict[str, Any], terminal: dict[str, Any] | None, failures: list[str], blocked: list[str]) -> None:
     date_context = capture.get("date_context")
-    if not isinstance(date_context, dict) or parse_datetime(date_context.get("scheduler_execution_at")) is None or not date_context.get("local_calendar_date") or not date_context.get("local_calendar_status"):
+    if not isinstance(date_context, dict) or parse_datetime(date_context.get("scheduler_execution_at")) is None or not date_context.get("local_calendar_date") or not date_context.get("local_calendar_status") or not date_context.get("local_business_date"):
         blocked.append("DATE_CONTEXT_SEMANTIC_INVALID")
     elif date_context.get("canonical_target_basis") != "EXPLICIT_SOURCE_MARKET_DATE_ONLY": failures.append("DATE_CONTEXT_INFERRED_OR_CONTRADICTORY")
     source = capture.get("source_readiness")
     if not isinstance(source, dict) or source.get("status") not in {"EVALUATED", "NORMAL_SKIP_NON_BUSINESS_DAY"}:
         blocked.append("SOURCE_READINESS_SEMANTIC_INVALID")
-    elif source["status"] == "EVALUATED" and (not isinstance(source.get("by_source"), dict) or not source["by_source"] or not isinstance(source.get("target_count"), int) or not isinstance(source.get("candidate_count"), int)):
+    elif source["status"] == "EVALUATED" and (not isinstance(source.get("by_source"), dict) or not source["by_source"] or not all(isinstance(family, str) and family and isinstance(states, dict) and states and all(isinstance(status, str) and status and isinstance(count, int) and count >= 0 for status, count in states.items()) for family, states in source["by_source"].items()) or not isinstance(source.get("target_count"), int) or not isinstance(source.get("candidate_count"), int)):
         blocked.append("SOURCE_READINESS_SEMANTIC_INVALID")
     canonical = capture.get("canonical_evaluation")
-    if isinstance(canonical, dict) and any(canonical.get(key) not in {"DISABLED", "NONE"} for key in ("persistence", "promotion", "deferred_assembly_persistence")):
+    if isinstance(canonical, dict) and any(key in canonical and canonical.get(key) not in {"DISABLED", "NONE"} for key in ("persistence", "promotion", "deferred_assembly_persistence")):
         failures.append("UNAUTHORIZED_CANONICAL_PERSISTENCE")
     if not isinstance(canonical, dict) or not canonical.get("status") or (canonical.get("status") != "NOT_APPLICABLE" and not isinstance(canonical.get("evaluated_target_count"), int)):
         blocked.append("CANONICAL_EVALUATION_SEMANTIC_INVALID")
@@ -316,7 +318,9 @@ def _binding_checks(capture: dict[str, Any], event: dict[str, Any], terminal: di
     expected = {"scheduler_task_name": event.get("task_name"), "scheduler_instance_id": event.get("instance_id"), "scheduler_trigger_event_record_id": event.get("record_id"), "scheduler_trigger_timestamp": event.get("trigger_utc"), "trigger_kind": event.get("trigger_kind"), "wrapper_execution_id": capture.get("wrapper_execution_id"), "runner_summary_digest": summary_digest, "final_log_sha256": log_digest, "run_id": run_id}
     if any(binding.get(key) != value for key, value in expected.items()): failures.append("EVIDENCE_TERMINAL_BINDING_MISMATCH")
     if terminal and terminal.get("wrapper_execution_id") != binding.get("wrapper_execution_id"): failures.append("RUNNER_TERMINAL_BINDING_MISMATCH")
-    if capture.get("runner_summary_digest") and capture.get("runner_summary_digest") != summary_digest: failures.append("RUNNER_SUMMARY_DIGEST_MISMATCH")
+    captured_digest = capture.get("runner_summary_digest")
+    if not isinstance(captured_digest, str) or re.fullmatch(r"[0-9a-f]{64}", captured_digest) is None: blocked.append("RUNNER_SUMMARY_DIGEST_MISSING")
+    elif captured_digest != summary_digest: failures.append("RUNNER_SUMMARY_DIGEST_MISMATCH")
     return binding
 
 
@@ -342,8 +346,10 @@ def build_report(capture: dict[str, Any], events: list[dict[str, Any]], config: 
     if not isinstance(runner_result, int): blocked.append("RUNNER_RESULT_MISSING")
     elif runner_result != 0: failures.append("RUNNER_NONZERO")
     gates = capture.get("control_path", {})
-    expected_gates = gates.get("allow_google_sheet_write") == "0" and gates.get("allow_pending_raw_write") == "0" and gates.get("controlled_write_approval") in {None, ""} and gates.get("runner") == "scripts/c3_2_scheduled_shadow_runner.py"
-    if not expected_gates: failures.append("PRODUCTION_CONTROL_PATH_INVALID")
+    gate_fields = ("allow_google_sheet_write", "allow_pending_raw_write", "controlled_write_approval", "runner")
+    expected_gates = isinstance(gates, dict) and all(field in gates for field in gate_fields) and gates.get("allow_google_sheet_write") == "0" and gates.get("allow_pending_raw_write") == "0" and gates.get("controlled_write_approval") in {None, ""} and gates.get("runner") == "scripts/c3_2_scheduled_shadow_runner.py"
+    if not isinstance(gates, dict) or any(field not in gates for field in gate_fields): blocked.append("PRODUCTION_CONTROL_PATH_MISSING")
+    elif not expected_gates: failures.append("PRODUCTION_CONTROL_PATH_INVALID")
     date_context = capture.get("date_context")
     source_readiness = capture.get("source_readiness")
     if not isinstance(source_readiness, dict): blocked.append("SOURCE_READINESS_MISSING")
