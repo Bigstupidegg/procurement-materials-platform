@@ -24,7 +24,9 @@ TAIPEI = ZoneInfo("Asia/Taipei")
 
 
 def _load_json(path: Path) -> dict[str, Any]:
-    return json.loads(path.read_text(encoding="utf-8"))
+    # Windows PowerShell 5.1 writes UTF-8 captures with a BOM; Python must
+    # accept both that form and BOM-free atomic evidence files.
+    return json.loads(path.read_text(encoding="utf-8-sig"))
 
 
 def sha256_bytes(value: bytes) -> str:
@@ -126,6 +128,41 @@ def _redact(value: Any) -> Any:
     return value
 
 
+def _verify_runner_log(capture: dict[str, Any], blocked: list[str]) -> tuple[str | None, str | None]:
+    """Re-read the immutable log; a capture-provided hash is never trusted."""
+    runner_log = capture.get("runner_log", {})
+    path_text = runner_log.get("path") if isinstance(runner_log, dict) else None
+    if not path_text:
+        blocked.append("RUNNER_LOG_REFERENCE_MISSING")
+        return None, None
+    path = Path(path_text)
+    fixture = capture.get("fixture_evidence")
+    if isinstance(fixture, dict) and fixture.get("non_operational") is True:
+        # Fixtures are isolated from operational evidence and can exercise the
+        # parser without pretending to be an accepted natural execution.
+        payload = str(runner_log.get("fixture_content", "")).encode("utf-8")
+        path_text = "fixture://" + path.name
+    else:
+        try:
+            payload = path.read_bytes()
+        except OSError:
+            blocked.append("RUNNER_LOG_UNAVAILABLE")
+            return path_text, None
+    digest = sha256_bytes(payload)
+    if digest != runner_log.get("sha256"):
+        blocked.append("RUNNER_LOG_DIGEST_MISMATCH")
+    text = payload.decode("utf-8-sig", errors="replace")
+    marker = "C3_2_RUNNER_SUMMARY="
+    identity = capture.get("wrapper_execution_id")
+    if marker not in text or not identity or ('"wrapper_execution_id": "' + str(identity) + '"') not in text:
+        blocked.append("RUNNER_LOG_TERMINAL_IDENTITY_MISSING")
+    if runner_log.get("wrapper_execution_id") != identity:
+        blocked.append("RUNNER_LOG_REUSED_OR_MISMATCHED")
+    if isinstance(fixture, dict) and fixture.get("non_operational") is True:
+        blocked.append("FIXTURE_EVIDENCE_NON_OPERATIONAL")
+    return path_text, digest
+
+
 def validate_report_schema(report: dict[str, Any], schema: dict[str, Any] | None = None) -> list[str]:
     schema = schema or _load_json(SCHEMA_PATH)
     errors = ["missing:" + key for key in schema["required"] if key not in report]
@@ -177,11 +214,7 @@ def build_report(capture: dict[str, Any], events: list[dict[str, Any]], config: 
     if not isinstance(canonical, dict): blocked.append("CANONICAL_EVALUATION_MISSING")
     elif canonical.get("persistence") not in {"DISABLED", "NONE"} or canonical.get("promotion") not in {"DISABLED", "NONE"}: failures.append("UNAUTHORIZED_CANONICAL_PERSISTENCE")
     append_result, readback_result, append_only = _append_checks(capture, failures, blocked)
-    runner_log = capture.get("runner_log", {})
-    log_path = runner_log.get("path")
-    log_digest = runner_log.get("sha256")
-    if not log_path or not log_digest or runner_log.get("wrapper_execution_id") != capture.get("wrapper_execution_id"):
-        blocked.append("RUNNER_LOG_CORRELATION_MISSING")
+    log_path, log_digest = _verify_runner_log(capture, blocked)
     if correlation.get("kind") == "MANUAL": warnings.append("MANUAL_EXECUTION_NOT_NATURAL_ACCEPTANCE")
     if correlation.get("kind") == "RETRY" and not event.get("retry_of_run_id"): blocked.append("RETRY_PARENT_MISSING")
     final = "FAIL" if failures else "BLOCKED" if blocked else "WARNING" if warnings else "PASS"

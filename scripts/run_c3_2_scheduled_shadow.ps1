@@ -42,6 +42,9 @@ New-Item -ItemType Directory -Force -Path $CaptureDirectory | Out-Null
 $CapturePath = Join-Path $CaptureDirectory ("c3_2_7-capture-" + $WrapperExecutionId + ".json")
 $RepositoryVersion = "UNVERIFIED"
 if (Get-Command git -ErrorAction SilentlyContinue) { $RepositoryVersion = (git rev-parse HEAD) }
+$RunnerSummary = $null
+$SummaryLine = @($NativeOutput | ForEach-Object { $_.ToString() } | Where-Object { $_.StartsWith("C3_2_RUNNER_SUMMARY=") } | Select-Object -Last 1)
+if ($SummaryLine.Count -eq 1) { try { $RunnerSummary = $SummaryLine[0].Substring("C3_2_RUNNER_SUMMARY=".Length) | ConvertFrom-Json } catch { $RunnerSummary = $null } }
 $Capture = [ordered]@{
     schema_version = "c3_2_7.capture.v1"
     capture_created_at = (Get-Date).ToUniversalTime().ToString("o")
@@ -51,9 +54,12 @@ $Capture = [ordered]@{
     repository_version = $RepositoryVersion
     control_path = [ordered]@{ allow_google_sheet_write = $env:ALLOW_GOOGLE_SHEET_WRITE; allow_pending_raw_write = $env:ALLOW_PENDING_RAW_WRITE; controlled_write_approval = $env:CONTROLLED_WRITE_APPROVAL; runner = "scripts/c3_2_scheduled_shadow_runner.py" }
     runner_log = [ordered]@{ path = $LogPath; sha256 = $LogHash; wrapper_execution_id = $WrapperExecutionId }
+    runner_summary = $RunnerSummary
     evidence_references = @("wrapper-log-sha256:" + $LogHash)
 }
-$Capture | ConvertTo-Json -Depth 6 -Compress | Set-Content -LiteralPath $CapturePath -Encoding UTF8
+# PowerShell 5.1's UTF8 encoding writes a BOM.  Use a BOM-free writer while
+# the Python reader also accepts legacy BOM captures.
+[System.IO.File]::WriteAllText($CapturePath, ($Capture | ConvertTo-Json -Depth 8 -Compress), (New-Object System.Text.UTF8Encoding($false)))
 $ValidatorArgs = @("scripts\c3_2_run_validator.py", "--capture", $CapturePath, "--stage", "core")
 & py -3 @ValidatorArgs
 $ValidatorExitCode = $LASTEXITCODE

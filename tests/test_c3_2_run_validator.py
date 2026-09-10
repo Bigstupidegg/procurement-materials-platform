@@ -26,7 +26,8 @@ def capture(**overrides):
     value = {
         "capture_created_at": "2026-09-09T08:31:10+00:00", "wrapper_execution_id": "wrap-1", "wrapper_result": 0, "runner_result": 0,
         "repository_version": "abc123", "control_path": {"allow_google_sheet_write": "0", "allow_pending_raw_write": "0", "controlled_write_approval": None, "runner": "scripts/c3_2_scheduled_shadow_runner.py"},
-        "runner_log": {"path": "C:/redacted/run.log", "sha256": "a" * 64, "wrapper_execution_id": "wrap-1"},
+        "fixture_evidence": {"non_operational": True},
+        "runner_log": {"path": "fixture-run.log", "fixture_content": 'C3_2_RUNNER_SUMMARY={"wrapper_execution_id": "wrap-1"}', "sha256": "", "wrapper_execution_id": "wrap-1"},
         "date_context": {"scheduler_execution_at": "2026-09-09T16:30:01+08:00", "local_calendar_date": "2026-09-09", "canonical_target_basis": "EXPLICIT_SOURCE_MARKET_DATE_ONLY"},
         "source_readiness": {"SMM": "READY", "LME": "PENDING", "Yahoo": "YAHOO_UNCONFIRMED", "source_native_publication": "NOT_VERIFIED"},
         "canonical_evaluation": {"persistence": "DISABLED", "promotion": "DISABLED", "status": "UNRESOLVED"},
@@ -34,6 +35,9 @@ def capture(**overrides):
         "evidence_references": ["safe-log-digest"],
     }
     value.update(overrides)
+    log = value["runner_log"]
+    from scripts.c3_2_run_validator import sha256_bytes
+    log["sha256"] = sha256_bytes(log.get("fixture_content", "").encode("utf-8"))
     return value
 
 
@@ -46,7 +50,7 @@ class RunValidatorTests(unittest.TestCase):
         self.assertEqual(validate_report_schema(report), [])
         markdown = render_markdown(report)
         self.assertIn(report["run_id"], markdown)
-        self.assertIn("`PASS`", markdown)
+        self.assertIn("`BLOCKED`", markdown)
 
     def test_run_kinds_natural_recoveries_manual_retry(self):
         natural = correlate_scheduler([event()], CONFIG, datetime(2026, 9, 9, 9, tzinfo=UTC))
@@ -83,7 +87,7 @@ class RunValidatorTests(unittest.TestCase):
         self.assertEqual(validator_exit(0, "PASS", storage_failure=True), 73)
 
     def test_native_stderr_warning_and_application_failure(self):
-        warning = self.report(capture(stderr_warning="safe diagnostic")); self.assertEqual(warning["final_result"], "PASS")
+        warning = self.report(capture(stderr_warning="safe diagnostic")); self.assertEqual(warning["final_result"], "BLOCKED")
         failure = self.report(capture(runner_result=9)); self.assertEqual(failure["final_result"], "FAIL")
         self.assertEqual(validator_exit(9, failure["final_result"]), 9)
 
