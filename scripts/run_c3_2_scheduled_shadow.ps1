@@ -51,6 +51,12 @@ try {
     $RunnerSummary = $null
     $SummaryLine = @($NativeOutput | ForEach-Object { $_.ToString() } | Where-Object { $_.StartsWith("C3_2_RUNNER_SUMMARY=") } | Select-Object -Last 1)
     if ($SummaryLine.Count -eq 1) { $RunnerSummary = $SummaryLine[0].Substring("C3_2_RUNNER_SUMMARY=".Length) | ConvertFrom-Json }
+    $RunnerSummaryDigest = ""
+    if ($null -ne $RunnerSummary) {
+        $SummaryBytes = (New-Object System.Text.UTF8Encoding($false)).GetBytes($SummaryLine[0].Substring("C3_2_RUNNER_SUMMARY=".Length))
+        $SummaryHasher = [System.Security.Cryptography.SHA256]::Create()
+        try { $RunnerSummaryDigest = ([System.BitConverter]::ToString($SummaryHasher.ComputeHash($SummaryBytes))).Replace("-", "").ToLowerInvariant() } finally { $SummaryHasher.Dispose() }
+    }
     $FixtureEvidence = $env:C3_2_FIXTURE_MODE -eq "1"
     $WrapperCompletedAt = (Get-Date).ToUniversalTime().ToString("o")
     $Capture = [ordered]@{
@@ -61,6 +67,7 @@ try {
         fixture_evidence = [ordered]@{ non_operational = $FixtureEvidence }
         control_path = [ordered]@{ allow_google_sheet_write = $env:ALLOW_GOOGLE_SHEET_WRITE; allow_pending_raw_write = $env:ALLOW_PENDING_RAW_WRITE; controlled_write_approval = $env:CONTROLLED_WRITE_APPROVAL; runner = "scripts/c3_2_scheduled_shadow_runner.py" }
         runner_log = [ordered]@{ path = $LogPath; sha256 = $LogHash; wrapper_execution_id = $WrapperExecutionId }
+        runner_summary_digest = $RunnerSummaryDigest
         date_context = $RunnerSummary.date_context; source_readiness = $RunnerSummary.source_readiness
         canonical_evaluation = $RunnerSummary.canonical_evaluation; append = $RunnerSummary.append
         runner_summary = $RunnerSummary; evidence_references = @("wrapper-log-sha256:" + $LogHash)

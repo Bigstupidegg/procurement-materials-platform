@@ -17,12 +17,19 @@ import tempfile
 from typing import Any
 from xml.etree import ElementTree
 from zoneinfo import ZoneInfo
+from jsonschema import Draft202012Validator, FormatChecker
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG_PATH = ROOT / "config" / "c3_2_validator.json"
 SCHEMA_PATH = ROOT / "config" / "c3_2_evidence_report.schema.json"
 UTC = timezone.utc
 TAIPEI = ZoneInfo("Asia/Taipei")
+FORMAT_CHECKER = FormatChecker()
+
+
+@FORMAT_CHECKER.checks("date-time")
+def _is_rfc3339_datetime(value: object) -> bool:
+    return not isinstance(value, str) or parse_datetime(value) is not None
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -53,8 +60,8 @@ def assertion(value: Any, basis: str, reference: str | None = None, observed_at:
     return {"value": value, "basis": basis, "evidence_reference": reference, "observed_at": observed_at, "evidence_sha256": digest}
 
 
-def make_run_id(config: dict[str, Any], instance_id: str, trigger_record_id: str, trigger_utc: str) -> str:
-    material = "|".join((config["run_id_namespace"], config["scheduler_task_path"], instance_id, trigger_record_id, trigger_utc))
+def make_run_id(config: dict[str, Any], task_name: str, instance_id: str, trigger_record_id: str, trigger_utc: str, trigger_kind: str) -> str:
+    material = "|".join((config["run_id_namespace"], config["scheduler_task_path"], task_name, instance_id, trigger_record_id, trigger_utc, trigger_kind))
     return hashlib.sha256(material.encode("utf-8")).hexdigest()
 
 
@@ -116,16 +123,19 @@ def normalize_scheduler_events(records: list[dict[str, Any]]) -> list[dict[str, 
     return list(groups.values())
 
 
-def correlate_scheduler(events: list[dict[str, Any]], config: dict[str, Any], now: datetime) -> dict[str, Any]:
+def correlate_scheduler(events: list[dict[str, Any]] | dict[str, Any], config: dict[str, Any], now: datetime) -> dict[str, Any]:
     """Classify one captured instance without timestamp-only matching."""
-    events = normalize_scheduler_events(events)
-    missed = [event for event in events if event.get("missed_slot") and event.get("evidence_complete")]
-    if missed:
-        slot = parse_datetime(missed[0]["missed_slot"])
-        if slot and now >= slot + timedelta(days=1):
-            return {"kind": "MISSED", "fail": "MISSED_SCHEDULED_SLOT", "event": {"scheduled_slot": slot.isoformat()}}
+    bundle = events if isinstance(events, dict) else {"events": events}
+    coverage = bundle.get("coverage", {}) if isinstance(bundle.get("coverage", {}), dict) else {}
+    events = normalize_scheduler_events(bundle.get("events", []))
     valid = [event for event in events if event.get("task_name") == config["scheduler_task_name"] and parse_datetime(event.get("start"))]
     if not valid:
+        slot = parse_datetime(coverage.get("slot"))
+        complete = coverage.get("log_enabled") is True and coverage.get("readable") is True and coverage.get("query_succeeded") is True and parse_datetime(coverage.get("coverage_start")) and parse_datetime(coverage.get("coverage_end"))
+        if slot and now >= slot + timedelta(days=1) and complete and parse_datetime(coverage["coverage_start"]) <= slot - timedelta(minutes=2) and parse_datetime(coverage["coverage_end"]) >= slot + timedelta(days=1):
+            return {"kind": "MISSED", "fail": "MISSED_SCHEDULED_SLOT", "event": {"scheduled_slot": slot.isoformat(), "task_name": config["scheduler_task_name"]}}
+        if slot and now >= slot + timedelta(days=1):
+            return {"kind": "AMBIGUOUS", "blocked": "SCHEDULER_COVERAGE_INCOMPLETE"}
         return {"kind": "AMBIGUOUS", "blocked": "SCHEDULER_EVIDENCE_UNAVAILABLE"}
     candidates: list[dict[str, Any]] = []
     for event in valid:
@@ -202,13 +212,13 @@ def _redact(value: Any) -> Any:
     return value
 
 
-def _verify_runner_log(capture: dict[str, Any], blocked: list[str]) -> tuple[str | None, str | None]:
+def _verify_runner_log(capture: dict[str, Any], blocked: list[str]) -> tuple[str | None, str | None, dict[str, Any] | None, str | None]:
     """Re-read the immutable log; a capture-provided hash is never trusted."""
     runner_log = capture.get("runner_log", {})
     path_text = runner_log.get("path") if isinstance(runner_log, dict) else None
     if not path_text:
         blocked.append("RUNNER_LOG_REFERENCE_MISSING")
-        return None, None
+        return None, None, None, None
     path = Path(path_text)
     fixture = capture.get("fixture_evidence")
     if isinstance(fixture, dict) and fixture.get("non_operational") is True:
@@ -221,7 +231,7 @@ def _verify_runner_log(capture: dict[str, Any], blocked: list[str]) -> tuple[str
             payload = path.read_bytes()
         except OSError:
             blocked.append("RUNNER_LOG_UNAVAILABLE")
-            return path_text, None
+            return path_text, None, None, None
     digest = sha256_bytes(payload)
     if digest != runner_log.get("sha256"):
         blocked.append("RUNNER_LOG_DIGEST_MISMATCH")
@@ -232,7 +242,7 @@ def _verify_runner_log(capture: dict[str, Any], blocked: list[str]) -> tuple[str
             text = payload.decode("utf-8-sig")
         except UnicodeDecodeError:
             blocked.append("RUNNER_LOG_ENCODING_UNSUPPORTED")
-            return path_text, digest
+            return path_text, digest, None, None
     marker = "C3_2_RUNNER_SUMMARY="
     identity = capture.get("wrapper_execution_id")
     terminal_lines = [line[len(marker):] for line in text.splitlines() if line.startswith(marker)]
@@ -240,37 +250,19 @@ def _verify_runner_log(capture: dict[str, Any], blocked: list[str]) -> tuple[str
         terminal = json.loads(terminal_lines[0]) if len(terminal_lines) == 1 else None
     except json.JSONDecodeError:
         terminal = None
-    if not isinstance(terminal, dict) or terminal.get("wrapper_execution_id") != identity or terminal.get("runner_result") != capture.get("runner_result"):
+    summary_digest = sha256_bytes(terminal_lines[0].encode("utf-8")) if isinstance(terminal, dict) and len(terminal_lines) == 1 else None
+    if not isinstance(terminal, dict) or terminal.get("schema_version") != "c3_2_7.runner_summary.v1" or terminal.get("wrapper_execution_id") != identity or terminal.get("runner_result") != capture.get("runner_result"):
         blocked.append("RUNNER_LOG_TERMINAL_IDENTITY_MISSING")
     if runner_log.get("wrapper_execution_id") != identity:
         blocked.append("RUNNER_LOG_REUSED_OR_MISMATCHED")
     if isinstance(fixture, dict) and fixture.get("non_operational") is True:
         blocked.append("FIXTURE_EVIDENCE_NON_OPERATIONAL")
-    return path_text, digest
+    return path_text, digest, terminal, summary_digest
 
 
 def validate_report_schema(report: dict[str, Any], schema: dict[str, Any] | None = None) -> list[str]:
-    schema = schema or _load_json(SCHEMA_PATH)
-    errors = ["missing:" + key for key in schema["required"] if key not in report]
-    errors.extend("unknown:" + key for key in report if key not in schema.get("properties", {}))
-    if report.get("schema_version") != "c3_2_7.evidence.v1": errors.append("schema_version")
-    if report.get("final_result") not in {"PASS", "WARNING", "FAIL", "BLOCKED"}: errors.append("final_result")
-    for key in ("report_id", "run_id", "wrapper_execution_id", "scheduler_task_name", "scheduler_instance_id", "runner_log_sha256"):
-        if not isinstance(report.get(key), str) or not report.get(key): errors.append(key)
-    for key in ("report_created_at", "validator_execution_datetime"):
-        if parse_datetime(report.get(key)) is None: errors.append(key)
-    for key in ("report_sha256", "runner_log_sha256"):
-        if not isinstance(report.get(key), str) or re.fullmatch(r"[0-9a-f]{64}", report.get(key, "")) is None: errors.append(key)
-    assertion_keys = ("scheduler_result", "wrapper_result", "runner_result", "validator_result", "runner_log_reference", "date_context", "source_readiness", "canonical_evaluation", "append_result", "readback_result", "append_only_status", "production_status", "a_l_change", "canonical_persistence_status", "repository_version")
-    for key in assertion_keys:
-        value = report.get(key)
-        if not isinstance(value, dict) or set(value) != {"value", "basis", "evidence_reference", "observed_at", "evidence_sha256"} or value.get("basis") not in {"OBSERVED", "DERIVED", "NOT_VERIFIED"}:
-            errors.append(key)
-    for key in ("warnings", "failures", "not_verified", "blocked"):
-        if key in report and (not isinstance(report[key], list) or not all(isinstance(item, str) for item in report[key])): errors.append(key)
-    if not isinstance(report.get("report_revision"), int) or report.get("report_revision", 0) < 1: errors.append("report_revision")
-    if not isinstance(report.get("evidence_references"), list): errors.append("evidence_references")
-    return errors
+    validator = Draft202012Validator(schema or _load_json(SCHEMA_PATH), format_checker=FORMAT_CHECKER)
+    return sorted({"schema:" + "/".join(str(part) for part in error.absolute_path) + ":" + error.message for error in validator.iter_errors(report)})
 
 
 def _append_checks(capture: dict[str, Any], failures: list[str], blocked: list[str]) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
@@ -286,6 +278,46 @@ def _append_checks(capture: dict[str, Any], failures: list[str], blocked: list[s
         if ids != append["readback_ids"]: failures.append("V2_READBACK_MISMATCH")
         if append["pre_digest"] != append["post_prefix_digest"]: failures.append("V2_PREFIX_MUTATED_OR_REORDERED")
     return assertion(append.get("actual_count"), "OBSERVED", "capture.append"), assertion(append.get("readback_ids"), "OBSERVED", "capture.append"), assertion("PASS" if not failures else "FAIL", "DERIVED", "capture.append")
+
+
+def _semantic_checks(capture: dict[str, Any], terminal: dict[str, Any] | None, failures: list[str], blocked: list[str]) -> None:
+    date_context = capture.get("date_context")
+    if not isinstance(date_context, dict) or parse_datetime(date_context.get("scheduler_execution_at")) is None or not date_context.get("local_calendar_date") or not date_context.get("local_calendar_status"):
+        blocked.append("DATE_CONTEXT_SEMANTIC_INVALID")
+    elif date_context.get("canonical_target_basis") != "EXPLICIT_SOURCE_MARKET_DATE_ONLY": failures.append("DATE_CONTEXT_INFERRED_OR_CONTRADICTORY")
+    source = capture.get("source_readiness")
+    if not isinstance(source, dict) or source.get("status") not in {"EVALUATED", "NORMAL_SKIP_NON_BUSINESS_DAY"}:
+        blocked.append("SOURCE_READINESS_SEMANTIC_INVALID")
+    elif source["status"] == "EVALUATED" and (not isinstance(source.get("by_source"), dict) or not source["by_source"] or not isinstance(source.get("target_count"), int) or not isinstance(source.get("candidate_count"), int)):
+        blocked.append("SOURCE_READINESS_SEMANTIC_INVALID")
+    canonical = capture.get("canonical_evaluation")
+    if isinstance(canonical, dict) and any(canonical.get(key) not in {"DISABLED", "NONE"} for key in ("persistence", "promotion", "deferred_assembly_persistence")):
+        failures.append("UNAUTHORIZED_CANONICAL_PERSISTENCE")
+    if not isinstance(canonical, dict) or not canonical.get("status") or (canonical.get("status") != "NOT_APPLICABLE" and not isinstance(canonical.get("evaluated_target_count"), int)):
+        blocked.append("CANONICAL_EVALUATION_SEMANTIC_INVALID")
+    if not isinstance(terminal, dict): blocked.append("RUNNER_TERMINAL_MISSING")
+
+
+def _binding_checks(capture: dict[str, Any], event: dict[str, Any], terminal: dict[str, Any] | None, summary_digest: str | None, log_digest: str | None, run_id: str, failures: list[str], blocked: list[str]) -> dict[str, Any]:
+    binding = capture.get("evidence_terminal")
+    if not isinstance(binding, dict):
+        blocked.append("EVIDENCE_TERMINAL_MISSING")
+        return {}
+    if not isinstance(terminal, dict) or not summary_digest or not log_digest:
+        blocked.append("EVIDENCE_TERMINAL_INPUT_UNAVAILABLE")
+        return binding
+    required = ("scheduler_task_name", "scheduler_instance_id", "scheduler_trigger_event_record_id", "scheduler_trigger_timestamp", "trigger_kind", "wrapper_execution_id", "runner_summary_digest", "final_log_sha256", "run_id", "evidence_reference")
+    if any(not binding.get(key) for key in required):
+        blocked.append("EVIDENCE_TERMINAL_INCOMPLETE")
+        return binding
+    if not event:
+        blocked.append("EVIDENCE_TERMINAL_SCHEDULER_UNAVAILABLE")
+        return binding
+    expected = {"scheduler_task_name": event.get("task_name"), "scheduler_instance_id": event.get("instance_id"), "scheduler_trigger_event_record_id": event.get("record_id"), "scheduler_trigger_timestamp": event.get("trigger_utc"), "trigger_kind": event.get("trigger_kind"), "wrapper_execution_id": capture.get("wrapper_execution_id"), "runner_summary_digest": summary_digest, "final_log_sha256": log_digest, "run_id": run_id}
+    if any(binding.get(key) != value for key, value in expected.items()): failures.append("EVIDENCE_TERMINAL_BINDING_MISMATCH")
+    if terminal and terminal.get("wrapper_execution_id") != binding.get("wrapper_execution_id"): failures.append("RUNNER_TERMINAL_BINDING_MISMATCH")
+    if capture.get("runner_summary_digest") and capture.get("runner_summary_digest") != summary_digest: failures.append("RUNNER_SUMMARY_DIGEST_MISMATCH")
+    return binding
 
 
 def build_report(capture: dict[str, Any], events: list[dict[str, Any]], config: dict[str, Any] | None = None, now: datetime | None = None) -> dict[str, Any]:
@@ -313,31 +345,35 @@ def build_report(capture: dict[str, Any], events: list[dict[str, Any]], config: 
     expected_gates = gates.get("allow_google_sheet_write") == "0" and gates.get("allow_pending_raw_write") == "0" and gates.get("controlled_write_approval") in {None, ""} and gates.get("runner") == "scripts/c3_2_scheduled_shadow_runner.py"
     if not expected_gates: failures.append("PRODUCTION_CONTROL_PATH_INVALID")
     date_context = capture.get("date_context")
-    if not isinstance(date_context, dict) or date_context.get("canonical_target_basis") != "EXPLICIT_SOURCE_MARKET_DATE_ONLY": blocked.append("DATE_CONTEXT_MISSING_OR_INVALID")
     source_readiness = capture.get("source_readiness")
     if not isinstance(source_readiness, dict): blocked.append("SOURCE_READINESS_MISSING")
     canonical = capture.get("canonical_evaluation")
-    if not isinstance(canonical, dict): blocked.append("CANONICAL_EVALUATION_MISSING")
-    elif canonical.get("persistence") not in {"DISABLED", "NONE"} or canonical.get("promotion") not in {"DISABLED", "NONE"}: failures.append("UNAUTHORIZED_CANONICAL_PERSISTENCE")
     append_result, readback_result, append_only = _append_checks(capture, failures, blocked)
-    log_path, log_digest = _verify_runner_log(capture, blocked)
+    log_path, log_digest, terminal, summary_digest = _verify_runner_log(capture, blocked)
+    if log_digest is not None and log_digest != (capture.get("runner_log", {}) or {}).get("sha256"):
+        failures.append("FINAL_LOG_DIGEST_MISMATCH")
     if correlation.get("kind") == "MANUAL": warnings.append("MANUAL_EXECUTION_NOT_NATURAL_ACCEPTANCE")
     if correlation.get("kind") == "RETRY" and not event.get("retry_of_run_id"): blocked.append("RETRY_PARENT_MISSING")
     final = "FAIL" if failures else "BLOCKED" if blocked else "WARNING" if warnings else "PASS"
     instance_id = str(event.get("instance_id", "UNVERIFIED"))
     trigger_id = str(event.get("record_id", "UNVERIFIED"))
-    trigger_utc = str(event.get("trigger_utc", event.get("start", "UNVERIFIED")))
-    run_id = make_run_id(config, instance_id, trigger_id, trigger_utc)
+    trigger_utc = str(event.get("trigger_utc", event.get("start", "1970-01-01T00:00:00+00:00")))
+    trigger_kind = str(event.get("trigger_kind", "UNVERIFIED"))
+    run_id = make_run_id(config, config["scheduler_task_name"], instance_id, trigger_id, trigger_utc, trigger_kind)
+    _semantic_checks(capture, terminal, failures, blocked)
+    binding = _binding_checks(capture, event, terminal, summary_digest, log_digest, run_id, failures, blocked)
+    final = "FAIL" if failures else "BLOCKED" if blocked else "WARNING" if warnings else "PASS"
     timestamp = capture.get("capture_created_at") or now.isoformat()
     report = {
         "schema_version": "c3_2_7.evidence.v1", "report_id": run_id, "report_revision": 1,
         "report_created_at": timestamp, "report_sha256": "", "run_id": run_id,
-        "wrapper_execution_id": capture.get("wrapper_execution_id", "UNVERIFIED"),
+        "wrapper_execution_id": capture.get("wrapper_execution_id", "00000000-0000-4000-8000-000000000000"),
         "scheduled_slot": event.get("scheduled_slot"), "execution_kind": correlation.get("kind"),
         "scheduler_task_name": config["scheduler_task_name"], "scheduler_instance_id": instance_id,
-        "scheduler_trigger_kind": event.get("trigger_kind"), "scheduler_execution_datetime": event.get("start"),
+        "scheduler_trigger_event_record_id": trigger_id, "scheduler_trigger_timestamp": trigger_utc, "scheduler_trigger_kind": trigger_kind, "scheduler_execution_datetime": event.get("start"),
         "validator_execution_datetime": timestamp, "scheduler_result": assertion(event.get("result"), "OBSERVED", "scheduler.event", event.get("end")),
         "exit_origin": "RUNNER" if isinstance(runner_result, int) and runner_result != 0 else "VALIDATOR",
+        "runner_summary_digest": summary_digest or "0" * 64, "evidence_terminal": binding or {"scheduler_task_name": config["scheduler_task_name"], "scheduler_instance_id": "00000000-0000-4000-8000-000000000000", "scheduler_trigger_event_record_id": "UNVERIFIED", "scheduler_trigger_timestamp": "1970-01-01T00:00:00+00:00", "trigger_kind": "TIME", "wrapper_execution_id": capture.get("wrapper_execution_id", "00000000-0000-4000-8000-000000000000"), "runner_summary_digest": summary_digest or "0" * 64, "final_log_sha256": log_digest or "0" * 64, "run_id": run_id, "evidence_reference": "fixture://missing-terminal"},
         "wrapper_result": assertion(capture.get("wrapper_result"), "OBSERVED", "capture.wrapper"),
         "runner_result": assertion(runner_result, "OBSERVED", "capture.runner"),
         "validator_result": assertion(final, "DERIVED", "validator"),
@@ -456,16 +492,38 @@ def write_immutable_report(report: dict[str, Any], root: Path | None = None) -> 
     return "CREATED", target, markdown
 
 
+def emit_evidence_terminal(capture: dict[str, Any], events: list[dict[str, Any]] | dict[str, Any], config: dict[str, Any]) -> dict[str, Any] | None:
+    correlation = correlate_scheduler(events, config, datetime.now(UTC))
+    event = correlation.get("event")
+    if not isinstance(event, dict): return None
+    blocked: list[str] = []
+    _, log_digest, terminal, summary_digest = _verify_runner_log(capture, blocked)
+    if blocked or not isinstance(terminal, dict): return None
+    run_id = make_run_id(config, event.get("task_name", config["scheduler_task_name"]), event.get("instance_id", ""), event.get("record_id", ""), event.get("trigger_utc", ""), event.get("trigger_kind", ""))
+    return {"scheduler_task_name": event.get("task_name"), "scheduler_instance_id": event.get("instance_id"), "scheduler_trigger_event_record_id": event.get("record_id"), "scheduler_trigger_timestamp": event.get("trigger_utc"), "trigger_kind": event.get("trigger_kind"), "wrapper_execution_id": capture.get("wrapper_execution_id"), "runner_summary_digest": summary_digest, "final_log_sha256": log_digest, "run_id": run_id, "evidence_reference": "companion://evidence-terminal"}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--capture", required=True, type=Path)
     parser.add_argument("--events", type=Path)
+    parser.add_argument("--terminal", type=Path)
+    parser.add_argument("--emit-evidence-terminal", action="store_true")
     parser.add_argument("--evidence-root", type=Path)
     parser.add_argument("--stage", choices=("core", "final"), default="final")
     args = parser.parse_args()
     try:
         capture = _load_json(args.capture)
-        events = _load_json(args.events).get("events", []) if args.events else capture.get("scheduler_events", [])
+        events = _load_json(args.events) if args.events else capture.get("scheduler_events", [])
+        if args.emit_evidence_terminal:
+            binding = emit_evidence_terminal(capture, events, _load_json(CONFIG_PATH))
+            if binding is None: print("C3_2_VALIDATOR=BLOCKED evidence_terminal=unavailable"); return 71
+            if args.terminal is None: print("C3_2_VALIDATOR=INTERNAL terminal_path_missing"); return 72
+            payload = json.dumps(binding, ensure_ascii=True, sort_keys=True).encode("utf-8") + b"\n"
+            if _publish_exclusive(args.terminal, payload) not in {"CREATED", "SAME"}: print("C3_2_VALIDATOR=BLOCKED evidence_terminal=conflict"); return 71
+            print("C3_2_VALIDATOR=EVIDENCE_TERMINAL path=" + str(args.terminal)); return 0
+        if args.terminal:
+            capture["evidence_terminal"] = _load_json(args.terminal)
         report = build_report(capture, events)
         errors = validate_report_schema(report)
         if errors:

@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 from scripts.c3_2_run_validator import (
     _load_json, build_report, correlate_scheduler, normalize_scheduler_events, render_markdown,
-    sha256_bytes, validate_report_schema, validator_exit, write_immutable_report,
+    make_run_id, sha256_bytes, validate_report_schema, validator_exit, write_immutable_report,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -18,7 +18,10 @@ CONFIG = json.loads((ROOT / "config" / "c3_2_validator.json").read_text(encoding
 UTC = timezone.utc
 
 
-def event(*, start="2026-09-09T08:30:01+00:00", end="2026-09-09T08:31:08+00:00", trigger="TIME", record="101", instance="instance-1", **extra):
+WRAPPER_ID = "11111111-1111-4111-8111-111111111111"
+INSTANCE_ID = "22222222-2222-4222-8222-222222222222"
+
+def event(*, start="2026-09-09T08:30:01+00:00", end="2026-09-09T08:31:08+00:00", trigger="TIME", record="101", instance=INSTANCE_ID, **extra):
     value = {"task_name": CONFIG["scheduler_task_name"], "start": start, "action_start": start, "action_completion": end, "end": end, "trigger_kind": trigger, "record_id": record, "instance_id": instance, "trigger_utc": start, "result": 0}
     value.update(extra)
     return value
@@ -26,14 +29,14 @@ def event(*, start="2026-09-09T08:30:01+00:00", end="2026-09-09T08:31:08+00:00",
 
 def capture(**overrides):
     value = {
-        "capture_created_at": "2026-09-09T08:31:10+00:00", "wrapper_execution_id": "wrap-1", "wrapper_result": 0, "runner_result": 0,
+        "capture_created_at": "2026-09-09T08:31:10+00:00", "wrapper_execution_id": WRAPPER_ID, "wrapper_result": 0, "runner_result": 0,
         "wrapper_started_at": "2026-09-09T08:30:02+00:00", "wrapper_completed_at": "2026-09-09T08:31:07+00:00",
         "repository_version": "abc123", "control_path": {"allow_google_sheet_write": "0", "allow_pending_raw_write": "0", "controlled_write_approval": None, "runner": "scripts/c3_2_scheduled_shadow_runner.py"},
         "fixture_evidence": {"non_operational": True},
-        "runner_log": {"path": "fixture-run.log", "fixture_content": 'C3_2_RUNNER_SUMMARY={"wrapper_execution_id": "wrap-1", "runner_result": 0}', "sha256": "", "wrapper_execution_id": "wrap-1"},
-        "date_context": {"scheduler_execution_at": "2026-09-09T16:30:01+08:00", "local_calendar_date": "2026-09-09", "canonical_target_basis": "EXPLICIT_SOURCE_MARKET_DATE_ONLY"},
-        "source_readiness": {"SMM": "READY", "LME": "PENDING", "Yahoo": "YAHOO_UNCONFIRMED", "source_native_publication": "NOT_VERIFIED"},
-        "canonical_evaluation": {"persistence": "DISABLED", "promotion": "DISABLED", "status": "UNRESOLVED"},
+        "runner_log": {"path": "fixture-run.log", "fixture_content": 'C3_2_RUNNER_SUMMARY={"schema_version":"c3_2_7.runner_summary.v1","wrapper_execution_id":"11111111-1111-4111-8111-111111111111","runner_result":0}', "sha256": "", "wrapper_execution_id": WRAPPER_ID},
+        "date_context": {"scheduler_execution_at": "2026-09-09T16:30:01+08:00", "local_calendar_date": "2026-09-09", "local_calendar_status": "BUSINESS_DAY", "local_business_date": "2026-09-09", "canonical_target_basis": "EXPLICIT_SOURCE_MARKET_DATE_ONLY"},
+        "source_readiness": {"status": "EVALUATED", "by_source": {"SMM": {"READY": 1}}, "candidate_count": 1, "target_count": 1, "source_native_publication_timestamp": "NOT_VERIFIED"},
+        "canonical_evaluation": {"persistence": "DISABLED", "promotion": "DISABLED", "deferred_assembly_persistence": "DISABLED", "status": "SAFE", "evaluated_target_count": 1},
         "append": {"pre_count": 10, "post_count": 12, "planned_count": 2, "actual_count": 2, "pre_digest": "b" * 64, "post_prefix_digest": "b" * 64, "appended_ids": ["id-1", "id-2"], "readback_ids": ["id-1", "id-2"]},
         "evidence_references": ["safe-log-digest"],
     }
@@ -46,7 +49,12 @@ def capture(**overrides):
 
 class RunValidatorTests(unittest.TestCase):
     def report(self, item=None, events=None, now=None):
-        return build_report(item or capture(), events if events is not None else [event()], CONFIG, now or datetime(2026, 9, 9, 8, 35, tzinfo=UTC))
+        item = item or capture(); records = events if events is not None else [event()]; normalized = normalize_scheduler_events(records.get("events", []) if isinstance(records, dict) else records); evidence = normalized[0] if normalized else event()
+        summary = item["runner_log"].get("fixture_content", "").split("=", 1)[-1].strip()
+        summary_digest = sha256_bytes(summary.encode("utf-8")); run_id = make_run_id(CONFIG, evidence["task_name"], evidence["instance_id"], evidence["record_id"], evidence["trigger_utc"], evidence["trigger_kind"])
+        item.setdefault("runner_summary_digest", summary_digest)
+        item.setdefault("evidence_terminal", {"scheduler_task_name": evidence["task_name"], "scheduler_instance_id": evidence["instance_id"], "scheduler_trigger_event_record_id": evidence["record_id"], "scheduler_trigger_timestamp": evidence["trigger_utc"], "trigger_kind": evidence["trigger_kind"], "wrapper_execution_id": item["wrapper_execution_id"], "runner_summary_digest": summary_digest, "final_log_sha256": item["runner_log"]["sha256"], "run_id": run_id, "evidence_reference": "fixture://evidence-terminal"})
+        return build_report(item, records, CONFIG, now or datetime(2026, 9, 9, 8, 35, tzinfo=UTC))
 
     def test_schema_and_markdown_are_consistent(self):
         report = self.report()
@@ -55,14 +63,14 @@ class RunValidatorTests(unittest.TestCase):
         self.assertIn(report["run_id"], markdown)
         self.assertIn("`BLOCKED`", markdown)
         malformed = dict(report); malformed["report_sha256"] = None; malformed["unsupported"] = True
-        self.assertIn("report_sha256", validate_report_schema(malformed))
-        self.assertIn("unknown:unsupported", validate_report_schema(malformed))
+        self.assertTrue(any("report_sha256" in error for error in validate_report_schema(malformed)))
+        self.assertTrue(any("unsupported" in error for error in validate_report_schema(malformed)))
         malformed = dict(report); malformed["runner_result"] = {"basis": "OBSERVED"}
-        self.assertIn("runner_result", validate_report_schema(malformed))
+        self.assertTrue(any("runner_result" in error for error in validate_report_schema(malformed)))
         malformed = dict(report); malformed["report_created_at"] = "not-a-timestamp"
-        self.assertIn("report_created_at", validate_report_schema(malformed))
+        self.assertTrue(any("report_created_at" in error for error in validate_report_schema(malformed)))
         malformed = dict(report); malformed["report_id"] = None
-        self.assertIn("report_id", validate_report_schema(malformed))
+        self.assertTrue(any("report_id" in error for error in validate_report_schema(malformed)))
 
     def test_powershell_51_bom_capture_is_accepted(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -100,11 +108,28 @@ class RunValidatorTests(unittest.TestCase):
         failed = list(records); failed[3] = {"event_xml": xml(201, 13, "2026-09-09T08:31:07+00:00", {**task, "ResultCode": "7"})}
         self.assertEqual(correlate_scheduler(failed, CONFIG, datetime(2026, 9, 9, 9, tzinfo=UTC))["fail"], "SCHEDULER_ACTION_NONZERO")
 
+    def test_end_to_end_xml_identity_binding_and_adversarial_reuse(self):
+        activity = "{22222222-2222-4222-8222-222222222222}"
+        def xml(event_id, record_id, when, result=""):
+            data = f'<Data Name="TaskName">\\{CONFIG["scheduler_task_name"]}</Data>' + (f'<Data Name="ResultCode">{result}</Data>' if result else "")
+            return f'<Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event"><System><EventID>{event_id}</EventID><TimeCreated SystemTime="{when}"/><EventRecordID>{record_id}</EventRecordID><Correlation ActivityID="{activity}"/></System><EventData>{data}</EventData></Event>'
+        records = [{"event_xml": xml(107, "101", "2026-09-09T08:30:00+00:00")}, {"event_xml": xml(100, "102", "2026-09-09T08:30:01+00:00")}, {"event_xml": xml(200, "103", "2026-09-09T08:30:02+00:00")}, {"event_xml": xml(201, "104", "2026-09-09T08:31:00+00:00", "0")}, {"event_xml": xml(102, "105", "2026-09-09T08:31:01+00:00")}]
+        report = self.report(events=records)
+        self.assertEqual(report["final_result"], "BLOCKED")  # declared fixture evidence is never acceptance.
+        tampered = capture(); tampered["evidence_terminal"] = {"scheduler_task_name": CONFIG["scheduler_task_name"], "scheduler_instance_id": "33333333-3333-4333-8333-333333333333", "scheduler_trigger_event_record_id": "101", "scheduler_trigger_timestamp": "2026-09-09T08:30:00+00:00", "trigger_kind": "TIME", "wrapper_execution_id": WRAPPER_ID, "runner_summary_digest": "0" * 64, "final_log_sha256": tampered["runner_log"]["sha256"], "run_id": "0" * 64, "evidence_reference": "fixture://terminal"}
+        self.assertEqual(self.report(tampered, records)["final_result"], "FAIL")
+
+    def test_schema_rejects_enums_uuid_and_nested_reference(self):
+        report = self.report(); report["exit_origin"] = "OTHER"; self.assertTrue(validate_report_schema(report))
+        report = self.report(); report["execution_kind"] = "OTHER"; self.assertTrue(validate_report_schema(report))
+        report = self.report(); report["wrapper_execution_id"] = "not-a-uuid"; self.assertTrue(validate_report_schema(report))
+        report = self.report(); report["evidence_terminal"]["evidence_reference"] = "bad value"; self.assertTrue(validate_report_schema(report))
+
     def test_scheduler_missing_identity_action_and_proven_miss(self):
         self.assertEqual(correlate_scheduler([event(instance="")], CONFIG, datetime.now(UTC))["blocked"], "SCHEDULER_INSTANCE_ID_MISSING")
         self.assertEqual(correlate_scheduler([event(record="")], CONFIG, datetime.now(UTC))["blocked"], "SCHEDULER_TRIGGER_RECORD_ID_MISSING")
         self.assertEqual(correlate_scheduler([event(action_completion=None)], CONFIG, datetime.now(UTC))["blocked"], "SCHEDULER_ACTION_EVIDENCE_INCOMPLETE")
-        missed = correlate_scheduler([{"missed_slot": "2026-09-08T16:30:00+08:00", "evidence_complete": True}], CONFIG, datetime(2026, 9, 10, tzinfo=UTC))
+        missed = correlate_scheduler({"events": [], "coverage": {"slot": "2026-09-08T16:30:00+08:00", "log_enabled": True, "readable": True, "query_succeeded": True, "coverage_start": "2026-09-08T16:28:00+08:00", "coverage_end": "2026-09-09T16:30:00+08:00"}}, CONFIG, datetime(2026, 9, 10, tzinfo=UTC))
         self.assertEqual(missed["fail"], "MISSED_SCHEDULED_SLOT")
 
     def test_missed_duplicate_and_ambiguous_are_fail_closed(self):
@@ -189,24 +214,24 @@ class RunValidatorTests(unittest.TestCase):
     def test_operational_log_is_recomputed_and_identity_bound(self):
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "runner.log"
-            payload = b'C3_2_RUNNER_SUMMARY={"wrapper_execution_id": "wrap-1", "runner_result": 0}\n'
+            payload = ('C3_2_RUNNER_SUMMARY={"schema_version":"c3_2_7.runner_summary.v1","wrapper_execution_id":"' + WRAPPER_ID + '","runner_result":0}\n').encode("utf-8")
             path.write_bytes(payload)
             item = capture(fixture_evidence={"non_operational": False})
-            item["runner_log"] = {"path": str(path), "sha256": sha256_bytes(payload), "wrapper_execution_id": "wrap-1"}
+            item["runner_log"] = {"path": str(path), "sha256": sha256_bytes(payload), "wrapper_execution_id": WRAPPER_ID, "fixture_content": payload.decode("utf-8")}
             self.assertEqual(self.report(item)["final_result"], "PASS")
             item["runner_log"]["sha256"] = "0" * 64
-            self.assertEqual(self.report(item)["final_result"], "BLOCKED")
-            item["runner_log"]["sha256"] = sha256_bytes(payload); item["wrapper_execution_id"] = "wrap-2"
-            self.assertEqual(self.report(item)["final_result"], "BLOCKED")
+            self.assertEqual(self.report(item)["final_result"], "FAIL")
+            item["runner_log"]["sha256"] = sha256_bytes(payload); item["wrapper_execution_id"] = "33333333-3333-4333-8333-333333333333"
+            self.assertEqual(self.report(item)["final_result"], "FAIL")
 
     def test_operational_log_utf16_malformed_and_missing_terminal_are_fail_closed(self):
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "runner.log"
-            text = 'C3_2_RUNNER_SUMMARY={"wrapper_execution_id": "wrap-1", "runner_result": 0}\r\n'
+            text = 'C3_2_RUNNER_SUMMARY={"schema_version":"c3_2_7.runner_summary.v1","wrapper_execution_id":"' + WRAPPER_ID + '","runner_result":0}\r\n'
             payload = text.encode("utf-16")
             path.write_bytes(payload)
             item = capture(fixture_evidence={"non_operational": False})
-            item["runner_log"] = {"path": str(path), "sha256": sha256_bytes(payload), "wrapper_execution_id": "wrap-1"}
+            item["runner_log"] = {"path": str(path), "sha256": sha256_bytes(payload), "wrapper_execution_id": WRAPPER_ID, "fixture_content": text}
             self.assertEqual(self.report(item)["final_result"], "PASS")
             malformed = b"C3_2_RUNNER_SUMMARY={not-json}\n"
             path.write_bytes(malformed); item["runner_log"]["sha256"] = sha256_bytes(malformed)
