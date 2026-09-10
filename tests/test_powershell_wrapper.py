@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 from pathlib import Path
 import os
 import shutil
@@ -335,11 +336,13 @@ class PowerShellWrapperEncodingTests(unittest.TestCase):
 
     def test_scheduled_fixture_does_not_touch_authoritative_evidence_root(self):
         authoritative = Path(os.environ.get("LOCALAPPDATA", "")) / "ProcurementMaterialsPlatform" / "evidence" / "c3_2_7"
-        before = sorted(str(path.relative_to(authoritative)) for path in authoritative.rglob("*") if path.is_file()) if authoritative.exists() else []
+        def manifest():
+            return sorted((str(path.relative_to(authoritative)), path.stat().st_size, hashlib.sha256(path.read_bytes()).hexdigest()) for path in authoritative.rglob("*") if path.is_file()) if authoritative.exists() else []
+        before = manifest()
         with tempfile.TemporaryDirectory() as temporary:
             completed = self._run_scheduled_shadow_launcher(native_exit=0, log_directory=Path(temporary) / "logs")
             self.assertEqual(completed.returncode, 0)
-        after = sorted(str(path.relative_to(authoritative)) for path in authoritative.rglob("*") if path.is_file()) if authoritative.exists() else []
+        after = manifest()
         self.assertEqual(after, before)
 
     def test_scheduled_shadow_launcher_fails_on_genuine_powershell_error(self):
