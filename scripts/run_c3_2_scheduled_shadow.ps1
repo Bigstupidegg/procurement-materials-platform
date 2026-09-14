@@ -22,6 +22,39 @@ New-Item -ItemType Directory -Force -Path $LogDirectory | Out-Null
 $LogPath = Join-Path $LogDirectory ("c3_2_scheduled_shadow-" + (Get-Date -Format "yyyyMMdd-HHmmss") + "-" + $WrapperExecutionId + ".log")
 Get-Command py -ErrorAction Stop | Out-Null
 $NativeErrorActionPreference = $ErrorActionPreference
+
+function ConvertTo-C3_2WindowsProcessArgument {
+    param([AllowEmptyString()][string]$Value)
+
+    # Start-Process joins ArgumentList values before handing them to CreateProcess.
+    # Quote according to CommandLineToArgvW so a -File or -CapturePath under a
+    # repository path with spaces remains one child-process argument.
+    $Builder = New-Object System.Text.StringBuilder
+    [void]$Builder.Append('"')
+    $Backslashes = 0
+    foreach ($Character in $Value.ToCharArray()) {
+        if ($Character -eq [char]'\') { $Backslashes++; continue }
+        if ($Character -eq [char]'"') {
+            [void]$Builder.Append([char]'\', ($Backslashes * 2) + 1)
+            [void]$Builder.Append('"')
+            $Backslashes = 0
+            continue
+        }
+        if ($Backslashes -gt 0) { [void]$Builder.Append([char]'\', $Backslashes); $Backslashes = 0 }
+        [void]$Builder.Append($Character)
+    }
+    if ($Backslashes -gt 0) { [void]$Builder.Append([char]'\', $Backslashes * 2) }
+    [void]$Builder.Append('"')
+    return $Builder.ToString()
+}
+
+function Write-C3_2FinalizerReceipt {
+    param([Parameter(Mandatory = $true)][string]$Path, [Parameter(Mandatory = $true)]$Receipt)
+    $Bytes = (New-Object System.Text.UTF8Encoding($false)).GetBytes(($Receipt | ConvertTo-Json -Depth 6 -Compress))
+    $Stream = [System.IO.File]::Open($Path, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
+    try { $Stream.Write($Bytes, 0, $Bytes.Length); $Stream.Flush() } finally { $Stream.Dispose() }
+}
+
 try {
     # Windows PowerShell turns native stderr into NativeCommandError records.
     # Capture those records for the log, but let the Python exit code decide
@@ -82,7 +115,35 @@ try {
         if (-not $FixtureEvidence) { throw "Detached finalizer is unavailable." }
     } else {
         $FinalizerWait = if ($FixtureEvidence) { 0 } else { 15 }
-        Start-Process -FilePath "powershell.exe" -ArgumentList @("-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-File", $Finalizer, "-CapturePath", $CapturePath, "-WaitSeconds", $FinalizerWait) -WindowStyle Hidden | Out-Null
+        $EventPath = [System.IO.Path]::ChangeExtension($CapturePath, ".scheduler-events.json")
+        $TerminalPath = [System.IO.Path]::ChangeExtension($CapturePath, ".evidence-terminal.json")
+        $LaunchReceiptPath = [System.IO.Path]::ChangeExtension($CapturePath, ".finalizer-launch.json")
+        $CompletionReceiptPath = [System.IO.Path]::ChangeExtension($CapturePath, ".finalizer-completion.json")
+        $FinalizerStdoutPath = [System.IO.Path]::ChangeExtension($CapturePath, ".finalizer.stdout.log")
+        $FinalizerStderrPath = [System.IO.Path]::ChangeExtension($CapturePath, ".finalizer.stderr.log")
+        $ReportRoot = if ($env:C3_2_EVIDENCE_ROOT) { Split-Path -Parent $CaptureDirectory } else { Join-Path $env:LOCALAPPDATA "ProcurementMaterialsPlatform\evidence\c3_2_7" }
+        $ReportPattern = Join-Path $ReportRoot ((Get-Date -Format "yyyy-MM-dd") + "\c3_2_7-*.json")
+        $FinalizerTokens = @("-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-File", $Finalizer, "-CapturePath", $CapturePath, "-WaitSeconds", [string]$FinalizerWait)
+        $FinalizerCommandLine = (($FinalizerTokens | ForEach-Object { ConvertTo-C3_2WindowsProcessArgument ([string]$_) }) -join " ")
+        $LaunchReceipt = [ordered]@{
+            schema_version = "c3_2_7.finalizer_launch.v1"; launch_attempted_at = (Get-Date).ToUniversalTime().ToString("o")
+            launch_attempted = $true; command = "powershell.exe " + (($FinalizerTokens | ForEach-Object { if ($_ -eq $Finalizer) { "<finalizer-script>" } elseif ($_ -eq $CapturePath) { "<capture-path>" } else { [string]$_ } }) -join " ")
+            finalizer_script_path = $Finalizer; capture_path = $CapturePath; working_directory = $RepositoryRoot
+            stdout_path = $FinalizerStdoutPath; stderr_path = $FinalizerStderrPath; launch_receipt_path = $LaunchReceiptPath; completion_receipt_path = $CompletionReceiptPath
+            expected_artifacts = [ordered]@{ scheduler_events = $EventPath; evidence_terminal = $TerminalPath; final_json_pattern = $ReportPattern; final_markdown_pattern = ($ReportPattern -replace "\\.json$", ".md") }
+        }
+        try {
+            $FinalizerProcess = Start-Process -FilePath "powershell.exe" -ArgumentList $FinalizerCommandLine -WorkingDirectory $RepositoryRoot -WindowStyle Hidden -RedirectStandardOutput $FinalizerStdoutPath -RedirectStandardError $FinalizerStderrPath -PassThru
+            $LaunchReceipt.process_id = $FinalizerProcess.Id
+            $LaunchReceipt.launch_succeeded = $true
+            Write-C3_2FinalizerReceipt -Path $LaunchReceiptPath -Receipt $LaunchReceipt
+        } catch {
+            $LaunchReceipt.launch_succeeded = $false
+            $LaunchReceipt.failure_category = $_.Exception.GetType().Name
+            Write-C3_2FinalizerReceipt -Path $LaunchReceiptPath -Receipt $LaunchReceipt
+            throw
+        }
+        Write-Host "C3_2_FINALIZER_LAUNCH=STARTED process_id=$($FinalizerProcess.Id) receipt_path=$LaunchReceiptPath stdout_path=$FinalizerStdoutPath stderr_path=$FinalizerStderrPath"
     }
 } catch {
     $PostRunExitCode = 73

@@ -284,9 +284,22 @@ def _append_checks(capture: dict[str, Any], failures: list[str], blocked: list[s
 
 def _semantic_checks(capture: dict[str, Any], terminal: dict[str, Any] | None, failures: list[str], blocked: list[str]) -> None:
     date_context = capture.get("date_context")
-    if not isinstance(date_context, dict) or parse_datetime(date_context.get("scheduler_execution_at")) is None or not date_context.get("local_calendar_date") or not date_context.get("local_calendar_status") or not date_context.get("local_business_date"):
+    execution_at = parse_datetime(date_context.get("scheduler_execution_at")) if isinstance(date_context, dict) else None
+    if not isinstance(date_context, dict) or execution_at is None or not date_context.get("local_calendar_date") or not date_context.get("local_calendar_status"):
         blocked.append("DATE_CONTEXT_SEMANTIC_INVALID")
-    elif date_context.get("canonical_target_basis") != "EXPLICIT_SOURCE_MARKET_DATE_ONLY": failures.append("DATE_CONTEXT_INFERRED_OR_CONTRADICTORY")
+    elif date_context.get("canonical_target_basis") != "EXPLICIT_SOURCE_MARKET_DATE_ONLY":
+        failures.append("DATE_CONTEXT_INFERRED_OR_CONTRADICTORY")
+    else:
+        local_calendar_date = execution_at.astimezone(TAIPEI).date().isoformat()
+        local_business_date = date_context.get("local_business_date")
+        local_status = date_context.get("local_calendar_status")
+        if date_context.get("local_calendar_date") != local_calendar_date:
+            failures.append("DATE_CONTEXT_INFERRED_OR_CONTRADICTORY")
+        elif local_business_date is None:
+            if local_status not in {"WEEKEND", "HOLIDAY", "WEEKDAY_HOLIDAY_STATUS_UNVERIFIED"}:
+                blocked.append("DATE_CONTEXT_SEMANTIC_INVALID")
+        elif local_status != "BUSINESS_DAY" or local_business_date != local_calendar_date:
+            failures.append("DATE_CONTEXT_INFERRED_OR_CONTRADICTORY")
     source = capture.get("source_readiness")
     if not isinstance(source, dict) or source.get("status") not in {"EVALUATED", "NORMAL_SKIP_NON_BUSINESS_DAY"}:
         blocked.append("SOURCE_READINESS_SEMANTIC_INVALID")
@@ -331,6 +344,9 @@ def build_report(capture: dict[str, Any], events: list[dict[str, Any]], config: 
     failures: list[str] = []
     blocked: list[str] = []
     not_verified = ["AUTHORITATIVE_HOLIDAY_CALENDAR", "SOURCE_NATIVE_PUBLICATION_TIMESTAMP", "A_L_CHANGE"]
+    date_context_for_policy = capture.get("date_context")
+    if isinstance(date_context_for_policy, dict) and date_context_for_policy.get("local_business_date") is None and date_context_for_policy.get("local_calendar_status") == "WEEKDAY_HOLIDAY_STATUS_UNVERIFIED":
+        not_verified.append("LOCAL_BUSINESS_DATE_HOLIDAY_AUTHORITY_UNVERIFIED")
     correlation = correlate_scheduler(events, config, now)
     if correlation.get("warning"): warnings.append(correlation["warning"])
     if correlation.get("fail"): failures.append(correlation["fail"])

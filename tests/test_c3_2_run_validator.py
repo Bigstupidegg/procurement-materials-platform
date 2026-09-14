@@ -155,6 +155,29 @@ class RunValidatorTests(unittest.TestCase):
         unsafe = capture(canonical_evaluation={"status": "SAFE", "evaluated_target_count": 1, "persistence": "ENABLED", "promotion": "DISABLED", "deferred_assembly_persistence": "DISABLED"})
         self.assertEqual(self.report(unsafe)["final_result"], "FAIL")
 
+    def test_holiday_authority_unverified_local_business_date_is_visible_not_blocking(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "runner.log"
+            payload = ('C3_2_RUNNER_SUMMARY={"schema_version":"c3_2_7.runner_summary.v1","wrapper_execution_id":"' + WRAPPER_ID + '","runner_result":0}\n').encode("utf-8")
+            path.write_bytes(payload)
+            item = capture(fixture_evidence={"non_operational": False})
+            item["runner_log"] = {"path": str(path), "sha256": sha256_bytes(payload), "wrapper_execution_id": WRAPPER_ID, "fixture_content": payload.decode("utf-8")}
+            item["date_context"] = {"scheduler_execution_at": "2026-09-09T16:30:01+08:00", "local_calendar_date": "2026-09-09", "local_calendar_status": "WEEKDAY_HOLIDAY_STATUS_UNVERIFIED", "local_business_date": None, "canonical_target_basis": "EXPLICIT_SOURCE_MARKET_DATE_ONLY"}
+            report = self.report(item)
+            self.assertEqual(report["final_result"], "PASS")
+            self.assertIn("LOCAL_BUSINESS_DATE_HOLIDAY_AUTHORITY_UNVERIFIED", report["not_verified"])
+            self.assertNotIn("DATE_CONTEXT_SEMANTIC_INVALID", report["blocked"])
+
+    def test_semantic_blocked_report_is_still_published(self):
+        item = capture(date_context={"scheduler_execution_at": "2026-09-09T16:30:01+08:00", "local_calendar_date": "2026-09-09", "local_calendar_status": "BUSINESS_DAY", "canonical_target_basis": "EXPLICIT_SOURCE_MARKET_DATE_ONLY"})
+        report = self.report(item)
+        self.assertEqual(report["final_result"], "BLOCKED")
+        with tempfile.TemporaryDirectory() as temporary:
+            status, json_path, markdown_path = write_immutable_report(report, Path(temporary))
+            self.assertEqual(status, "CREATED")
+            self.assertIsNotNone(json_path); self.assertIsNotNone(markdown_path)
+            self.assertEqual(json.loads(json_path.read_text(encoding="utf-8"))["final_result"], "BLOCKED")
+
     def test_scheduler_missing_identity_action_and_proven_miss(self):
         self.assertEqual(correlate_scheduler([event(instance="")], CONFIG, datetime.now(UTC))["blocked"], "SCHEDULER_INSTANCE_ID_MISSING")
         self.assertEqual(correlate_scheduler([event(record="")], CONFIG, datetime.now(UTC))["blocked"], "SCHEDULER_TRIGGER_RECORD_ID_MISSING")

@@ -12,6 +12,8 @@ Set-Location -LiteralPath $RepositoryRoot
 Start-Sleep -Seconds $WaitSeconds
 $EventPath = [System.IO.Path]::ChangeExtension($CapturePath, ".scheduler-events.json")
 $TerminalPath = [System.IO.Path]::ChangeExtension($CapturePath, ".evidence-terminal.json")
+$CompletionReceiptPath = [System.IO.Path]::ChangeExtension($CapturePath, ".finalizer-completion.json")
+$FinalizerExitCode = 72
 try {
     if ($SchedulerEventsFixturePath) {
         $EventBytes = [System.IO.File]::ReadAllBytes($SchedulerEventsFixturePath)
@@ -37,7 +39,24 @@ try {
     }
     & py -3 scripts\c3_2_run_validator.py --capture $CapturePath --events $EventPath --terminal $TerminalPath --emit-evidence-terminal
     if ($LASTEXITCODE -eq 0) { & py -3 scripts\c3_2_run_validator.py --capture $CapturePath --events $EventPath --terminal $TerminalPath --stage final }
+    $FinalizerExitCode = $LASTEXITCODE
 } catch {
     & py -3 scripts\c3_2_run_validator.py --capture $CapturePath --stage final
+    $FinalizerExitCode = $LASTEXITCODE
+} finally {
+    # This is a run-scoped diagnostic only. It exposes completion/exit visibility
+    # without rerunning the market job or modifying final evidence artifacts.
+    $Completion = [ordered]@{
+        schema_version = "c3_2_7.finalizer_completion.v1"; completed_at = (Get-Date).ToUniversalTime().ToString("o")
+        exit_code = $FinalizerExitCode; capture_path = $CapturePath; scheduler_events_path = $EventPath; evidence_terminal_path = $TerminalPath
+        scheduler_events_exists = (Test-Path -LiteralPath $EventPath); evidence_terminal_exists = (Test-Path -LiteralPath $TerminalPath)
+    }
+    try {
+        $Bytes = (New-Object System.Text.UTF8Encoding($false)).GetBytes(($Completion | ConvertTo-Json -Depth 4 -Compress))
+        $Stream = [System.IO.File]::Open($CompletionReceiptPath, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
+        try { $Stream.Write($Bytes, 0, $Bytes.Length); $Stream.Flush() } finally { $Stream.Dispose() }
+    } catch {
+        Write-Host "C3_2_FINALIZER_COMPLETION_RECEIPT=UNAVAILABLE category=$($_.Exception.GetType().Name)"
+    }
 }
-exit $LASTEXITCODE
+exit $FinalizerExitCode

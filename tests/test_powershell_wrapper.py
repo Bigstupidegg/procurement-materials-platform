@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 from pathlib import Path
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 
@@ -73,6 +75,56 @@ class PowerShellWrapperEncodingTests(unittest.TestCase):
         self.assertIn("WrapperExecutionId", text)
         self.assertIn("run_c3_2_validator.ps1", text)
         self.assertIn("Start-Process", text)
+        self.assertIn("ConvertTo-C3_2WindowsProcessArgument", text)
+        self.assertIn("-RedirectStandardOutput", text)
+        self.assertIn("finalizer-launch.json", text)
+
+    def test_detached_finalizer_launch_quotes_paths_with_spaces_and_records_diagnostics(self):
+        powershell = shutil.which("powershell.exe") or shutil.which("powershell")
+        if powershell is None or os.name != "nt": self.skipTest("Windows PowerShell is required")
+        with tempfile.TemporaryDirectory(prefix="c3 2 finalizer ") as temporary:
+            root = Path(temporary) / "repo with spaces"; scripts = root / "scripts"; scripts.mkdir(parents=True)
+            launcher = scripts / SHADOW_SCHEDULED_LAUNCHER.name
+            launcher_text = SHADOW_SCHEDULED_LAUNCHER.read_text(encoding="ascii").replace(
+                '[Environment]::GetEnvironmentVariable("GOOGLE_SHEET_ID", "User")', '"test-sheet-id"'
+            )
+            launcher.write_text(launcher_text, encoding="ascii")
+            marker = root / "finalizer received.json"
+            (scripts / SHADOW_FINALIZER.name).write_text(
+                "param([string]$CapturePath, [int]$WaitSeconds)\n"
+                "$received = [ordered]@{ script = $PSCommandPath; capture = $CapturePath; cwd = (Get-Location).Path; google_write = $env:ALLOW_GOOGLE_SHEET_WRITE; pending_write = $env:ALLOW_PENDING_RAW_WRITE; approval = $env:CONTROLLED_WRITE_APPROVAL }\n"
+                "$received | ConvertTo-Json -Compress | Set-Content -LiteralPath $env:C3_FINALIZER_MARKER -Encoding UTF8\n"
+                "Write-Output 'finalizer stdout'\n[Console]::Error.WriteLine('finalizer stderr')\n",
+                encoding="ascii",
+            )
+            shim = root / "python shim"; shim.mkdir()
+            (shim / "py.cmd").write_text("@echo off\r\nexit /b 0\r\n", encoding="ascii")
+            evidence_root = root / "fixture evidence with spaces"
+            environment = os.environ.copy()
+            environment.update({"PATH": str(shim) + os.pathsep + environment.get("PATH", ""), "C3_2_FIXTURE_MODE": "1", "C3_2_EVIDENCE_ROOT": str(evidence_root), "C3_FINALIZER_MARKER": str(marker), "GOOGLE_SHEET_ID": "secret-sheet-id"})
+            completed = subprocess.run(
+                [powershell, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", str(launcher), "-LogDirectory", str(root / "logs with spaces")],
+                cwd=root, capture_output=True, text=True, encoding="utf-8", errors="replace", env=environment, timeout=30, check=False,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            for _ in range(50):
+                if marker.exists(): break
+                time.sleep(0.1)
+            self.assertTrue(marker.exists(), completed.stdout)
+            received = json.loads(marker.read_text(encoding="utf-8-sig"))
+            captures = evidence_root / "captures"
+            receipt_path = next(captures.glob("*.finalizer-launch.json")); receipt = json.loads(receipt_path.read_text(encoding="utf-8-sig"))
+            self.assertEqual(Path(received["script"]), scripts / SHADOW_FINALIZER.name)
+            self.assertIn("fixture evidence with spaces", received["capture"])
+            self.assertEqual(Path(received["cwd"]), root)
+            self.assertEqual(received["google_write"], "0"); self.assertEqual(received["pending_write"], "0"); self.assertIn(received["approval"], (None, ""))
+            self.assertTrue(receipt["launch_attempted"]); self.assertTrue(receipt["launch_succeeded"]); self.assertIsInstance(receipt["process_id"], int)
+            self.assertIn("-File", receipt["command"]); self.assertNotIn("secret-sheet-id", json.dumps(receipt))
+            self.assertTrue(Path(receipt["stdout_path"]).exists()); self.assertTrue(Path(receipt["stderr_path"]).exists())
+            self.assertIn("finalizer stdout", Path(receipt["stdout_path"]).read_text(encoding="utf-8"))
+            self.assertIn("finalizer stderr", Path(receipt["stderr_path"]).read_text(encoding="utf-8"))
+            self.assertEqual(Path(receipt["expected_artifacts"]["scheduler_events"]), Path(received["capture"]).with_suffix(".scheduler-events.json"))
+            self.assertEqual(Path(receipt["expected_artifacts"]["evidence_terminal"]), Path(received["capture"]).with_suffix(".evidence-terminal.json"))
 
     def _run_evening_launcher(self, *, user_lookup_replacement: str, child_exit: int):
         powershell = shutil.which("powershell.exe") or shutil.which("powershell")
@@ -409,11 +461,16 @@ if ($errors.Count -gt 0) {
             capture = root / "capture.json"; capture.write_text("{}", encoding="utf-8")
             events = root / "events.json"; events.write_text('{"events":[]}', encoding="utf-8")
             marker = root / "validator-args.txt"; shim = root / "shim"; shim.mkdir()
-            (shim / "py.cmd").write_text('@echo off\r\necho %* > "%C3_FINALIZER_MARKER%"\r\nexit /b 0\r\n', encoding="ascii")
+            (shim / "py.cmd").write_text('@echo off\r\necho %* >> "%C3_FINALIZER_MARKER%"\r\nexit /b 0\r\n', encoding="ascii")
             environment = os.environ.copy(); environment["PATH"] = str(shim) + os.pathsep + environment.get("PATH", ""); environment["C3_FINALIZER_MARKER"] = str(marker)
             completed = subprocess.run([powershell, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", str(finalizer), "-CapturePath", str(capture), "-WaitSeconds", "0", "-SchedulerEventsFixturePath", str(events)], cwd=root, capture_output=True, text=True, env=environment, timeout=30, check=False)
             self.assertEqual(completed.returncode, 0, completed.stderr)
-            self.assertIn("--events", marker.read_text(encoding="utf-8"))
+            arguments = marker.read_text(encoding="utf-8")
+            self.assertIn("--events", arguments)
+            self.assertIn("--emit-evidence-terminal", arguments)
+            self.assertIn("--stage final", arguments)
+            self.assertTrue(capture.with_suffix(".scheduler-events.json").exists())
+            self.assertTrue(capture.with_suffix(".finalizer-completion.json").exists())
 
 
 if __name__ == "__main__":
