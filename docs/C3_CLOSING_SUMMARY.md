@@ -41,7 +41,7 @@ C3 is not a prediction engine or a procurement decision engine.
 
 ## Data layers and observed Sheet state
 
-Workbook: `大宗材料 行情統計表`  
+Workbook: `大宗材料 行情統計表`
 Configured spreadsheet ID: `1-YWjUm1d-8ZwuOIr-9YhbRIly2OYEfJOJ52hbz407rQ`
 
 Relevant domains are `大宗材料 行情統計表`, `System_Status`,
