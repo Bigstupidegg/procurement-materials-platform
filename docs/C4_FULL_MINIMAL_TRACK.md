@@ -3,6 +3,9 @@
 Scope: **Local Synthetic Proof-of-Pipeline only**. The only authorized input
 has `data_origin = SYNTHETIC_FIXTURE`; dataset and operational status are both
 `SYNTHETIC_NON_OPERATIONAL`.
+Both standalone C4.3 and Full Track synthetic artifacts directly set
+`research_classification = SYNTHETIC_NON_OPERATIONAL`; wrapper normalization
+remains defense in depth rather than the only classification guardrail.
 
 The boundary is explicit: **Not real Market_Observation_V2 backtest**, **Not
 Shadow export validation**, **Not Production**, **Not Canonical**, **Not

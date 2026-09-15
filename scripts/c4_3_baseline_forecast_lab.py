@@ -210,7 +210,7 @@ def normalize_observation(raw: Mapping[str, Any], row_number: int) -> ResearchOb
         raise LabError("MISSING_AVAILABLE_AT")
 
     trust_state, trust_basis = _trust_state(raw)
-    classification = "SHADOW_RESEARCH_ONLY" if trust_state == "SHADOW_RESEARCH_ONLY" else "RESEARCH_ONLY"
+    classification = "SYNTHETIC_NON_OPERATIONAL"
     value = raw.get("price") if _text(raw.get("price")) else raw.get("value")
     observed_at = _text(raw.get("observed_at")) or None
     return ResearchObservation(
@@ -532,7 +532,7 @@ def build_backtest(observations: Sequence[ResearchObservation]) -> tuple[list[di
                     "baseline_predictions": baseline_predictions(history, origin, horizon),
                     "realized_targets": realized_targets(material, history, origin, truth, horizon),
                     "no_look_ahead_status": check["status"],
-                    "research_classification": "SHADOW_RESEARCH_ONLY",
+                    "research_classification": "SYNTHETIC_NON_OPERATIONAL",
                 })
     return forecasts, checks, case_exclusions
 

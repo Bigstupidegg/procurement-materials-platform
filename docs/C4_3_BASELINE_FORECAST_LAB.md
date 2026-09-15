@@ -3,6 +3,10 @@
 Scope: **Local Synthetic Proof-of-Pipeline only** for this PR. The authorized
 data contract is `data_origin = SYNTHETIC_FIXTURE`; dataset and operational
 status are both `SYNTHETIC_NON_OPERATIONAL`.
+Standalone C4.3 synthetic artifacts directly set
+`research_classification = SYNTHETIC_NON_OPERATIONAL`; Shadow-shaped
+`trust_state` values are retained only as non-operational provenance metadata,
+never as an artifact classification.
 
 The boundary is explicit: **Not real Market_Observation_V2 backtest**, **Not
 Shadow export validation**, **Not Production**, **Not Canonical**, **Not
@@ -84,6 +88,9 @@ adapter. This mapping does not authorize or validate a real C3 export:
 `observation_at` is collector availability, not an official source-native
 publication timestamp. Source-native availability remains **NOT VERIFIED**.
 No missing timestamp or status is inferred from a neighbouring row or date.
+The mapped `SHADOW_RESEARCH_ONLY` value is trust metadata only. Standalone
+C4.3 and Full Track outputs both keep every classification-style artifact
+field `SYNTHETIC_NON_OPERATIONAL`.
 
 ## Eligibility and exclusions
 

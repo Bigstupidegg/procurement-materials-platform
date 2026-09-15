@@ -27,6 +27,26 @@ from scripts.c4_3_baseline_forecast_lab import (
 TEST_TEMP_ROOT = Path(__file__).parents[1] / "runtime"
 TEST_TEMP_ROOT.mkdir(parents=True, exist_ok=True)
 
+CLASSIFICATION_FIELDS = {
+    "classification",
+    "operational_status",
+    "research_classification",
+    "dataset_classification",
+    "package_classification",
+    "result_status",
+}
+ALLOWANCE_FIELDS = {"production_allowed", "canonical_allowed", "procurement_allowed"}
+
+
+def named_fields(value: object):
+    if isinstance(value, dict):
+        for key, item in value.items():
+            yield key, item
+            yield from named_fields(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from named_fields(item)
+
 
 def shadow_row(
     observation_id: str,
@@ -96,7 +116,7 @@ class C43NormalizationTests(unittest.TestCase):
         self.assertEqual(metadata["available_at_basis"], "C3_OBSERVATION_AT_COLLECTOR_AVAILABILITY")
         self.assertEqual(metadata["observed_at"], "2026-01-01T16:00:00+00:00")
         self.assertEqual(metadata["trust_state"], "SHADOW_RESEARCH_ONLY")
-        self.assertEqual(metadata["research_classification"], "SHADOW_RESEARCH_ONLY")
+        self.assertEqual(metadata["research_classification"], "SYNTHETIC_NON_OPERATIONAL")
         self.assertEqual(metadata["lineage"], raw["lineage"])
         self.assertEqual(metadata["quality_status"]["basis"], "C3_V2_STATUS_FIELDS")
 
@@ -254,6 +274,18 @@ class C43BacktestTests(unittest.TestCase):
 
 
 class C43ReportTests(unittest.TestCase):
+    def test_standalone_outputs_have_one_authoritative_synthetic_contract(self):
+        _, reports, forecast_lines = build_reports(
+            history_rows(), input_digest="d" * 64, generated_at="2026-09-15T00:00:00Z"
+        )
+        fields = list(named_fields({"reports": reports, "forecasts": forecast_lines}))
+        classifications = [value for key, value in fields if key in CLASSIFICATION_FIELDS]
+        allowances = [value for key, value in fields if key in ALLOWANCE_FIELDS]
+        self.assertTrue(classifications)
+        self.assertEqual(set(classifications), {"SYNTHETIC_NON_OPERATIONAL"})
+        self.assertTrue(allowances)
+        self.assertTrue(all(value is False for value in allowances))
+
     def test_reports_retain_required_metadata_and_notices_without_raw_prices(self):
         run_id, reports, forecast_lines = build_reports(
             history_rows(), input_digest="a" * 64, generated_at="2026-09-15T00:00:00Z"
@@ -332,6 +364,21 @@ class C43ReportTests(unittest.TestCase):
             manifest = json.loads((output / "run_manifest.json").read_text(encoding="utf-8"))
             self.assertEqual(set(manifest["files"]), {path.name for path in output.iterdir()} - {"run_manifest.json"})
             self.assertEqual(tuple(manifest["notices"]), NOTICES)
+            for path in output.iterdir():
+                if path.suffix == ".json":
+                    artifacts = [json.loads(path.read_text(encoding="utf-8"))]
+                elif path.suffix == ".jsonl":
+                    artifacts = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+                else:
+                    continue
+                for artifact in artifacts:
+                    fields = list(named_fields(artifact))
+                    classifications = [value for key, value in fields if key in CLASSIFICATION_FIELDS]
+                    self.assertTrue(classifications, path.name)
+                    self.assertEqual(set(classifications), {"SYNTHETIC_NON_OPERATIONAL"}, path.name)
+                    for key in ALLOWANCE_FIELDS:
+                        self.assertIn(key, artifact, f"{path.name}:{key}")
+                        self.assertIs(artifact[key], False, f"{path.name}:{key}")
 
     def test_publish_refuses_output_outside_permitted_root(self):
         run_id, reports, forecast_lines = build_reports(

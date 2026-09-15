@@ -139,7 +139,7 @@ class FullMinimalBuildTests(unittest.TestCase):
                 )
 
     def test_synthetic_outputs_have_one_authoritative_classification(self):
-        _, reports, forecast_lines, _ = build_full_track(
+        _, reports, forecast_lines, markdown = build_full_track(
             full_rows(),
             input_digest="6" * 64,
             input_classification="SYNTHETIC_NON_OPERATIONAL",
@@ -155,6 +155,9 @@ class FullMinimalBuildTests(unittest.TestCase):
                         "input_classification",
                         "research_classification",
                         "operational_status",
+                        "dataset_classification",
+                        "package_classification",
+                        "result_status",
                     }:
                         found.append(str(item))
                     found.extend(classifications(item))
@@ -166,6 +169,12 @@ class FullMinimalBuildTests(unittest.TestCase):
         values = classifications({"reports": reports, "forecasts": forecast_lines})
         self.assertTrue(values)
         self.assertEqual(set(values), {"SYNTHETIC_NON_OPERATIONAL"})
+        for forbidden in (
+            "SHADOW_RESEARCH_ONLY",
+            "LOCAL_SHADOW_RESEARCH_ONLY",
+            "SHADOW_RESEARCH_EXPORT",
+        ):
+            self.assertNotIn(forbidden, markdown)
 
     def test_empty_synthetic_input_remains_non_operational_and_data_insufficient(self):
         _, reports, forecast_lines, _ = build_full_track(
@@ -364,12 +373,16 @@ class DocumentationBoundaryTests(unittest.TestCase):
             "SYNTHETIC_FIXTURE",
             "Local Synthetic Proof-of-Pipeline",
             "Not real Market_Observation_V2 backtest",
+            "Not Shadow export validation",
             "Not Production",
             "Not Canonical",
             "Not Procurement Decision",
+            "Not Procurement Signal",
             "Not C4 closeout",
             "Real Data Readiness Gate",
             "Production Forecast Gate",
+            "later Web Human Gate",
+            "research_classification = SYNTHETIC_NON_OPERATIONAL",
         )
         for relative_path in (
             "docs/C4_3_BASELINE_FORECAST_LAB.md",
@@ -377,8 +390,9 @@ class DocumentationBoundaryTests(unittest.TestCase):
         ):
             with self.subTest(path=relative_path):
                 text = (repository / relative_path).read_text(encoding="utf-8")
+                normalized = " ".join(text.split())
                 for notice in required:
-                    self.assertIn(notice, text, f"{relative_path}:{notice}")
+                    self.assertIn(notice, normalized, f"{relative_path}:{notice}")
 
 
 if __name__ == "__main__":
