@@ -1,14 +1,19 @@
 # C4.3 Baseline Forecast Lab
 
-Status: minimal local research implementation. It is not a Production,
-Canonical, machine-learning, procurement-decision, or procurement-signal
-capability.
+Scope: **Local Synthetic Proof-of-Pipeline only** for this PR. The authorized
+data contract is `data_origin = SYNTHETIC_FIXTURE`; dataset and operational
+status are both `SYNTHETIC_NON_OPERATIONAL`.
 
-This is **Research Only**. When the Full Minimal Track invokes it with the
-explicit fixture classification, the resulting package is a **Local Synthetic
-Proof-of-Pipeline** classified **SYNTHETIC_NON_OPERATIONAL**. It is **Not Real
-Market_Observation_V2 Backtest**, **Not Production**, **Not Canonical**, and
-**Not Procurement Decision** evidence.
+The boundary is explicit: **Not real Market_Observation_V2 backtest**, **Not
+Shadow export validation**, **Not Production**, **Not Canonical**, **Not
+Procurement Decision**, **Not Procurement Signal**, and **Not C4 closeout**.
+This is a deterministic baseline-only research calculation component and not
+a machine-learning or operational capability.
+
+The **Real Data Readiness Gate** is still required before any real
+Market_Observation_V2 or Shadow export use. The **Production Forecast Gate**
+is future-only and requires separate Human Gate approval. Merge is not
+authorized unless a later Web Human Gate explicitly approves it.
 
 Every generated artifact carries all four notices:
 
@@ -24,7 +29,7 @@ The formal tracked C3 handoff is `docs/C3_CLOSING_SUMMARY.md`, supported by
 `7aeddc3758d142fe4f563be5de8ba83fe04aec23`; the accepted C3 implementation
 and closeout commits remain the values recorded in the closing summary.
 
-The lab reads one explicitly supplied local file and writes only beneath the
+The lab reads one explicitly supplied local synthetic fixture and writes only beneath the
 ignored `runtime/c4_3-baseline-forecast-lab/` directory. It has no Google
 Sheets client, network client, Production writer, Canonical store, Deferred
 Assembly writer, or procurement action. It forces the inherited C3 Sheet
@@ -32,8 +37,11 @@ write controls off in its own process.
 
 ## Local input contract
 
-The command accepts UTF-8 CSV, JSONL, or JSON. JSON is either an array of
-observation objects or an object whose `observations` member is that array.
+Within this PR, the command accepts only UTF-8 CSV, JSONL, or JSON synthetic
+fixtures. JSON is either an array of observation objects or an object whose
+`observations` member is that array. The baseline lab enforces synthetic
+lineage, and the Full Minimal Track additionally enforces the explicit
+input-classification gate before invoking this calculation component.
 Required calculation fields are:
 
 - `observation_id`
@@ -46,8 +54,8 @@ Required calculation fields are:
 - a timezone-aware `available_at`, or C3 V2 `observation_at`
 - `source_status` (`SUCCESS` or `RETRY_SUCCESS`)
 - `date_parse_status` (`PARSED`)
-- Shadow trust evidence through `trust_state`, `canonical_status`, or
-  `data_classification`
+- synthetic test-only trust metadata through `trust_state`,
+  `canonical_status`, or `data_classification`
 
 The following audit fields are retained in output:
 
@@ -62,7 +70,8 @@ Otherwise at least one approved C3 fallback identifier (`record_id`, `run_id`,
 lineage whose identifiers are all `null` is forbidden and is excluded as
 `MISSING_PROVABLE_LINEAGE`.
 
-For a direct C3 V2-shaped export, the explicit mapping is:
+Synthetic fixtures may mirror the C3 V2 field shape solely to exercise the
+adapter. This mapping does not authorize or validate a real C3 export:
 
 | C4 research field | C3 basis |
 | --- | --- |
@@ -92,9 +101,10 @@ No missing timestamp or status is inferred from a neighbouring row or date.
 - A duplicate ID with identical content is excluded as duplicate-same. A
   duplicate ID with different content fails closed.
 
-Shadow results remain research observations, not training truth, Canonical
-truth, or Production truth. The word `truth` in output means only the later
-research evaluation row used by the local backtest.
+Synthetic rows carrying Shadow-shaped trust metadata remain fixture
+observations, not Shadow export validation, training truth, Canonical truth,
+or Production truth. The word `truth` in output means only the later synthetic
+evaluation row used by the local calculation.
 
 ## Horizons, targets, and baselines
 
@@ -150,7 +160,7 @@ in `leakage_check_report.json`. Any observed violation makes the run fail.
 Example:
 
 ```powershell
-python scripts/c4_3_baseline_forecast_lab.py --input C:\local\v2-export.jsonl
+python scripts/c4_3_baseline_forecast_lab.py --input C:\local\c4-synthetic-fixture.jsonl
 ```
 
 The lab creates a non-overwriting run directory under

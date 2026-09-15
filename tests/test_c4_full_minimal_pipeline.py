@@ -95,21 +95,17 @@ class FullMinimalBuildTests(unittest.TestCase):
         self.assertTrue(any(row.get("record_type") == "FORECAST" for row in forecast_lines))
         self.assertIn("SYNTHETIC_NON_OPERATIONAL", markdown)
 
-    def test_shadow_export_can_close_only_the_local_research_track(self):
-        _, reports, _, _ = build_full_track(
-            shadow_export_rows(),
-            input_digest="b" * 64,
-            input_classification="SHADOW_RESEARCH_EXPORT",
-            generated_at="2026-09-15T04:00:00Z",
-        )
-        closeout = reports["c4_7_research_closeout_report.json"]
-        self.assertEqual(closeout["status"], "RESEARCH_TRACK_COMPLETE")
-        self.assertEqual(closeout["production_forecast"], "DISABLED")
-        self.assertEqual(closeout["canonical_promotion"], "DISABLED")
-        self.assertEqual(closeout["procurement_signal"], "DISABLED")
+    def test_shadow_research_export_is_rejected_pending_real_data_gate(self):
+        with self.assertRaisesRegex(LabError, "REAL_DATA_READINESS_GATE_REQUIRED"):
+            build_full_track(
+                shadow_export_rows(),
+                input_digest="b" * 64,
+                input_classification="SHADOW_RESEARCH_EXPORT",
+                generated_at="2026-09-15T04:00:00Z",
+            )
 
     def test_synthetic_lineage_cannot_be_promoted_by_cli_classification(self):
-        with self.assertRaisesRegex(LabError, "SYNTHETIC_INPUT_CANNOT_BE_SHADOW_RESEARCH_EXPORT"):
+        with self.assertRaisesRegex(LabError, "REAL_DATA_READINESS_GATE_REQUIRED"):
             build_full_track(
                 full_rows(),
                 input_digest="9" * 64,
@@ -170,22 +166,22 @@ class FullMinimalBuildTests(unittest.TestCase):
         self.assertTrue(values)
         self.assertEqual(set(values), {"SYNTHETIC_NON_OPERATIONAL"})
 
-    def test_empty_input_is_implementation_complete_but_data_insufficient(self):
+    def test_empty_synthetic_input_remains_non_operational_and_data_insufficient(self):
         _, reports, forecast_lines, _ = build_full_track(
             [],
             input_digest="0" * 64,
-            input_classification="SHADOW_RESEARCH_EXPORT",
+            input_classification="SYNTHETIC_NON_OPERATIONAL",
             generated_at="2026-09-15T05:00:00Z",
         )
         self.assertEqual(
             reports["c4_7_research_closeout_report.json"]["status"],
-            "IMPLEMENTATION_COMPLETE_DATA_INSUFFICIENT",
+            "RESEARCH_TRACK_COMPLETE_SYNTHETIC_NON_OPERATIONAL",
         )
         self.assertEqual(reports["c4_1_data_readiness_report.json"]["status"], "INSUFFICIENT_DATA")
         self.assertEqual(len([row for row in forecast_lines if row.get("record_type") == "FORECAST"]), 0)
 
     def test_input_classification_is_explicit_and_allowlisted(self):
-        self.assertEqual(set(INPUT_CLASSIFICATIONS), {"SHADOW_RESEARCH_EXPORT", "SYNTHETIC_NON_OPERATIONAL"})
+        self.assertEqual(INPUT_CLASSIFICATIONS, ("SYNTHETIC_NON_OPERATIONAL",))
         with self.assertRaisesRegex(LabError, "INVALID_INPUT_CLASSIFICATION"):
             build_full_track(
                 full_rows(10),
@@ -295,6 +291,9 @@ class FullMinimalPublicationTests(unittest.TestCase):
                 "ml_model": "NONE",
                 "procurement_signal": "DISABLED",
                 "procurement_decision": "NOT_AUTHORIZED",
+                "production_allowed": False,
+                "canonical_allowed": False,
+                "procurement_allowed": False,
             }
 
             def assert_guardrails(artifact: dict[str, object], name: str) -> None:
@@ -354,6 +353,31 @@ class FullMinimalPublicationTests(unittest.TestCase):
         source = (Path(__file__).parents[1] / "scripts" / "c4_full_minimal_pipeline.py").read_text(encoding="utf-8")
         for forbidden in ("gspread", "requests", "sklearn", "tensorflow", "torch"):
             self.assertNotIn("import " + forbidden, source)
+
+
+class DocumentationBoundaryTests(unittest.TestCase):
+    def test_both_docs_state_the_synthetic_only_gate_boundaries(self):
+        repository = Path(__file__).parents[1]
+        required = (
+            "SYNTHETIC_NON_OPERATIONAL",
+            "SYNTHETIC_FIXTURE",
+            "Local Synthetic Proof-of-Pipeline",
+            "Not real Market_Observation_V2 backtest",
+            "Not Production",
+            "Not Canonical",
+            "Not Procurement Decision",
+            "Not C4 closeout",
+            "Real Data Readiness Gate",
+            "Production Forecast Gate",
+        )
+        for relative_path in (
+            "docs/C4_3_BASELINE_FORECAST_LAB.md",
+            "docs/C4_FULL_MINIMAL_TRACK.md",
+        ):
+            with self.subTest(path=relative_path):
+                text = (repository / relative_path).read_text(encoding="utf-8")
+                for notice in required:
+                    self.assertIn(notice, text, f"{relative_path}:{notice}")
 
 
 if __name__ == "__main__":

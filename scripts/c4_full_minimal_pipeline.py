@@ -42,7 +42,7 @@ except ModuleNotFoundError:
 
 PIPELINE_VERSION = "C4_FULL_MINIMAL_TRACK_V1"
 STAGES = ("C4.0", "C4.1", "C4.2", "C4.3", "C4.4", "C4.5", "C4.6", "C4.7")
-INPUT_CLASSIFICATIONS = ("SHADOW_RESEARCH_EXPORT", "SYNTHETIC_NON_OPERATIONAL")
+INPUT_CLASSIFICATIONS = ("SYNTHETIC_NON_OPERATIONAL",)
 REPO_ROOT = Path(__file__).resolve().parents[1]
 OUTPUT_ROOT = REPO_ROOT / "runtime" / "c4-full-minimal-track"
 HANDOFF_SOURCES = (
@@ -103,10 +103,17 @@ def _row_has_synthetic_lineage(row: Mapping[str, Any]) -> bool:
 
 def _validate_input_classification(rows: Sequence[Mapping[str, Any]], input_classification: str) -> None:
     synthetic_flags = [_row_has_synthetic_lineage(row) for row in rows]
-    if input_classification == "SHADOW_RESEARCH_EXPORT" and any(synthetic_flags):
-        raise LabError("SYNTHETIC_INPUT_CANNOT_BE_SHADOW_RESEARCH_EXPORT")
-    if input_classification == "SYNTHETIC_NON_OPERATIONAL" and rows and not all(synthetic_flags):
+    if rows and not all(synthetic_flags):
         raise LabError("SYNTHETIC_CLASSIFICATION_LINEAGE_REQUIRED")
+
+
+def _validate_authorized_input_classification(input_classification: str) -> None:
+    normalized = input_classification.strip().upper()
+    real_or_shadow_markers = ("SHADOW", "REAL_DATA", "MARKET_OBSERVATION_V2")
+    if any(marker in normalized for marker in real_or_shadow_markers):
+        raise LabError("REAL_DATA_READINESS_GATE_REQUIRED")
+    if input_classification not in INPUT_CLASSIFICATIONS:
+        raise LabError("INVALID_INPUT_CLASSIFICATION")
 
 
 def _common(
@@ -125,21 +132,9 @@ def _common(
         "handoff_working_reference": HANDOFF_WORKING_REFERENCE,
         "input_sha256": input_digest,
         "input_classification": input_classification,
-        "research_classification": (
-            "SYNTHETIC_NON_OPERATIONAL"
-            if input_classification == "SYNTHETIC_NON_OPERATIONAL"
-            else "SHADOW_RESEARCH_ONLY"
-        ),
-        "operational_status": (
-            "SYNTHETIC_NON_OPERATIONAL"
-            if input_classification == "SYNTHETIC_NON_OPERATIONAL"
-            else "SHADOW_RESEARCH_ONLY"
-        ),
-        "data_origin": (
-            "SYNTHETIC_FIXTURE"
-            if input_classification == "SYNTHETIC_NON_OPERATIONAL"
-            else "LOCAL_SHADOW_EXPORT"
-        ),
+        "research_classification": "SYNTHETIC_NON_OPERATIONAL",
+        "operational_status": "SYNTHETIC_NON_OPERATIONAL",
+        "data_origin": "SYNTHETIC_FIXTURE",
         "notices": list(NOTICES),
         "horizons_days": list(HORIZONS),
         "target_scope": list(TARGETS),
@@ -294,15 +289,11 @@ def _shadow_research_report(common: Mapping[str, Any], forecast_lines: Sequence[
         key: {**value, "source_series": sorted(value["source_series"])}
         for key, value in sorted(materials.items())
     }
-    if common["input_classification"] == "SYNTHETIC_NON_OPERATIONAL":
-        status = "SYNTHETIC_NON_OPERATIONAL"
-    else:
-        status = "COMPLETE" if forecasts else "INSUFFICIENT_DATA"
     return {
         **common,
         "stage": "C4.5",
         "report_type": "SHADOW_RESEARCH_RUN_REPORT",
-        "status": status,
+        "status": "SYNTHETIC_NON_OPERATIONAL",
         "forecast_count": len(forecasts),
         "material_count": len(serializable),
         "materials": serializable,
@@ -360,15 +351,10 @@ def _closeout_report(common: Mapping[str, Any], stages: Mapping[str, Mapping[str
     contract_ok = stages["C4.0"]["status"] == "PASS"
     leakage_ok = stages["C4.2"]["status"] in {"PASS", "NOT_EVALUATED_INSUFFICIENT_DATA"}
     reproducible = stages["C4.6"]["status"] == "PASS"
-    has_forecasts = int(stages["C4.5"]["forecast_count"]) > 0
     if not (contract_ok and leakage_ok and reproducible):
         status = "FAIL"
-    elif common["input_classification"] == "SYNTHETIC_NON_OPERATIONAL":
-        status = "RESEARCH_TRACK_COMPLETE_SYNTHETIC_NON_OPERATIONAL"
-    elif has_forecasts:
-        status = "RESEARCH_TRACK_COMPLETE"
     else:
-        status = "IMPLEMENTATION_COMPLETE_DATA_INSUFFICIENT"
+        status = "RESEARCH_TRACK_COMPLETE_SYNTHETIC_NON_OPERATIONAL"
     stage_statuses = {key: value["status"] for key, value in stages.items()}
     stage_statuses["C4.7"] = status
     return {
@@ -447,8 +433,7 @@ def build_full_track(
     input_classification: str,
     generated_at: str | None = None,
 ) -> tuple[str, Mapping[str, Any], list[Mapping[str, Any]], str]:
-    if input_classification not in INPUT_CLASSIFICATIONS:
-        raise LabError("INVALID_INPUT_CLASSIFICATION")
+    _validate_authorized_input_classification(input_classification)
     _validate_input_classification(rows, input_classification)
     generated_at = generated_at or _iso_now()
     baseline_run_id, original_baseline_reports, original_forecast_lines = build_baseline_reports(
@@ -531,12 +516,13 @@ def render_result_markdown(common: Mapping[str, Any], stages: Mapping[str, Mappi
         "",
         "## Boundary",
         "",
-        "Local Synthetic Proof-of-Pipeline" if common["input_classification"] == "SYNTHETIC_NON_OPERATIONAL" else "Local Shadow Research Proof-of-Pipeline",
-        "Not Real Market_Observation_V2 Backtest" if common["input_classification"] == "SYNTHETIC_NON_OPERATIONAL" else "Research Only",
+        "Local Synthetic Proof-of-Pipeline",
+        "Not real Market_Observation_V2 backtest",
+        "Not Shadow export validation",
         "",
-        "This closes only the local C4 research implementation track. It does not approve",
-        "Production forecasting, Canonical promotion, Google Sheets/A:L writes, ML, or",
-        "procurement decisions/signals.",
+        "This is only local synthetic implementation evidence. It is Not C4 closeout and",
+        "does not approve Production forecasting, Canonical promotion, Google Sheets/A:L",
+        "writes, ML, or procurement decisions/signals.",
         "",
         "## Remaining evidence gap",
         "",
@@ -606,7 +592,11 @@ def publish_full_track(
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="C4.0-C4.7 full minimal local research pipeline")
     parser.add_argument("--input", required=True, type=Path, help="Local CSV, JSON, or JSONL observations")
-    parser.add_argument("--input-classification", required=True, choices=INPUT_CLASSIFICATIONS)
+    parser.add_argument(
+        "--input-classification",
+        required=True,
+        help="Must be SYNTHETIC_NON_OPERATIONAL; real and Shadow inputs require a later gate",
+    )
     args = parser.parse_args(argv)
     enforce_local_safety()
     try:

@@ -1,13 +1,21 @@
 # C4 Full Minimal Track — C4.0 to C4.7
 
-Status: local research implementation scope. This track is baseline-only and
-contains no ML, Production forecast, Canonical promotion, Google Sheets/A:L
-write, procurement decision, or procurement signal.
+Scope: **Local Synthetic Proof-of-Pipeline only**. The only authorized input
+has `data_origin = SYNTHETIC_FIXTURE`; dataset and operational status are both
+`SYNTHETIC_NON_OPERATIONAL`.
 
-Synthetic execution is a **Local Synthetic Proof-of-Pipeline** with the single
-authoritative operational classification **SYNTHETIC_NON_OPERATIONAL**. It is
-**Not Real Market_Observation_V2 Backtest**, **Not Production**, **Not
-Canonical**, **Not Procurement Decision**, and is **Research Only**.
+The boundary is explicit: **Not real Market_Observation_V2 backtest**, **Not
+Shadow export validation**, **Not Production**, **Not Canonical**, **Not
+Procurement Decision**, **Not Procurement Signal**, and **Not C4 closeout**.
+This track is local-only, baseline-only, research-only, synthetic-only, and
+non-operational. It contains no ML, Google Sheets/A:L write, Production
+forecast, Canonical promotion, Deferred persistence, procurement decision, or
+procurement signal.
+
+The **Real Data Readiness Gate** is still required before any real
+Market_Observation_V2 or Shadow export use. The **Production Forecast Gate**
+is future-only and requires separate Human Gate approval. Merge is not
+authorized unless a later Web Human Gate explicitly approves it.
 
 The formal C3 handoff sources remain `docs/C3_CLOSING_SUMMARY.md` and its
 accepted implementation/closeout references. The working handoff commit is
@@ -21,8 +29,8 @@ means the stages share the existing C4.3 deterministic baseline engine and do
 not add model training, external services, schedulers, databases, user-facing
 Production views, or decision automation.
 
-The track closes only local research implementation. It cannot close a
-Production or Canonical C4 gate.
+The track supplies only local synthetic implementation evidence. It does not
+close a research, Production, Canonical, procurement, or other C4 gate.
 
 ## Stage contract
 
@@ -75,11 +83,13 @@ interpretation.
 
 Output: `c4_4_baseline_comparison_report.json`.
 
-### C4.5 — Multi-material Shadow research
+### C4.5 — Multi-material synthetic research coverage
 
-Reports local forecast coverage by material, exact horizon, source, currency,
-and unit. For synthetic validation input, its status is always
-`SYNTHETIC_NON_OPERATIONAL`. No output is a market or procurement action.
+Reports synthetic forecast coverage by material, exact horizon, source,
+currency, and unit. Its status is always `SYNTHETIC_NON_OPERATIONAL`. The
+historical stage filename is retained for package compatibility; it does not
+mean a Shadow export was accepted or validated. No output is a market or
+procurement action.
 
 Output: `c4_5_shadow_research_report.json`.
 
@@ -91,36 +101,33 @@ reproducibility fingerprint. No network or ML dependency is permitted.
 
 Output: `c4_6_reproducibility_report.json`.
 
-### C4.7 — Research closeout
+### C4.7 — Synthetic evidence summary
 
-Summarizes every stage and visible evidence gap. Possible successful states
-are:
-
-- `RESEARCH_TRACK_COMPLETE` for an eligible local Shadow export;
-- `RESEARCH_TRACK_COMPLETE_SYNTHETIC_NON_OPERATIONAL` for a synthetic
-  validation package; or
-- `IMPLEMENTATION_COMPLETE_DATA_INSUFFICIENT` when the implementation works
-  but no exact-horizon evaluation is possible.
+Summarizes every stage and visible evidence gap. The only non-failure result
+in this PR is `RESEARCH_TRACK_COMPLETE_SYNTHETIC_NON_OPERATIONAL`. The word
+`COMPLETE` in this status means only that the local synthetic pipeline ran; it
+does not mean real-data validation, production readiness, or C4 closeout.
 
 `FAIL` is returned for a contract, leakage, or reproducibility failure.
 Production C4 closeout and C5 procurement automation remain not authorized.
+
+The historical output filename is retained for package compatibility; it is
+not authorization or a closeout claim.
 
 Outputs: `c4_7_research_closeout_report.json` and
 `c4_full_minimal_result.md`.
 
 ## Input classification
 
-The CLI requires an explicit classification:
-
-- `SHADOW_RESEARCH_EXPORT`: a local export whose C3 identity, status,
-  timestamp, trust, and lineage fields remain present.
-- `SYNTHETIC_NON_OPERATIONAL`: generated fixtures used only to prove pipeline
-  behavior. Results cannot be described as actual market performance.
+The CLI requires the single explicit classification
+`SYNTHETIC_NON_OPERATIONAL`, for generated fixtures used only to prove local
+pipeline behavior. Results cannot be described as actual market performance.
 
 There is no default classification. Synthetic classification requires
-synthetic evidence in every input row's lineage. Any row with synthetic
-lineage is rejected when the CLI classification is `SHADOW_RESEARCH_EXPORT`;
-changing a command-line flag can never promote a fixture into Shadow data.
+synthetic evidence in every input row's lineage. `SHADOW_RESEARCH_EXPORT` and
+other real/Shadow export classifications fail closed with
+`REAL_DATA_READINESS_GATE_REQUIRED`; changing a command-line flag can never
+promote a fixture or enable real data.
 The optional `fixture` marker is type-strict: only JSON boolean `true` is
 positive fixture evidence. String values such as `"false"`, `"0"`, `"yes"`,
 or `"no"` are rejected rather than interpreted by truthiness. Synthetic
@@ -132,8 +139,8 @@ is never an operational classification.
 
 ```powershell
 python scripts/c4_full_minimal_pipeline.py `
-  --input C:\local\v2-export.jsonl `
-  --input-classification SHADOW_RESEARCH_EXPORT
+  --input C:\local\c4-synthetic-fixture.jsonl `
+  --input-classification SYNTHETIC_NON_OPERATIONAL
 ```
 
 Each run creates a non-overwriting directory beneath:
@@ -161,9 +168,9 @@ Every JSON/JSONL artifact and manifest also records:
 
 ## Current data limitation
 
-The repository does not contain a local `Market_Observation_V2` historical
-export. The tracked `data/` files belong to the existing site and are not C3
-V2 truth. The old `runtime/company-market/latest.json` snapshot is not silently
-converted into history. Until a local Shadow export is explicitly supplied,
-the pipeline can produce only synthetic validation results or an honest
-`INSUFFICIENT_DATA` result.
+The repository does not contain an authorized `Market_Observation_V2`
+historical export for this PR. The tracked `data/` files belong to the existing
+site and are not C3 V2 truth. The old `runtime/company-market/latest.json`
+snapshot is not silently converted into history. Real Market_Observation_V2 /
+Shadow research export support is deferred to the Real Data Readiness Gate and
+is not implemented or authorized in this PR.

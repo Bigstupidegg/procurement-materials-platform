@@ -269,6 +269,11 @@ class C43ReportTests(unittest.TestCase):
             self.assertEqual(report["ml_model"], "NONE")
             self.assertEqual(report["procurement_signal"], "DISABLED")
             self.assertEqual(report["procurement_decision"], "NOT_AUTHORIZED")
+            self.assertIs(report["production_allowed"], False)
+            self.assertIs(report["canonical_allowed"], False)
+            self.assertIs(report["procurement_allowed"], False)
+            self.assertEqual(report["operational_status"], "SYNTHETIC_NON_OPERATIONAL")
+            self.assertEqual(report["data_origin"], "SYNTHETIC_FIXTURE")
         self.assertEqual(forecast_lines[0]["record_type"], "NOTICE")
         forecast = next(row for row in forecast_lines if row["record_type"] == "FORECAST")
         for side in ("origin", "truth"):
@@ -287,6 +292,17 @@ class C43ReportTests(unittest.TestCase):
             reports["leakage_check_report.json"]["status"],
             "NOT_EVALUATED_INSUFFICIENT_DATA",
         )
+
+    def test_non_synthetic_rows_are_rejected_before_report_build(self):
+        rows = history_rows()
+        for row in rows:
+            row["lineage"] = {"basis": "C3_V2_FIELDS", "run_id": "shadow-export"}
+        with self.assertRaisesRegex(LabError, "SYNTHETIC_FIXTURE_LINEAGE_REQUIRED"):
+            build_reports(
+                rows,
+                input_digest="9" * 64,
+                generated_at="2026-09-15T00:30:00Z",
+            )
 
     def test_publish_creates_only_expected_local_files_and_manifest_hashes(self):
         run_id, reports, forecast_lines = build_reports(

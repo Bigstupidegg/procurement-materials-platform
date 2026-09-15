@@ -571,15 +571,38 @@ def _reason_counts(rows: Sequence[Mapping[str, Any]]) -> Mapping[str, int]:
     return dict(sorted(counts.items()))
 
 
+def _row_has_synthetic_fixture_lineage(row: Mapping[str, Any]) -> bool:
+    lineage = row.get("lineage")
+    if isinstance(lineage, str) and lineage.strip():
+        try:
+            lineage = json.loads(lineage)
+        except json.JSONDecodeError as exc:
+            raise LabError("INVALID_LINEAGE_JSON") from exc
+    if not isinstance(lineage, Mapping):
+        return False
+    fixture = lineage.get("fixture")
+    if "fixture" in lineage and not isinstance(fixture, bool):
+        raise LabError("INVALID_SYNTHETIC_FIXTURE_MARKER")
+    classification = _upper(lineage.get("classification"))
+    if fixture is False and classification == "SYNTHETIC_NON_OPERATIONAL":
+        raise LabError("CONFLICTING_SYNTHETIC_LINEAGE")
+    return fixture is True or classification == "SYNTHETIC_NON_OPERATIONAL"
+
+
+def _validate_synthetic_fixture_rows(rows: Sequence[Mapping[str, Any]]) -> None:
+    if rows and not all(_row_has_synthetic_fixture_lineage(row) for row in rows):
+        raise LabError("SYNTHETIC_FIXTURE_LINEAGE_REQUIRED")
+
+
 def _common(run_id: str, generated_at: str, input_digest: str) -> dict[str, Any]:
     return {
         "run_id": run_id,
         "generated_at": generated_at,
         "algorithm_version": ALGORITHM_VERSION,
         "handoff_working_reference": HANDOFF_WORKING_REFERENCE,
-        "classification": "LOCAL_RESEARCH_ONLY",
-        "operational_status": "RESEARCH_ONLY",
-        "data_origin": "LOCAL_INPUT",
+        "classification": "SYNTHETIC_NON_OPERATIONAL",
+        "operational_status": "SYNTHETIC_NON_OPERATIONAL",
+        "data_origin": "SYNTHETIC_FIXTURE",
         "notices": list(NOTICES),
         "horizons_days": list(HORIZONS),
         "target_scope": list(TARGETS),
@@ -602,6 +625,7 @@ def _common(run_id: str, generated_at: str, input_digest: str) -> dict[str, Any]
 def build_reports(
     rows: Sequence[Mapping[str, Any]], *, input_digest: str, generated_at: str | None = None
 ) -> tuple[str, Mapping[str, Any], list[Mapping[str, Any]]]:
+    _validate_synthetic_fixture_rows(rows)
     generated_at = generated_at or _iso_datetime(datetime.now(timezone.utc))
     seed = json.dumps(
         {"algorithm_version": ALGORITHM_VERSION, "generated_at": generated_at, "input_sha256": input_digest},
