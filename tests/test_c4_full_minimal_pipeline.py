@@ -17,6 +17,7 @@ from scripts.c4_full_minimal_pipeline import (
 
 
 TEST_TEMP_ROOT = Path(__file__).parents[1] / "runtime"
+TEST_TEMP_ROOT.mkdir(parents=True, exist_ok=True)
 
 
 def observation(
