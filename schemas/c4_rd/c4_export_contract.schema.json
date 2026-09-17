@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "urn:c4-rd:schema:c4-export-contract:1.0.0",
+  "title": "Inert read-only export contract shape; schema presence grants no authorization",
+  "type": "object", "additionalProperties": false,
+  "required": ["contract_version", "request_id", "read_only", "manifest_hash", "shadow_export_allowed", "production_allowed", "canonical_allowed", "deferred_allowed", "procurement_allowed"],
+  "properties": {
+    "contract_version": {"const": "1.0.0"}, "request_id": {"type": "string", "minLength": 1}, "read_only": {"const": true},
+    "manifest_hash": {"$ref": "urn:c4-rd:schema:c4-common:1.0.0#/$defs/sha256"},
+    "shadow_export_allowed": {"const": false}, "production_allowed": {"const": false}, "canonical_allowed": {"const": false}, "deferred_allowed": {"const": false}, "procurement_allowed": {"const": false}
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:c4-rd:schema:c4-common:1.0.0",
+  "title": "C4-RD common contract definitions",
+  "$defs": {
+    "rfc3339": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?(Z|[+-][0-9]{2}:[0-9]{2})$"},
+    "date": {"type": "string", "format": "date", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "nonEmpty": {"type": "string", "minLength": 1},
+    "trustState": {"enum": ["REAL_ORIGIN_UNVERIFIED", "REAL_ORIGIN_VERIFIED", "SHADOW_UNRESOLVED", "LEGACY_UNVERIFIED", "TRUST_REJECTED"]},
+    "qualityStatus": {"enum": ["NOT_ASSESSED", "PASS", "WARNING", "FAIL", "CONFLICT"]},
+    "readinessState": {"enum": ["REAL_RAW_UNVERIFIED", "REAL_SOURCE_DATE_VERIFIED", "REAL_AVAILABILITY_VERIFIED", "REAL_RESEARCH_READY", "REAL_BACKTEST_READY", "QUARANTINED", "REJECTED"]},
+    "eligibilityState": {"enum": ["NOT_EVALUATED", "ELIGIBLE", "INELIGIBLE"]},
+    "sourcePeriodType": {"enum": ["DAILY_MARKET", "SNAPSHOT", "MONTH", "QUARTER", "OTHER_BOUNDED_PERIOD"]},
+    "calendarRole": {"enum": ["MARKET", "PUBLICATION", "LOCAL_OPERATIONAL", "SCHEDULER"]},
+    "calendarRoleStatus": {"enum": ["RESOLVED", "NOT_APPLICABLE", "UNVERIFIED", "CONFLICTING", "OUT_OF_RANGE"]},
+    "availabilityBasis": {"enum": ["SOURCE_NATIVE_TIMESTAMP", "VERIFIED_ARCHIVE_TIMESTAMP", "VERIFIED_CHANNEL_TIMESTAMP", "FIRST_SUCCESSFUL_COLLECTION", "APPROVED_CONSERVATIVE_ESTIMATE", "UNVERIFIED"]},
+    "reasonCode": {"enum": ["MISSING_SOURCE_MARKET_DATE", "AMBIGUOUS_SOURCE_DATE", "MISSING_SOURCE_AVAILABLE_AT", "AVAILABILITY_UNVERIFIED", "UNKNOWN_SOURCE_TIMEZONE", "CALENDAR_UNRESOLVED", "UNSCHEDULED_CLOSURE_UNRESOLVED", "AVAILABILITY_PRECEDES_SOURCE_DATE", "FUTURE_TIMESTAMP_OUT_OF_TOLERANCE", "LINEAGE_INCOMPLETE", "REVISION_HISTORY_UNAVAILABLE", "SOURCE_DATA_STALE", "FEATURE_AVAILABLE_AFTER_CUTOFF", "LABEL_AVAILABLE_AT_OR_BEFORE_CUTOFF", "LABEL_HORIZON_NOT_ELAPSED", "DUPLICATE_OBSERVATION_ID_CONFLICT", "CONFLICTING_OBSERVATION_VERSION", "INVALID_NUMERIC_VALUE", "UNIT_NOT_APPROVED", "CURRENCY_NOT_APPROVED", "TRUST_STATE_NOT_APPROVED", "LEGACY_UNVERIFIED_FORBIDDEN", "SHADOW_EXPORT_NOT_AUTHORIZED", "HISTORICAL_VINTAGE_NOT_PROVEN", "INVALID_SOURCE_PERIOD", "SOURCE_PERIOD_TYPE_MISMATCH", "REQUIRED_CALENDAR_ROLE_MISSING", "SOURCE_VENUE_MAPPING_CONFLICT", "CONTINUOUS_CONTRACT_MAPPING_UNRESOLVED", "SOURCE_LICENSING_BLOCKED"]},
+    "calendarAssignment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["subject_id", "role", "status", "calendar_reference_id", "calendar_version", "calendar_hash"],
+      "properties": {
+        "subject_id": {"$ref": "#/$defs/nonEmpty"},
+        "role": {"$ref": "#/$defs/calendarRole"},
+        "status": {"$ref": "#/$defs/calendarRoleStatus"},
+        "calendar_reference_id": {"type": ["string", "null"], "minLength": 1},
+        "calendar_version": {"type": ["string", "null"], "minLength": 1},
+        "calendar_hash": {"oneOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]}
+      },
+      "allOf": [
+        {"if": {"properties": {"status": {"const": "RESOLVED"}}, "required": ["status"]}, "then": {"properties": {"calendar_reference_id": {"type": "string"}, "calendar_version": {"type": "string"}, "calendar_hash": {"$ref": "#/$defs/sha256"}}}},
+        {"if": {"properties": {"status": {"const": "NOT_APPLICABLE"}}, "required": ["status"]}, "then": {"properties": {"calendar_reference_id": {"type": "null"}, "calendar_version": {"type": "null"}, "calendar_hash": {"type": "null"}}}}
+      ]
+    },
+    "exclusionReason": {
+      "type": "object", "additionalProperties": false,
+      "required": ["code", "severity", "blocking_scope", "description", "remediation", "sort_order"],
+      "properties": {
+        "code": {"$ref": "#/$defs/reasonCode"},
+        "severity": {"type": "string", "minLength": 1},
+        "blocking_scope": {"type": "string", "minLength": 1},
+        "description": {"type": "string", "minLength": 1},
+        "remediation": {"type": "string", "minLength": 1},
+        "sort_order": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}

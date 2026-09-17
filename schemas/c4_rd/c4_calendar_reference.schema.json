@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "urn:c4-rd:schema:c4-calendar-reference:1.0.0",
+  "type": "object", "additionalProperties": false,
+  "required": ["calendar_reference_id", "calendar_version", "calendar_kind", "entries"],
+  "properties": {
+    "calendar_reference_id": {"type": "string", "minLength": 1}, "calendar_version": {"type": "string", "minLength": 1},
+    "calendar_kind": {"type": "string", "minLength": 1}, "entries": {"type": "array", "items": {"type": "object"}}
+  }
+}
