@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "urn:c4-rd:schema:c4-pit-eligibility:1.0.0",
+  "type": "object", "additionalProperties": false,
+  "required": ["assessment_type", "subject_id", "assessment_role", "evaluation_at", "rule_bundle_version", "eligibility_state", "feature_available_at_max", "research_cutoff_at", "label_available_at", "evaluation_as_of_at", "reason_codes", "result", "evidence"],
+  "properties": {
+    "assessment_type": {"const": "PIT_ELIGIBILITY"}, "subject_id": {"$ref": "urn:c4-rd:schema:c4-common:1.0.0#/$defs/sha256"}, "assessment_role": {"type": "string", "minLength": 1},
+    "evaluation_at": {"$ref": "urn:c4-rd:schema:c4-common:1.0.0#/$defs/rfc3339"}, "rule_bundle_version": {"type": "string", "minLength": 1}, "eligibility_state": {"$ref": "urn:c4-rd:schema:c4-common:1.0.0#/$defs/eligibilityState"},
+    "feature_available_at_max": {"$ref": "urn:c4-rd:schema:c4-common:1.0.0#/$defs/rfc3339"}, "research_cutoff_at": {"$ref": "urn:c4-rd:schema:c4-common:1.0.0#/$defs/rfc3339"},
+    "label_available_at": {"$ref": "urn:c4-rd:schema:c4-common:1.0.0#/$defs/rfc3339"}, "evaluation_as_of_at": {"$ref": "urn:c4-rd:schema:c4-common:1.0.0#/$defs/rfc3339"},
+    "reason_codes": {"type": "array", "items": {"$ref": "urn:c4-rd:schema:c4-common:1.0.0#/$defs/reasonCode"}, "uniqueItems": true}, "result": {"type": "object"}, "evidence": {"type": "object"},
+    "assessed_at": {"oneOf": [{"$ref": "urn:c4-rd:schema:c4-common:1.0.0#/$defs/rfc3339"}, {"type": "null"}]}, "created_at": {"oneOf": [{"$ref": "urn:c4-rd:schema:c4-common:1.0.0#/$defs/rfc3339"}, {"type": "null"}]}
+  }
+}

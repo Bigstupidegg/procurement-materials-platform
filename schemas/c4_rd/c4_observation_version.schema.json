@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:c4-rd:schema:c4-observation-version:1.0.0",
+  "type": "object", "additionalProperties": false,
+  "required": ["observation_id", "source_version_or_release_key", "stable_version_key", "raw_payload_hash", "transformation_version"],
+  "properties": {
+    "observation_id": {"$ref": "urn:c4-rd:schema:c4-common:1.0.0#/$defs/sha256"},
+    "source_version_or_release_key": {"type": "string", "minLength": 1},
+    "stable_version_key": {"type": "string", "minLength": 1},
+    "raw_payload_hash": {"$ref": "urn:c4-rd:schema:c4-common:1.0.0#/$defs/sha256"},
+    "transformation_version": {"type": "string", "minLength": 1, "not": {"pattern": "^[Ll][Aa][Tt][Ee][Ss][Tt]$"}},
+    "parent_version_id": {"oneOf": [{"$ref": "urn:c4-rd:schema:c4-common:1.0.0#/$defs/sha256"}, {"type": "null"}]},
+    "revision_available_at": {"oneOf": [{"$ref": "urn:c4-rd:schema:c4-common:1.0.0#/$defs/rfc3339"}, {"type": "null"}]},
+    "collected_at": {"oneOf": [{"$ref": "urn:c4-rd:schema:c4-common:1.0.0#/$defs/rfc3339"}, {"type": "null"}]},
+    "observed_at": {"oneOf": [{"$ref": "urn:c4-rd:schema:c4-common:1.0.0#/$defs/rfc3339"}, {"type": "null"}]},
+    "created_at": {"oneOf": [{"$ref": "urn:c4-rd:schema:c4-common:1.0.0#/$defs/rfc3339"}, {"type": "null"}]},
+    "semantic_data": {"type": "object"}
+  }
+}

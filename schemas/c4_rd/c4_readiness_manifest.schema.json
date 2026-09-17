@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "urn:c4-rd:schema:c4-readiness-manifest:1.0.0",
+  "type": "object", "additionalProperties": false,
+  "required": ["manifest_kind", "semantic_subject_scope_hash", "evaluation_as_of_at", "contract_version", "rule_bundle_version", "entries", "blocker_ids", "authorizations"],
+  "properties": {
+    "manifest_kind": {"type": "string", "minLength": 1}, "semantic_subject_scope_hash": {"$ref": "urn:c4-rd:schema:c4-common:1.0.0#/$defs/sha256"},
+    "evaluation_as_of_at": {"$ref": "urn:c4-rd:schema:c4-common:1.0.0#/$defs/rfc3339"}, "contract_version": {"const": "1.0.0"}, "rule_bundle_version": {"type": "string", "minLength": 1},
+    "entries": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["path", "hash"], "properties": {"path": {"type": "string", "minLength": 1}, "hash": {"$ref": "urn:c4-rd:schema:c4-common:1.0.0#/$defs/sha256"}}}},
+    "blocker_ids": {"const": ["RD3-BZ-001", "RD3-LME-001", "RD3-LME-002", "RD3-LME-003", "RD3-SMM-001", "RD3-SMM-002", "RD3-SMM-003", "RD3-SMM-004", "RD3-WB-001", "RD3-WB-002", "RD3-WB-003", "RD3-YAHOO-001", "RD3-YAHOO-002", "RD3-YAHOO-003", "RD3-YAHOO-004"]},
+    "authorizations": {"type": "object", "additionalProperties": false, "required": ["real_data_ingestion_allowed", "shadow_export_allowed", "research_dataset_allowed", "backtest_allowed", "production_allowed", "canonical_allowed", "deferred_allowed", "ml_allowed", "procurement_allowed"], "properties": {"real_data_ingestion_allowed": {"const": false}, "shadow_export_allowed": {"const": false}, "research_dataset_allowed": {"const": false}, "backtest_allowed": {"const": false}, "production_allowed": {"const": false}, "canonical_allowed": {"const": false}, "deferred_allowed": {"const": false}, "ml_allowed": {"const": false}, "procurement_allowed": {"const": false}}},
+    "report_generated_at": {"oneOf": [{"$ref": "urn:c4-rd:schema:c4-common:1.0.0#/$defs/rfc3339"}, {"type": "null"}]}
+  }
+}

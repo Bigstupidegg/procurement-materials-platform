@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "urn:c4-rd:schema:c4-rule-bundle:1.0.0",
+  "type": "object", "additionalProperties": false,
+  "required": ["rule_bundle_version", "contract_version", "exclusion_catalog_version", "exclusion_reasons", "rules"],
+  "properties": {
+    "rule_bundle_version": {"type": "string", "minLength": 1}, "contract_version": {"const": "1.0.0"}, "exclusion_catalog_version": {"const": "1.1.0"},
+    "exclusion_reasons": {"type": "array", "items": {"$ref": "urn:c4-rd:schema:c4-common:1.0.0#/$defs/exclusionReason"}, "minItems": 30, "uniqueItems": true}, "rules": {"type": "object"}
+  }
+}

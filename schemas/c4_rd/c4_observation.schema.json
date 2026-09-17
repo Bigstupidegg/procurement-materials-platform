@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:c4-rd:schema:c4-observation:1.0.0",
+  "type": "object", "additionalProperties": false,
+  "required": ["source_id", "source_record_identifier", "metric_id", "instrument_id", "source_period_type", "source_market_date", "source_period_start_date", "source_period_end_date", "calendar_assignments", "data_origin", "operational_status"],
+  "properties": {
+    "source_id": {"type": "string", "minLength": 1},
+    "source_record_identifier": {"type": "string", "minLength": 1},
+    "metric_id": {"type": "string", "minLength": 1},
+    "instrument_id": {"type": "string", "minLength": 1},
+    "source_period_type": {"$ref": "urn:c4-rd:schema:c4-common:1.0.0#/$defs/sourcePeriodType"},
+    "source_market_date": {"oneOf": [{"$ref": "urn:c4-rd:schema:c4-common:1.0.0#/$defs/date"}, {"type": "null"}]},
+    "source_period_start_date": {"oneOf": [{"$ref": "urn:c4-rd:schema:c4-common:1.0.0#/$defs/date"}, {"type": "null"}]},
+    "source_period_end_date": {"oneOf": [{"$ref": "urn:c4-rd:schema:c4-common:1.0.0#/$defs/date"}, {"type": "null"}]},
+    "calendar_assignments": {"type": "array", "minItems": 4, "maxItems": 4, "items": {"$ref": "urn:c4-rd:schema:c4-common:1.0.0#/$defs/calendarAssignment"}},
+    "data_origin": {"const": "SYNTHETIC_FIXTURE"},
+    "operational_status": {"const": "SYNTHETIC_NON_OPERATIONAL"},
+    "scheduler_execution_at": {"oneOf": [{"$ref": "urn:c4-rd:schema:c4-common:1.0.0#/$defs/rfc3339"}, {"type": "null"}]},
+    "local_business_date": {"oneOf": [{"$ref": "urn:c4-rd:schema:c4-common:1.0.0#/$defs/date"}, {"type": "null"}]},
+    "source_business_date": {"oneOf": [{"$ref": "urn:c4-rd:schema:c4-common:1.0.0#/$defs/date"}, {"type": "null"}]},
+    "scheduler_business_date": {"oneOf": [{"$ref": "urn:c4-rd:schema:c4-common:1.0.0#/$defs/date"}, {"type": "null"}]},
+    "source_publication_at": {"oneOf": [{"$ref": "urn:c4-rd:schema:c4-common:1.0.0#/$defs/rfc3339"}, {"type": "null"}]},
+    "collected_at": {"oneOf": [{"$ref": "urn:c4-rd:schema:c4-common:1.0.0#/$defs/rfc3339"}, {"type": "null"}]},
+    "observed_at": {"oneOf": [{"$ref": "urn:c4-rd:schema:c4-common:1.0.0#/$defs/rfc3339"}, {"type": "null"}]},
+    "source_available_at": {"oneOf": [{"$ref": "urn:c4-rd:schema:c4-common:1.0.0#/$defs/rfc3339"}, {"type": "null"}]},
+    "channel_available_at": {"oneOf": [{"$ref": "urn:c4-rd:schema:c4-common:1.0.0#/$defs/rfc3339"}, {"type": "null"}]},
+    "created_at": {"oneOf": [{"$ref": "urn:c4-rd:schema:c4-common:1.0.0#/$defs/rfc3339"}, {"type": "null"}]},
+    "semantic_data": {"type": "object"}
+  }
+}
