@@ -15,7 +15,7 @@ import scripts.c4_rd_contract as contract_module
 
 from scripts.c4_rd_contract import (
     AVAILABILITY_BASES, BACKTEST_ENABLED_SOURCES, CALENDAR_ROLES, CALENDAR_ROLE_STATUSES,
-    CANONICAL_JSON_PROFILE, ELIGIBILITY_STATES, EXCLUSION_REASON_CODES, HASH_DOMAINS,
+    CANONICAL_JSON_PROFILE, CONTRACT_VERSION, ELIGIBILITY_STATES, EXCLUSION_REASON_CODES, HASH_DOMAINS,
     HASH_PROFILE, PIT_ENABLED_SOURCES, QUALITY_STATUSES, RAW_BYTES_HASH_PROFILE,
     RD3_OPEN_BLOCKERS, READINESS_STATES, RESEARCH_ENABLED_SOURCES, SAFETY_FLAGS,
     SOURCE_PERIOD_TYPES, STALE_REASON_ALIASES, TRUST_STATES, AvailabilityAssessment,
@@ -44,6 +44,20 @@ EXPECTED_RD3_BLOCKERS = (
     "RD3-YAHOO-001", "RD3-YAHOO-002", "RD3-YAHOO-003", "RD3-YAHOO-004",
     "RD3-BZ-001", "RD3-WB-001", "RD3-WB-002", "RD3-WB-003",
 )
+APPROVED_PIT_HASH_DOMAINS = frozenset({
+    "PIT_FEATURE_CONTENT", "PIT_DATASET_ROW_ID", "PIT_DATASET_ROW_CONTENT",
+})
+EXISTING_HASH_VECTORS = {
+    "ASSESSMENT_CONTENT": "6d34980ae85a9f2c6d2822555166394fdf8a5fc3a2b8782ea9c59124e21e6b8b",
+    "ASSESSMENT_ID": "b79bfd038a1fad5b7625073d96f0fcc8064e3ba3d4571eb4fe24348858e5672b",
+    "CALENDAR_CONTENT": "07eda49406e2947717c8fed0267b248e7abfcf2bff8c3fdea93ae7701d85f7d0",
+    "MANIFEST_CONTENT": "45e310d469d9c124afb6043f1d2994c7341c81902c32c3813c1e28a2ee397025",
+    "OBSERVATION_CONTENT": "07739f5bc5c7db7d03e2974635f87ab820395b6c74663dcfcd5af002a7bda70c",
+    "OBSERVATION_ID": "5393ec254e6c1140441f9fea2700224df81a785b8be8f74c98749c02e8d9eb2e",
+    "OBSERVATION_VERSION_CONTENT": "cfe2e06971c92543a54d4ac3f0ba86e6a2cb4c1318e978a69053f492bd722e62",
+    "OBSERVATION_VERSION_ID": "91f412199f9ef7d67e78b4905521584203bd39fb3d86f4653e41ee0014c4df2c",
+    "RULE_BUNDLE_CONTENT": "cf0a18d6b79830a6b6cadf69cdd9bb932605e6ead384bebbbf2528a3813b8988",
+}
 
 
 def assignments(subject: str = "synthetic-subject") -> tuple[CalendarAssignment, ...]:
@@ -301,9 +315,111 @@ class FrozenContractTests(unittest.TestCase):
 
     def test_domain_separation_and_unknown_domain(self):
         self.assertNotEqual(canonical_hash("OBSERVATION_ID", {"x": 1}), canonical_hash("OBSERVATION_CONTENT", {"x": 1}))
-        self.assertEqual(len(HASH_DOMAINS), 9)
+        self.assertEqual(HASH_DOMAINS, frozenset(EXISTING_HASH_VECTORS) | APPROVED_PIT_HASH_DOMAINS)
         with self.assertRaises(ContractError):
             canonical_hash("UNKNOWN", {})
+
+    def test_existing_domain_vectors_remain_byte_and_hash_identical(self):
+        payload = {"a": 1, "b": 2}
+        self.assertEqual(canonical_json_bytes(payload), b'{"a":1,"b":2}')
+        self.assertEqual(len(EXISTING_HASH_VECTORS), 9)
+        for domain, expected in EXISTING_HASH_VECTORS.items():
+            with self.subTest(domain=domain):
+                self.assertEqual(canonical_hash(domain, payload), expected)
+
+    def test_exact_approved_pit_domains_are_accepted(self):
+        payload = {"fixture": "SYNTHETIC_FIXTURE", "value": Decimal("12.50")}
+        for domain in sorted(APPROVED_PIT_HASH_DOMAINS):
+            with self.subTest(domain=domain):
+                first = canonical_hash(domain, payload)
+                self.assertEqual(len(first), 64)
+                self.assertEqual(first, canonical_hash(domain, payload))
+
+    def test_unapproved_pit_domains_remain_rejected(self):
+        for domain in (
+            "PIT_UNKNOWN_DOMAIN", "PIT_FEATURE_ID", "PIT_DATASET_CONTENT",
+            "PIT_DATASET_MANIFEST",
+        ):
+            with self.subTest(domain=domain), self.assertRaises(ContractError):
+                canonical_hash(domain, {"fixture": "SYNTHETIC_FIXTURE"})
+
+    def test_pit_hash_domains_are_separated_by_existing_prefix(self):
+        payload = {"fixture": "SYNTHETIC_FIXTURE", "value": 12}
+        feature = canonical_hash("PIT_FEATURE_CONTENT", payload)
+        row_id = canonical_hash("PIT_DATASET_ROW_ID", payload)
+        row_content = canonical_hash("PIT_DATASET_ROW_CONTENT", payload)
+        self.assertNotEqual(feature, row_content)
+        self.assertNotEqual(row_id, row_content)
+        self.assertEqual(len({feature, row_id, row_content}), 3)
+
+    def test_pit_domain_mapping_permutation_is_canonical(self):
+        first = {"b": 2, "a": 1}
+        second = {"a": 1, "b": 2}
+        self.assertEqual(canonical_json_bytes(first), canonical_json_bytes(second))
+        for domain in sorted(APPROVED_PIT_HASH_DOMAINS):
+            with self.subTest(domain=domain):
+                self.assertEqual(canonical_hash(domain, first), canonical_hash(domain, second))
+
+    def test_pit_row_identity_and_content_are_separate(self):
+        identity = {
+            "dataset_contract_version": "SYNTHETIC_PIT_DATASET_V1",
+            "research_subject_id": H1,
+            "observation_version_id": H2,
+            "research_cutoff_at": "2026-01-03T00:00:00Z",
+            "feature_set_version": "synthetic-set@1",
+            "feature_computation_profile_version": "synthetic-computation@1",
+            "cutoff_policy_version": "synthetic-cutoff@1",
+        }
+        first_content = {"identity": identity, "features": {"synthetic_value": "12.5"}}
+        second_content = {"identity": identity, "features": {"synthetic_value": "13.0"}}
+        first_id = canonical_hash("PIT_DATASET_ROW_ID", identity)
+        second_id = canonical_hash("PIT_DATASET_ROW_ID", dict(reversed(tuple(identity.items()))))
+        self.assertEqual(first_id, second_id)
+        self.assertNotEqual(
+            canonical_hash("PIT_DATASET_ROW_CONTENT", first_content),
+            canonical_hash("PIT_DATASET_ROW_CONTENT", second_content),
+        )
+
+    def test_pit_semantic_projection_excludes_runtime_metadata(self):
+        semantic = {"fixture": "SYNTHETIC_FIXTURE", "feature": "synthetic-value"}
+        first_runtime = {
+            "hostname": "synthetic-host-a", "PID": 11, "cwd": "synthetic-cwd-a",
+            "temporary_path": "synthetic-temp-a", "generated_at": "2026-01-01T00:00:00Z",
+            "random_UUID": "synthetic-uuid-a",
+        }
+        second_runtime = {
+            "hostname": "synthetic-host-b", "PID": 22, "cwd": "synthetic-cwd-b",
+            "temporary_path": "synthetic-temp-b", "generated_at": "2026-02-01T00:00:00Z",
+            "random_UUID": "synthetic-uuid-b",
+        }
+        self.assertTrue(set(semantic).isdisjoint(first_runtime))
+        first_context = {**semantic, **first_runtime}
+        second_context = {**semantic, **second_runtime}
+        approved_fields = ("fixture", "feature")
+        first_projection = {key: first_context[key] for key in approved_fields}
+        second_projection = {key: second_context[key] for key in approved_fields}
+        stable_hash = canonical_hash("PIT_FEATURE_CONTENT", first_projection)
+        self.assertEqual(stable_hash, canonical_hash("PIT_FEATURE_CONTENT", second_projection))
+        self.assertNotEqual(stable_hash, canonical_hash("PIT_FEATURE_CONTENT", {**semantic, **first_runtime}))
+        self.assertNotEqual(
+            canonical_hash("PIT_FEATURE_CONTENT", {**semantic, **first_runtime}),
+            canonical_hash("PIT_FEATURE_CONTENT", {**semantic, **second_runtime}),
+        )
+
+    def test_pit_domains_preserve_contract_profiles_and_prefix(self):
+        self.assertEqual(CONTRACT_VERSION, "1.0.0")
+        self.assertEqual(CANONICAL_JSON_PROFILE, "C4_CANONICAL_JSON_V1@1.0.0")
+        self.assertEqual(HASH_PROFILE, "C4_HASH_PROFILE_V1@1.0.0")
+        payload = {"fixture": "SYNTHETIC_FIXTURE"}
+        canonical = canonical_json_bytes(payload)
+        for domain in sorted(APPROVED_PIT_HASH_DOMAINS):
+            with self.subTest(domain=domain):
+                prefix = (
+                    b"C4RD\0" + domain.encode("ascii") + b"\0CONTRACT=1.0.0"
+                    b"\0CANON=C4_CANONICAL_JSON_V1@1.0.0"
+                    b"\0HASH=C4_HASH_PROFILE_V1@1.0.0\0"
+                )
+                self.assertEqual(canonical_hash(domain, payload), hashlib.sha256(prefix + canonical).hexdigest())
 
     def test_unsupported_profiles_rejected(self):
         with self.assertRaises(ContractError):
