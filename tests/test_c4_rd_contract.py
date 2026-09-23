@@ -47,6 +47,7 @@ EXPECTED_RD3_BLOCKERS = (
 APPROVED_PIT_HASH_DOMAINS = frozenset({
     "PIT_FEATURE_CONTENT", "PIT_DATASET_ROW_ID", "PIT_DATASET_ROW_CONTENT",
 })
+PREREGISTRATION_HASH_DOMAIN = "PREREGISTRATION_CONTENT"
 EXISTING_HASH_VECTORS = {
     "ASSESSMENT_CONTENT": "6d34980ae85a9f2c6d2822555166394fdf8a5fc3a2b8782ea9c59124e21e6b8b",
     "ASSESSMENT_ID": "b79bfd038a1fad5b7625073d96f0fcc8064e3ba3d4571eb4fe24348858e5672b",
@@ -315,9 +316,59 @@ class FrozenContractTests(unittest.TestCase):
 
     def test_domain_separation_and_unknown_domain(self):
         self.assertNotEqual(canonical_hash("OBSERVATION_ID", {"x": 1}), canonical_hash("OBSERVATION_CONTENT", {"x": 1}))
-        self.assertEqual(HASH_DOMAINS, frozenset(EXISTING_HASH_VECTORS) | APPROVED_PIT_HASH_DOMAINS)
+        self.assertEqual(
+            HASH_DOMAINS,
+            frozenset(EXISTING_HASH_VECTORS) | APPROVED_PIT_HASH_DOMAINS | {PREREGISTRATION_HASH_DOMAIN},
+        )
         with self.assertRaises(ContractError):
             canonical_hash("UNKNOWN", {})
+
+    def test_preregistration_domain_registry_is_exactly_additive(self):
+        existing_domains = frozenset(EXISTING_HASH_VECTORS) | APPROVED_PIT_HASH_DOMAINS
+        self.assertEqual(len(existing_domains), 12)
+        self.assertNotIn(PREREGISTRATION_HASH_DOMAIN, existing_domains)
+        self.assertEqual(len(HASH_DOMAINS), 13)
+        self.assertEqual(HASH_DOMAINS - existing_domains, {PREREGISTRATION_HASH_DOMAIN})
+
+    def test_preregistration_frozen_canonical_bytes_and_hash_vector(self):
+        payload = {
+            "contract_version": "1.0.0",
+            "preregistration_version": "1.0.0",
+            "research_protocol_id": "SYNTHETIC_TEST",
+        }
+        expected_canonical = (
+            b'{"contract_version":"1.0.0","preregistration_version":"1.0.0",'
+            b'"research_protocol_id":"SYNTHETIC_TEST"}'
+        )
+        expected_hash = "b642e515bb52c534ff3006a1803035dcc9f6ba7491cd996eeb663921804cb6e3"
+        self.assertEqual(canonical_json_bytes(payload), expected_canonical)
+        self.assertEqual(canonical_hash(PREREGISTRATION_HASH_DOMAIN, payload), expected_hash)
+        self.assertEqual(canonical_hash(PREREGISTRATION_HASH_DOMAIN, payload), expected_hash)
+
+    def test_preregistration_domain_is_separate_from_manifest_domain(self):
+        payload = {
+            "contract_version": "1.0.0",
+            "preregistration_version": "1.0.0",
+            "research_protocol_id": "SYNTHETIC_TEST",
+        }
+        self.assertNotEqual(
+            canonical_hash(PREREGISTRATION_HASH_DOMAIN, payload),
+            canonical_hash("MANIFEST_CONTENT", payload),
+        )
+
+    def test_preregistration_domain_preserves_frozen_profiles_and_prefix(self):
+        self.assertEqual(CONTRACT_VERSION, "1.0.0")
+        self.assertEqual(CANONICAL_JSON_PROFILE, "C4_CANONICAL_JSON_V1@1.0.0")
+        self.assertEqual(HASH_PROFILE, "C4_HASH_PROFILE_V1@1.0.0")
+        self.assertEqual(RAW_BYTES_HASH_PROFILE, "C4_RAW_BYTES_HASH_V1@1.0.0")
+        payload = {"fixture": "SYNTHETIC_FIXTURE"}
+        prefix = (
+            b"C4RD\0PREREGISTRATION_CONTENT\0CONTRACT=1.0.0"
+            b"\0CANON=C4_CANONICAL_JSON_V1@1.0.0"
+            b"\0HASH=C4_HASH_PROFILE_V1@1.0.0\0"
+        )
+        expected = hashlib.sha256(prefix + canonical_json_bytes(payload)).hexdigest()
+        self.assertEqual(canonical_hash(PREREGISTRATION_HASH_DOMAIN, payload), expected)
 
     def test_existing_domain_vectors_remain_byte_and_hash_identical(self):
         payload = {"a": 1, "b": 2}
