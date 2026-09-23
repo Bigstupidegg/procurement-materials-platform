@@ -77,9 +77,16 @@ clock, or random value is used as an authority tie-breaker.
 
 ## PIT selection
 
-Candidate availability comes from the RD-4/RD-5-bound
-`feature_available_at_max`. If an `Observation.source_available_at` value is
-also supplied, it must match the bound availability exactly.
+Candidate PIT availability comes only from the RD-4/RD-5-bound
+`feature_available_at_max`. `Observation.source_available_at` is separate
+source-publication authority: the builder verifies that it matches the RD-5
+decision's `temporal_context.source_available_at`, but does not require it to
+equal feature availability. No timestamp is inferred from either field.
+
+For compatibility, `PITFeatureSnapshot.source_available_at` stores the
+authoritative **feature** availability timestamp selected from
+`feature_available_at_max`; the field name is not a claim that it stores the
+Observation source-publication timestamp.
 
 For a cutoff of 10:30, candidates available at 09:00 and 10:00 are visible;
 a candidate available at 12:00 is invisible. The 10:00 version is selected.
@@ -97,6 +104,10 @@ Feature definitions explicitly declare `MANDATORY` or `OPTIONAL`.
   `MANDATORY_FEATURE_UNAVAILABLE`.
 - Missing optional feature: an `EXPLICIT_MISSING` snapshot whose value and
   source lineage are null.
+- Any relevant candidate with unresolved authoritative
+  `feature_available_at_max`: `QUARANTINE` with
+  `FEATURE_AVAILABILITY_UNRESOLVED`, even when another relevant candidate has
+  known availability and even when the feature is optional.
 - Existing but semantically unsafe candidate: `QUARANTINE`.
 - Invalid authority binding, ambiguous latest candidate, future included
   feature, or conflicting duplicate row content: `PITDatasetHardFail`.
@@ -176,6 +187,16 @@ canonical_hash("MANIFEST_CONTENT", manifest_content_projection)
 No `PIT_DATASET_ID` domain exists. Dataset identity is exactly the manifest
 hash.
 
+The manifest also binds a deterministic `request_scope`. Each entry is exactly
+the corresponding `PITDatasetRequest.semantic_projection()`: dataset contract,
+subject, observation version, cutoff, feature-set and computation versions,
+cutoff policy, ordered feature definitions, label specification, and execution
+mode. Identical semantic requests are deduplicated. Entries are ordered by
+cutoff, subject, observation version, then canonical projection bytes. Runtime
+metadata is excluded. Consequently, different zero-row request populations
+still produce different dataset identities, while duplicate or permuted
+semantic requests do not change identity.
+
 ## Ordering and duplicates
 
 Feature order follows the request's frozen feature-definition order. It is not
@@ -207,9 +228,13 @@ to a warning, exclusion, or quarantine.
 
 ## Feature/label firewall
 
-The request stores only a label definition/reference specification. Realized
-labels, realized future returns, target prices, realized future volatility,
-and post-cutoff evaluation results are rejected at the request boundary.
+The request stores a default-deny label definition/reference specification.
+It accepts exactly three keys—`label_definition_id`, `label_horizon`, and
+`label_reference_id`—and every value must be a non-empty string. Missing keys,
+extra keys, nested payloads, nulls, numeric values, empty strings, realized
+labels, future prices/returns, realized volatility, and post-cutoff evaluation
+results are rejected at the request boundary. This remains a local logical
+contract and does not add a persistent schema.
 
 Feature construction reads only the selected
 `ObservationVersion.semantic_data[value_key]`. It does not read the label
@@ -239,6 +264,10 @@ bound but unsafe candidate is quarantined.
 - deterministic feature and row ordering;
 - duplicate deduplication and conflict rejection;
 - feature/label firewall;
+- unresolved-availability quarantine semantics;
+- independent source and feature availability authority;
+- exact default-deny label specification shape;
+- deterministic request-scope identity, deduplication, and ordering;
 - exact approved hash domains and typed manifest identity.
 
 No focused test requires network, provider, database, or Sheet access.

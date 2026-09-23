@@ -56,17 +56,23 @@ VALUE_STATES = ("PRESENT", "EXPLICIT_MISSING")
 EXECUTION_MODES = ("SYNTHETIC_NON_OPERATIONAL", "REAL_OPERATIONAL")
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
-_REALIZED_LABEL_KEYS = frozenset({
-    "realized_label",
-    "realized_value",
-    "realized_future_label",
-    "future_return",
-    "future_target_price",
-    "target_price",
-    "realized_future_volatility",
-    "realized_volatility",
-    "post_cutoff_evaluation_result",
-})
+_LABEL_SPECIFICATION_KEYS = (
+    "label_definition_id",
+    "label_horizon",
+    "label_reference_id",
+)
+_REQUEST_SCOPE_KEYS = (
+    "dataset_contract_version",
+    "research_subject_id",
+    "observation_version_id",
+    "research_cutoff_at",
+    "feature_set_version",
+    "feature_computation_profile_version",
+    "cutoff_policy_version",
+    "feature_definitions",
+    "label_specification",
+    "execution_mode",
+)
 
 
 class PITDatasetError(ContractError):
@@ -141,23 +147,6 @@ def _snapshot_sequence(values: Sequence[Any], name: str) -> tuple[Any, ...]:
     return tuple(values)
 
 
-def _forbidden_label_key(value: Any) -> str | None:
-    if isinstance(value, Mapping):
-        for key, item in value.items():
-            normalized = key.casefold()
-            if normalized in _REALIZED_LABEL_KEYS or normalized.startswith("realized_"):
-                return key
-            nested = _forbidden_label_key(item)
-            if nested is not None:
-                return nested
-    elif isinstance(value, (list, tuple)):
-        for item in value:
-            nested = _forbidden_label_key(item)
-            if nested is not None:
-                return nested
-    return None
-
-
 def _authorization_snapshot() -> Mapping[str, Any]:
     return _freeze({
         "safety_flags": dict(SAFETY_FLAGS),
@@ -224,12 +213,16 @@ class PITDatasetRequest:
         object.__setattr__(self, "feature_definitions", definitions)
         if self.execution_mode not in EXECUTION_MODES:
             raise PITDatasetHardFail("unsupported execution mode")
+        if not isinstance(self.label_specification, Mapping):
+            raise PITDatasetHardFail("label_specification must be an exact mapping")
         frozen_label = _freeze(self.label_specification)
-        if not isinstance(frozen_label, Mapping) or not frozen_label:
-            raise PITDatasetHardFail("label_specification must be an explicit mapping")
-        forbidden = _forbidden_label_key(frozen_label)
-        if forbidden is not None:
-            raise PITDatasetHardFail(f"realized label field is forbidden: {forbidden}")
+        if set(frozen_label) != set(_LABEL_SPECIFICATION_KEYS):
+            raise PITDatasetHardFail(
+                "label_specification must contain exactly label_definition_id, "
+                "label_horizon, and label_reference_id"
+            )
+        for key in _LABEL_SPECIFICATION_KEYS:
+            _require_non_empty(frozen_label[key], f"label_specification.{key}")
         object.__setattr__(self, "label_specification", frozen_label)
         object.__setattr__(self, "runtime_metadata", _freeze(self.runtime_metadata))
         canonical_json_bytes(self.semantic_projection())
@@ -497,6 +490,7 @@ class PITDatasetManifest:
     rule_bundle_bindings: tuple[Mapping[str, str], ...]
     source_profile_bindings: tuple[Mapping[str, str], ...]
     authorization_snapshot: Mapping[str, Any]
+    request_scope: tuple[Mapping[str, Any], ...]
     ordered_row_ids: tuple[str, ...]
     ordered_row_content_hashes: tuple[str, ...]
     include_count: int
@@ -520,6 +514,24 @@ class PITDatasetManifest:
         object.__setattr__(self, "authorization_snapshot", _freeze(self.authorization_snapshot))
         if _plain(self.authorization_snapshot) != _plain(_authorization_snapshot()):
             raise PITDatasetHardFail("manifest authorization snapshot mismatch")
+        request_scope = tuple(_freeze(item) for item in self.request_scope)
+        for item in request_scope:
+            if not isinstance(item, Mapping) or set(item) != set(_REQUEST_SCOPE_KEYS):
+                raise PITDatasetHardFail("manifest request_scope entry mismatch")
+        if len({canonical_json_bytes(item) for item in request_scope}) != len(request_scope):
+            raise PITDatasetHardFail("manifest request_scope contains duplicates")
+        expected_scope = tuple(sorted(
+            request_scope,
+            key=lambda item: (
+                item["research_cutoff_at"],
+                item["research_subject_id"],
+                item["observation_version_id"],
+                canonical_json_bytes(item),
+            ),
+        ))
+        if request_scope != expected_scope:
+            raise PITDatasetHardFail("manifest request_scope is not deterministically ordered")
+        object.__setattr__(self, "request_scope", request_scope)
         if len(self.ordered_row_ids) != len(self.ordered_row_content_hashes):
             raise PITDatasetHardFail("manifest row identity/content cardinality mismatch")
         if self.include_count != len(self.ordered_row_ids):
@@ -545,6 +557,7 @@ class PITDatasetManifest:
             "rule_bundle_bindings": [_plain(item) for item in self.rule_bundle_bindings],
             "source_profile_bindings": [_plain(item) for item in self.source_profile_bindings],
             "authorization_snapshot": _plain(self.authorization_snapshot),
+            "request_scope": [_plain(item) for item in self.request_scope],
             "ordered_row_ids": list(self.ordered_row_ids),
             "ordered_row_content_hashes": list(self.ordered_row_content_hashes),
             "include_count": self.include_count,
@@ -680,8 +693,6 @@ def _candidate_snapshot(
     if available is None:
         raise PITDatasetHardFail("candidate has no authoritative feature availability")
     available_at = _timestamp(available, "feature_available_at_max")
-    if observation.source_available_at is not None and observation.source_available_at != available_at:
-        raise PITDatasetHardFail("AUTHORITY_BINDING_MISMATCH: source availability")
     observed = version.observed_at or observation.observed_at
     if observed is None:
         raise PITDatasetHardFail("candidate has no source_observed_at")
@@ -766,12 +777,15 @@ def _select_feature(
         and item.feature_definition_id == definition.feature_definition_id
         and item.evaluation_result.cutoff_at == request.research_cutoff_at
     )
+    if any(
+        item.research_export_decision.temporal_context.get("feature_available_at_max") is None
+        for item in relevant
+    ):
+        return None, "FEATURE_AVAILABILITY_UNRESOLVED"
     visible: list[tuple[PITFeatureCandidate, str]] = []
     cutoff = parse_rfc3339(request.research_cutoff_at)
     for item in relevant:
         available = item.research_export_decision.temporal_context.get("feature_available_at_max")
-        if available is None:
-            continue
         available_at = _timestamp(available, "feature_available_at_max")
         if parse_rfc3339(available_at) <= cutoff:
             visible.append((item, available_at))
@@ -815,7 +829,10 @@ def _build_row(
         if reason is not None:
             classification = (
                 "QUARANTINE"
-                if reason == "CANDIDATE_AUTHORITY_OR_QUALITY_INSUFFICIENT"
+                if reason in {
+                    "CANDIDATE_AUTHORITY_OR_QUALITY_INSUFFICIENT",
+                    "FEATURE_AVAILABILITY_UNRESOLVED",
+                }
                 else "ROW_EXCLUDE"
             )
             return None, _diagnostic(
@@ -972,6 +989,19 @@ def build_pit_dataset(
         ),
     ))
     context = next(iter(contexts))
+    request_scope_by_projection = {
+        canonical_json_bytes(item.semantic_projection()): item.semantic_projection()
+        for item in request_values
+    }
+    request_scope = tuple(sorted(
+        request_scope_by_projection.values(),
+        key=lambda item: (
+            item["research_cutoff_at"],
+            item["research_subject_id"],
+            item["observation_version_id"],
+            canonical_json_bytes(item),
+        ),
+    ))
     rule_bindings = tuple(sorted({
         tuple(sorted(_plain(binding).items()))
         for row in ordered_rows for binding in row.rule_bundle_bindings
@@ -990,6 +1020,7 @@ def build_pit_dataset(
         rule_bundle_bindings=tuple(dict(item) for item in rule_bindings),
         source_profile_bindings=tuple(dict(item) for item in profile_bindings),
         authorization_snapshot=_authorization_snapshot(),
+        request_scope=request_scope,
         ordered_row_ids=tuple(item.row_id for item in ordered_rows),
         ordered_row_content_hashes=tuple(item.row_content_hash for item in ordered_rows),
         include_count=len(ordered_rows),

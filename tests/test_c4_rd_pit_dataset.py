@@ -147,6 +147,8 @@ def candidate(
     feature_id: str = "synthetic_price",
     record: str = "V1",
     available_at: str = "2026-01-03T10:00:00Z",
+    source_available_at: str | None = None,
+    include_availability_assessment: bool = True,
     cutoff: str = CUTOFF,
     value=Decimal("12.50"),
     trust_state: str = "REAL_ORIGIN_VERIFIED",
@@ -154,6 +156,7 @@ def candidate(
     runtime_metadata=None,
 ) -> PITFeatureCandidate:
     reference = calendar(record)
+    source_available = available_at if source_available_at is None else source_available_at
     observation = Observation(
         source_id="LME",
         source_record_identifier=f"SYNTHETIC_RECORD_{record}",
@@ -166,7 +169,7 @@ def candidate(
         calendar_assignments=assignments(reference),
         source_publication_at="2026-01-02T12:00:00Z",
         observed_at="2026-01-02T12:00:00Z",
-        source_available_at=available_at,
+        source_available_at=source_available,
         collected_at=available_at,
         created_at=available_at,
         semantic_data={"fixture": "SYNTHETIC_ONLY", "feature_value": value},
@@ -184,14 +187,18 @@ def candidate(
         created_at=available_at,
         semantic_data={"fixture": "SYNTHETIC_ONLY", "feature_value": value},
     )
-    available = AvailabilityAssessment(
-        subject_id=version.observation_version_id,
-        assessment_role="SOURCE",
-        evaluation_at=EVALUATION_AT,
-        rule_bundle_version="rd4.2-rules@1.0.0",
-        result={"feature_available_at_max": available_at},
-        evidence={"fixture": "SYNTHETIC_ONLY"},
-        availability_basis="VERIFIED_ARCHIVE_TIMESTAMP",
+    available = (
+        AvailabilityAssessment(
+            subject_id=version.observation_version_id,
+            assessment_role="SOURCE",
+            evaluation_at=EVALUATION_AT,
+            rule_bundle_version="rd4.2-rules@1.0.0",
+            result={"feature_available_at_max": available_at},
+            evidence={"fixture": "SYNTHETIC_ONLY"},
+            availability_basis="VERIFIED_ARCHIVE_TIMESTAMP",
+        )
+        if include_availability_assessment
+        else None
     )
     lineage = LineageAssessment(
         subject_id=version.observation_version_id,
@@ -413,15 +420,19 @@ class NoLookAheadAndLabelFirewallTests(unittest.TestCase):
             replace(row, feature_available_at_max="2026-01-03T10:30:01Z")
 
     def test_realized_label_is_rejected_at_request_boundary(self):
-        with self.assertRaisesRegex(PITDatasetHardFail, "realized label field"):
+        with self.assertRaisesRegex(PITDatasetHardFail, "must contain exactly"):
             request(label_specification={
                 "label_definition_id": "SYNTHETIC",
                 "realized_label": Decimal("1"),
             })
 
     def test_feature_construction_does_not_consume_label_specification(self):
-        first = request(label_specification={"label_definition_id": "A", "label_horizon": "P1D"})
-        second = request(label_specification={"label_definition_id": "B", "label_horizon": "P2D"})
+        first = request(label_specification={
+            "label_definition_id": "A", "label_horizon": "P1D", "label_reference_id": "REF-A",
+        })
+        second = request(label_specification={
+            "label_definition_id": "B", "label_horizon": "P2D", "label_reference_id": "REF-B",
+        })
         item = candidate()
         first_result = build_pit_dataset((first,), (item,))
         second_result = build_pit_dataset((second,), (item,))
@@ -440,8 +451,12 @@ class OrderingDuplicateAndRuntimeTests(unittest.TestCase):
         self.assertTrue(any(item["classification"] == "DEDUPLICATED" for item in result.diagnostics))
 
     def test_same_row_id_different_content_hard_fails(self):
-        first = request(label_specification={"label_definition_id": "A"})
-        second = request(label_specification={"label_definition_id": "B"})
+        first = request(label_specification={
+            "label_definition_id": "A", "label_horizon": "P1D", "label_reference_id": "REF-A",
+        })
+        second = request(label_specification={
+            "label_definition_id": "B", "label_horizon": "P1D", "label_reference_id": "REF-B",
+        })
         with self.assertRaisesRegex(PITDatasetHardFail, "ROW_ID_CONTENT_CONFLICT"):
             build_pit_dataset((first, second), (candidate(),))
 
@@ -533,6 +548,161 @@ class ContractProfileAndHashDomainTests(unittest.TestCase):
     def test_manifest_contains_no_separate_pit_dataset_id(self):
         result = build_one()
         self.assertNotIn("pit_dataset_id", result.manifest.content_projection())
+        self.assertEqual(result.dataset_identity, result.manifest.manifest_hash)
+
+
+class R1StrictRemediationTests(unittest.TestCase):
+    def test_r1_unknown_mandatory_candidate_quarantines(self):
+        result = build_pit_dataset(
+            (request(),),
+            (candidate(include_availability_assessment=False),),
+        )
+        self.assertEqual((result.manifest.include_count, result.manifest.quarantine_count), (0, 1))
+        self.assertEqual(result.diagnostics[0]["reason"], "FEATURE_AVAILABILITY_UNRESOLVED")
+
+    def test_r1_unknown_optional_candidate_quarantines_not_missing(self):
+        definitions = (
+            feature_definition("synthetic_price"),
+            feature_definition("synthetic_optional", requirement="OPTIONAL"),
+        )
+        values = (
+            candidate(),
+            candidate(feature_id="synthetic_optional", record="UNKNOWN", include_availability_assessment=False),
+        )
+        result = build_pit_dataset((request(definitions=definitions),), values)
+        self.assertEqual((result.manifest.include_count, result.manifest.quarantine_count), (0, 1))
+        self.assertEqual(result.diagnostics[0]["reason"], "FEATURE_AVAILABILITY_UNRESOLVED")
+
+    def test_r1_known_plus_unknown_candidate_quarantines_without_selection(self):
+        values = (
+            candidate(record="KNOWN", value=Decimal("1")),
+            candidate(record="UNKNOWN", value=Decimal("2"), include_availability_assessment=False),
+        )
+        result = build_pit_dataset((request(),), values)
+        self.assertEqual(result.manifest.include_count, 0)
+        self.assertEqual(result.diagnostics[0]["reason"], "FEATURE_AVAILABILITY_UNRESOLVED")
+
+    def test_r1_no_candidate_optional_is_explicit_missing(self):
+        definitions = (
+            feature_definition("synthetic_price"),
+            feature_definition("synthetic_optional", requirement="OPTIONAL"),
+        )
+        result = build_pit_dataset((request(definitions=definitions),), (candidate(),))
+        self.assertEqual(result.rows[0].features[1].value_state, "EXPLICIT_MISSING")
+
+    def test_r1_no_candidate_mandatory_excludes(self):
+        result = build_pit_dataset((request(),), ())
+        self.assertEqual(result.manifest.exclude_count, 1)
+        self.assertEqual(result.diagnostics[0]["reason"], "MANDATORY_FEATURE_UNAVAILABLE")
+
+    def test_r1_source_and_feature_availability_are_independent(self):
+        result = build_pit_dataset(
+            (request(),),
+            (candidate(source_available_at="2026-01-03T09:30:00Z"),),
+        )
+        feature = result.rows[0].features[0]
+        self.assertEqual(feature.source_available_at, "2026-01-03T10:00:00Z")
+
+    def test_r1_decision_source_availability_mismatch_hard_fails(self):
+        item = candidate()
+        temporal = dict(item.research_export_decision.temporal_context)
+        temporal["source_available_at"] = "2026-01-03T09:00:00Z"
+        forged = replace(item.research_export_decision, temporal_context=temporal)
+        with self.assertRaisesRegex(PITDatasetHardFail, "RD-5 source availability"):
+            build_pit_dataset((request(),), (replace(item, research_export_decision=forged),))
+
+    def test_r1_exact_label_specification_passes(self):
+        item = request(label_specification={
+            "label_definition_id": "LABEL", "label_horizon": "P1D", "label_reference_id": "REF",
+        })
+        self.assertEqual(set(item.label_specification), {
+            "label_definition_id", "label_horizon", "label_reference_id",
+        })
+
+    def test_r1_label_specification_extra_key_fails(self):
+        with self.assertRaisesRegex(PITDatasetHardFail, "must contain exactly"):
+            request(label_specification={
+                "label_definition_id": "LABEL", "label_horizon": "P1D",
+                "label_reference_id": "REF", "extra": "DENIED",
+            })
+
+    def test_r1_actual_future_price_label_key_fails(self):
+        with self.assertRaisesRegex(PITDatasetHardFail, "must contain exactly"):
+            request(label_specification={
+                "label_definition_id": "LABEL", "label_horizon": "P1D",
+                "label_reference_id": "REF", "actual_future_price": Decimal("99"),
+            })
+
+    def test_r1_nested_extra_label_payload_fails(self):
+        with self.assertRaisesRegex(PITDatasetHardFail, "non-empty string"):
+            request(label_specification={
+                "label_definition_id": {"name": "LABEL", "future": "DENIED"},
+                "label_horizon": "P1D", "label_reference_id": "REF",
+            })
+
+    def test_r1_null_numeric_and_empty_label_values_fail(self):
+        for bad_value in (None, 7, ""):
+            with self.subTest(bad_value=bad_value):
+                with self.assertRaisesRegex(PITDatasetHardFail, "non-empty string"):
+                    request(label_specification={
+                        "label_definition_id": bad_value,
+                        "label_horizon": "P1D",
+                        "label_reference_id": "REF",
+                    })
+
+    def test_r1_all_excluded_subjects_have_distinct_dataset_identities(self):
+        first = build_pit_dataset((request(subject="SUBJECT-A"),), ())
+        second = build_pit_dataset((request(subject="SUBJECT-B"),), ())
+        self.assertNotEqual(first.dataset_identity, second.dataset_identity)
+
+    def test_r1_duplicate_semantic_request_preserves_scope_and_identity(self):
+        item_request = request()
+        single = build_pit_dataset((item_request,), (candidate(),))
+        duplicate = build_pit_dataset((item_request, item_request), (candidate(),))
+        self.assertEqual(single.manifest.request_scope, duplicate.manifest.request_scope)
+        self.assertEqual(single.dataset_identity, duplicate.dataset_identity)
+
+    def test_r1_request_permutation_preserves_scope_and_hash(self):
+        first_request = request(subject="SUBJECT-A", target_version_id="a" * 64)
+        second_request = request(subject="SUBJECT-B", target_version_id="b" * 64)
+        values = (candidate(subject="SUBJECT-A", record="A"), candidate(subject="SUBJECT-B", record="B"))
+        forward = build_pit_dataset((first_request, second_request), values)
+        reverse = build_pit_dataset((second_request, first_request), tuple(reversed(values)))
+        self.assertEqual(forward.manifest.request_scope, reverse.manifest.request_scope)
+        self.assertEqual(forward.dataset_identity, reverse.dataset_identity)
+
+    def test_r1_runtime_metadata_preserves_scope_and_identity(self):
+        first = build_pit_dataset((request(runtime_metadata={"run": "A"}),), (candidate(),))
+        second = build_pit_dataset((request(runtime_metadata={"run": "B"}),), (candidate(),))
+        self.assertEqual(first.manifest.request_scope, second.manifest.request_scope)
+        self.assertEqual(first.dataset_identity, second.dataset_identity)
+
+    def test_r1_row_identity_conflict_still_hard_fails(self):
+        first = request(label_specification={
+            "label_definition_id": "A", "label_horizon": "P1D", "label_reference_id": "REF-A",
+        })
+        second = request(label_specification={
+            "label_definition_id": "B", "label_horizon": "P1D", "label_reference_id": "REF-B",
+        })
+        with self.assertRaisesRegex(PITDatasetHardFail, "ROW_ID_CONTENT_CONFLICT"):
+            build_pit_dataset((first, second), (candidate(),))
+
+    def test_r1_request_scope_is_in_manifest_projection(self):
+        result = build_one()
+        projection = result.manifest.content_projection()
+        self.assertIn("request_scope", projection)
+        self.assertEqual(projection["request_scope"], [request().semantic_projection()])
+
+    def test_r1_uses_no_new_hash_domain(self):
+        with patch("scripts.c4_rd_pit_dataset.canonical_hash", wraps=canonical_hash) as mocked:
+            build_one()
+        domains = {call.args[0] for call in mocked.call_args_list}
+        self.assertEqual(domains, {
+            "MANIFEST_CONTENT", "PIT_FEATURE_CONTENT", "PIT_DATASET_ROW_ID", "PIT_DATASET_ROW_CONTENT",
+        })
+
+    def test_r1_dataset_identity_equals_manifest_hash(self):
+        result = build_pit_dataset((request(),), (candidate(),))
         self.assertEqual(result.dataset_identity, result.manifest.manifest_hash)
 
 
