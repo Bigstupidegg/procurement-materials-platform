@@ -56,6 +56,10 @@ GITHUB_PR_MERGE, GITHUB_PR_CLOSED_UNMERGED, SYNTHETIC_FIXTURE = APPROVAL_EVIDENC
 
 _GOVERNANCE_CONSTRUCTION_TOKEN = object()
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
+_GIT_SHA = re.compile(r"^[0-9a-f]{40}$")
+_GITHUB_APPROVAL_PR_URL = re.compile(
+    r"^https://github\.com/Bigstupidegg/procurement-materials-platform/pull/[1-9][0-9]*$"
+)
 _SEMVER = re.compile(
     r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"
     r"(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?"
@@ -275,6 +279,20 @@ def _validate_approval_record(record: PreregistrationApprovalRecord) -> None:
     if record.operational_status == SYNTHETIC_NON_OPERATIONAL:
         if record.approval_evidence_type != SYNTHETIC_FIXTURE or record.merge_commit_sha is not None:
             raise InvalidApprovalRecord("synthetic approval evidence matrix mismatch")
+    else:
+        if record.approval_state != APPROVED:
+            raise InvalidApprovalRecord("operational evidence may only create an APPROVED record")
+        if record.approval_evidence_type != GITHUB_PR_MERGE:
+            raise InvalidApprovalRecord("operational approval requires GITHUB_PR_MERGE evidence")
+        if (
+            type(record.approval_evidence_reference) is not str
+            or _GITHUB_APPROVAL_PR_URL.fullmatch(record.approval_evidence_reference) is None
+        ):
+            raise InvalidApprovalRecord(
+                "operational approval requires a canonical fixed-repository GitHub PR URL"
+            )
+        if type(record.merge_commit_sha) is not str or _GIT_SHA.fullmatch(record.merge_commit_sha) is None:
+            raise InvalidApprovalRecord("operational approval requires a lowercase merge commit SHA")
 
     if record.approval_state == REJECTED:
         if record.approved_at is not None:
@@ -625,6 +643,52 @@ def build_preregistration_change_record(
     )
 
 
+def build_operational_preregistration_approval_record(
+    *,
+    protocol: PreregistrationProtocol,
+    verified_evidence: Any,
+    recorded_at: str,
+) -> PreregistrationApprovalRecord:
+    """Derive an operational approval record from verified GitHub evidence.
+
+    ``OPERATIONAL_VERIFIED`` means only that the Human approval evidence chain
+    was verified against GitHub.  It does not enable backtests, real data, or
+    any production, canonical, or deferred write path.
+    """
+
+    from scripts.c4_rd_preregistration_approval_evidence import (
+        VerifiedGitHubApprovalEvidence,
+    )
+
+    trusted = _require_protocol(protocol, "protocol", InvalidApprovalRecord)
+    if type(verified_evidence) is not VerifiedGitHubApprovalEvidence:
+        raise InvalidApprovalRecord(
+            "verified_evidence must be exact VerifiedGitHubApprovalEvidence"
+        )
+    if verified_evidence.artifact_preregistration_identity != trusted.preregistration_identity:
+        raise InvalidApprovalRecord("verified evidence protocol identity mismatch")
+    return PreregistrationApprovalRecord(
+        governance_contract_version=GOVERNANCE_CONTRACT_VERSION,
+        preregistration_identity=trusted.preregistration_identity,
+        preregistration_version=trusted.preregistration_version,
+        approval_state=APPROVED,
+        approved_protocol_hash=trusted.preregistration_identity,
+        approved_at=verified_evidence.merged_at,
+        approval_evidence_type=GITHUB_PR_MERGE,
+        approval_evidence_reference=verified_evidence.pr_url,
+        merge_commit_sha=verified_evidence.merge_commit_sha,
+        operational_status=OPERATIONAL_VERIFIED,
+        rejection_reason=None,
+        superseded_by_preregistration_identity=None,
+        superseded_at=None,
+        supersession_evidence_type=None,
+        supersession_evidence_reference=None,
+        supersession_merge_commit_sha=None,
+        recorded_at=recorded_at,
+        _construction_token=_GOVERNANCE_CONSTRUCTION_TOKEN,
+    )
+
+
 def validate_preregistration_change_set(
     *,
     previous_protocol: PreregistrationProtocol,
@@ -762,6 +826,7 @@ __all__ = (
     "PreregistrationApprovalRecord",
     "PreregistrationChangeRecord",
     "build_synthetic_preregistration_approval_record",
+    "build_operational_preregistration_approval_record",
     "validate_preregistration_approval_history",
     "build_preregistration_change_record",
     "validate_preregistration_change_set",
