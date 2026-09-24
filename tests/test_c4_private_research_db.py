@@ -187,6 +187,34 @@ def version(item: Observation, **changes) -> ObservationVersion:
     return ObservationVersion(**values)
 
 
+def pit_dataset_row_values(
+    dataset_identity: str,
+    manifest_row_ordinal: int,
+    row_content_hash: str,
+) -> tuple[object, ...]:
+    return (
+        row_content_hash,
+        "4" * 64,
+        dataset_identity,
+        manifest_row_ordinal,
+        "SYNTHETIC_SUBJECT",
+        "5" * 64,
+        "2026-01-03T00:00:00Z",
+        "SYNTHETIC_FEATURE_SET@1.0.0",
+        "SYNTHETIC_COMPUTATION_PROFILE@1.0.0",
+        "SYNTHETIC_CUTOFF_POLICY@1.0.0",
+        "2026-01-02T00:00:00Z",
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "{}",
+        "{}",
+        "SYNTHETIC_NON_OPERATIONAL",
+        "2026-01-03T00:00:01Z",
+    )
+
+
 class PrivateResearchDatabaseTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary_directory = tempfile.TemporaryDirectory(prefix="c4_db1a_")
@@ -226,6 +254,40 @@ class PrivateResearchDatabaseTests(unittest.TestCase):
                 [table_name],
             ).fetchall()
             return tuple(row[0] for row in rows)
+        finally:
+            connection.close()
+
+    def _unique_keys(self, table_name: str) -> tuple[tuple[str, ...], ...]:
+        connection = duckdb.connect(str(self.database_path), read_only=True)
+        try:
+            rows = connection.execute(
+                "SELECT tc.constraint_name, kcu.column_name "
+                "FROM information_schema.table_constraints tc "
+                "JOIN information_schema.key_column_usage kcu "
+                "ON tc.constraint_catalog = kcu.constraint_catalog "
+                "AND tc.constraint_schema = kcu.constraint_schema "
+                "AND tc.constraint_name = kcu.constraint_name "
+                "WHERE tc.table_schema = 'main' AND tc.table_name = ? "
+                "AND tc.constraint_type = 'UNIQUE' "
+                "ORDER BY tc.constraint_name, kcu.ordinal_position",
+                [table_name],
+            ).fetchall()
+        finally:
+            connection.close()
+        grouped: dict[str, list[str]] = {}
+        for constraint_name, column_name in rows:
+            grouped.setdefault(constraint_name, []).append(column_name)
+        return tuple(sorted(tuple(names) for names in grouped.values()))
+
+    def _nullability(self, table_name: str) -> dict[str, bool]:
+        connection = duckdb.connect(str(self.database_path), read_only=True)
+        try:
+            rows = connection.execute(
+                "SELECT column_name, is_nullable FROM information_schema.columns "
+                "WHERE table_schema = 'main' AND table_name = ?",
+                [table_name],
+            ).fetchall()
+            return {column_name: is_nullable == "YES" for column_name, is_nullable in rows}
         finally:
             connection.close()
 
@@ -271,9 +333,107 @@ class PrivateResearchDatabaseTests(unittest.TestCase):
     def test_dataset_order_and_feature_membership_keys_are_explicit(self) -> None:
         self.assertIn("manifest_row_ordinal", self._columns("pit_dataset_row"))
         self.assertEqual(
+            self._primary_key("pit_dataset_row"),
+            ("dataset_identity", "manifest_row_ordinal"),
+        )
+        self.assertEqual(
+            self._unique_keys("pit_dataset_row"),
+            (("dataset_identity", "row_content_hash"),),
+        )
+        self.assertEqual(
             self._primary_key("pit_feature_snapshot"),
             ("row_content_hash", "feature_ordinal"),
         )
+
+    def test_pit_row_membership_is_manifest_scoped_and_deduplicated(self) -> None:
+        dataset_a = "a" * 64
+        dataset_b = "b" * 64
+        row_hash_x = "2" * 64
+        row_hash_y = "3" * 64
+        placeholders = ", ".join("?" for _ in range(19))
+        connection = duckdb.connect(str(self.database_path))
+        try:
+            connection.execute(
+                f"INSERT INTO pit_dataset_row VALUES ({placeholders})",
+                pit_dataset_row_values(dataset_a, 0, row_hash_x),
+            )
+            connection.execute(
+                f"INSERT INTO pit_dataset_row VALUES ({placeholders})",
+                pit_dataset_row_values(dataset_b, 0, row_hash_x),
+            )
+            with self.assertRaises(duckdb.ConstraintException):
+                connection.execute(
+                    f"INSERT INTO pit_dataset_row VALUES ({placeholders})",
+                    pit_dataset_row_values(dataset_a, 1, row_hash_x),
+                )
+            with self.assertRaises(duckdb.ConstraintException):
+                connection.execute(
+                    f"INSERT INTO pit_dataset_row VALUES ({placeholders})",
+                    pit_dataset_row_values(dataset_a, 0, row_hash_y),
+                )
+            memberships = connection.execute(
+                "SELECT dataset_identity, manifest_row_ordinal FROM pit_dataset_row "
+                "WHERE row_content_hash = ? ORDER BY dataset_identity",
+                [row_hash_x],
+            ).fetchall()
+            self.assertEqual(memberships, [(dataset_a, 0), (dataset_b, 0)])
+        finally:
+            connection.close()
+
+    def test_explicit_missing_feature_accepts_null_authoritative_lineage(self) -> None:
+        lineage_columns = (
+            "source_observation_id",
+            "source_observation_version_id",
+            "source_observed_at",
+            "source_available_at",
+            "source_profile_id",
+            "source_profile_version",
+            "rd4_evaluation_hash",
+            "rd5_decision_hash",
+            "authority_binding_ref",
+        )
+        nullability = self._nullability("pit_feature_snapshot")
+        self.assertTrue(all(nullability[column_name] for column_name in lineage_columns))
+        self.assertTrue(nullability["source_profile_id"])
+        self.assertTrue(nullability["source_profile_version"])
+        self.assertTrue(nullability["authority_binding_ref"])
+
+        values = (
+            "2" * 64,
+            0,
+            "3" * 64,
+            "SYNTHETIC_OPTIONAL_FEATURE",
+            "1.0.0",
+            "SYNTHETIC_COMPUTATION_PROFILE@1.0.0",
+            "2026-01-03T00:00:00Z",
+            "EXPLICIT_MISSING",
+            canonical_json_bytes(None).decode("utf-8"),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            canonical_json_bytes([]).decode("utf-8"),
+            None,
+            None,
+            None,
+        )
+        connection = duckdb.connect(str(self.database_path))
+        try:
+            connection.execute(
+                f"INSERT INTO pit_feature_snapshot VALUES ({', '.join('?' for _ in values)})",
+                values,
+            )
+            stored = connection.execute(
+                f"SELECT value_state, value_json, evidence_refs_json, {', '.join(lineage_columns)} "
+                "FROM pit_feature_snapshot WHERE row_content_hash = ? AND feature_ordinal = 0",
+                ["2" * 64],
+            ).fetchone()
+        finally:
+            connection.close()
+        self.assertEqual(stored[:3], ("EXPLICIT_MISSING", "null", "[]"))
+        self.assertEqual(stored[3:], (None,) * len(lineage_columns))
 
     def test_migration_checksum_uses_exact_sql_bytes_and_is_deterministic(self) -> None:
         expected = hashlib.sha256(MIGRATION_PATH.read_bytes()).hexdigest()

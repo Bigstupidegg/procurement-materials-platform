@@ -147,9 +147,23 @@ APPROVED_PRIMARY_KEYS = {
     "observation_version_snapshot": ("observation_version_content_hash",),
     "readiness_evaluation": ("evaluation_hash",),
     "pit_dataset_manifest": ("dataset_identity",),
-    "pit_dataset_row": ("row_content_hash",),
+    "pit_dataset_row": ("dataset_identity", "manifest_row_ordinal"),
     "pit_feature_snapshot": ("row_content_hash", "feature_ordinal"),
 }
+APPROVED_UNIQUE_KEYS = {
+    "pit_dataset_row": (("dataset_identity", "row_content_hash"),),
+}
+APPROVED_EXPLICIT_MISSING_NULLABLE_LINEAGE = (
+    "source_observation_id",
+    "source_observation_version_id",
+    "source_observed_at",
+    "source_available_at",
+    "source_profile_id",
+    "source_profile_version",
+    "rd4_evaluation_hash",
+    "rd5_decision_hash",
+    "authority_binding_ref",
+)
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
@@ -251,6 +265,41 @@ class PrivateResearchDatabase:
             keys.setdefault(table_name, []).append(column_name)
         return {table_name: tuple(names) for table_name, names in keys.items()}
 
+    @staticmethod
+    def _unique_keys(
+        connection: duckdb.DuckDBPyConnection,
+    ) -> dict[str, tuple[tuple[str, ...], ...]]:
+        rows = connection.execute(
+            "SELECT tc.table_name, tc.constraint_name, kcu.column_name "
+            "FROM information_schema.table_constraints tc "
+            "JOIN information_schema.key_column_usage kcu "
+            "ON tc.constraint_catalog = kcu.constraint_catalog "
+            "AND tc.constraint_schema = kcu.constraint_schema "
+            "AND tc.constraint_name = kcu.constraint_name "
+            "WHERE tc.table_schema = 'main' AND tc.constraint_type = 'UNIQUE' "
+            "ORDER BY tc.table_name, tc.constraint_name, kcu.ordinal_position"
+        ).fetchall()
+        grouped: dict[tuple[str, str], list[str]] = {}
+        for table_name, constraint_name, column_name in rows:
+            grouped.setdefault((table_name, constraint_name), []).append(column_name)
+        keys: dict[str, list[tuple[str, ...]]] = {}
+        for (table_name, _constraint_name), names in grouped.items():
+            keys.setdefault(table_name, []).append(tuple(names))
+        return {table_name: tuple(sorted(values)) for table_name, values in keys.items()}
+
+    @staticmethod
+    def _column_nullability(
+        connection: duckdb.DuckDBPyConnection,
+    ) -> dict[tuple[str, str], bool]:
+        rows = connection.execute(
+            "SELECT table_name, column_name, is_nullable FROM information_schema.columns "
+            "WHERE table_schema = 'main'"
+        ).fetchall()
+        return {
+            (table_name, column_name): is_nullable == "YES"
+            for table_name, column_name, is_nullable in rows
+        }
+
     def initialize_schema(self, *, applied_at: str, code_commit_sha: str) -> str:
         """Apply the exact V1 migration, or verify an identical prior application."""
         if not isinstance(code_commit_sha, str) or not code_commit_sha:
@@ -299,6 +348,16 @@ class PrivateResearchDatabase:
                 raise MigrationError("database columns do not match the approved V1 schema")
             if self._primary_keys(connection) != APPROVED_PRIMARY_KEYS:
                 raise MigrationError("database primary keys do not match the approved V1 schema")
+            if self._unique_keys(connection) != APPROVED_UNIQUE_KEYS:
+                raise MigrationError("database unique keys do not match the approved V1 schema")
+            nullability = self._column_nullability(connection)
+            if any(
+                not nullability.get(("pit_feature_snapshot", column_name), False)
+                for column_name in APPROVED_EXPLICIT_MISSING_NULLABLE_LINEAGE
+            ):
+                raise MigrationError(
+                    "PIT feature lineage nullability does not match the approved V1 schema"
+                )
             connection.execute("COMMIT")
             return checksum
         except Exception:

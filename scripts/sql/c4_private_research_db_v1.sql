@@ -218,7 +218,7 @@ CREATE TABLE pit_dataset_manifest (
 );
 
 CREATE TABLE pit_dataset_row (
-    row_content_hash VARCHAR PRIMARY KEY,
+    row_content_hash VARCHAR NOT NULL,
     row_id VARCHAR NOT NULL,
     dataset_identity VARCHAR NOT NULL,
     manifest_row_ordinal BIGINT NOT NULL CHECK (manifest_row_ordinal >= 0),
@@ -236,7 +236,9 @@ CREATE TABLE pit_dataset_row (
     label_specification_json VARCHAR NOT NULL,
     authorization_snapshot_json VARCHAR NOT NULL,
     operational_status VARCHAR NOT NULL,
-    persisted_at VARCHAR NOT NULL
+    persisted_at VARCHAR NOT NULL,
+    PRIMARY KEY (dataset_identity, manifest_row_ordinal),
+    UNIQUE (dataset_identity, row_content_hash)
 );
 
 CREATE TABLE pit_feature_snapshot (
@@ -253,11 +255,11 @@ CREATE TABLE pit_feature_snapshot (
     source_observation_version_id VARCHAR,
     source_observed_at VARCHAR,
     source_available_at VARCHAR,
-    source_profile_id VARCHAR NOT NULL,
-    source_profile_version VARCHAR NOT NULL,
+    source_profile_id VARCHAR,
+    source_profile_version VARCHAR,
     evidence_refs_json VARCHAR NOT NULL,
     rd4_evaluation_hash VARCHAR,
     rd5_decision_hash VARCHAR,
-    authority_binding_ref VARCHAR NOT NULL,
+    authority_binding_ref VARCHAR,
     PRIMARY KEY (row_content_hash, feature_ordinal)
 );
