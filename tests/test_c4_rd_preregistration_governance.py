@@ -52,6 +52,7 @@ from scripts.c4_rd_preregistration_governance import (
     SYNTHETIC_NON_OPERATIONAL,
     PreregistrationApprovalRecord,
     PreregistrationChangeRecord,
+    build_operational_preregistration_approval_record,
     build_preregistration_change_record,
     build_synthetic_preregistration_approval_record,
     require_formal_backtest_authorization,
@@ -696,7 +697,7 @@ class TestC4RDPreregistrationGovernance(unittest.TestCase):
                 approval_record=object(), backtest_started_at=T3
             )
 
-    def test_no_public_operational_approval_path(self):
+    def test_public_builders_do_not_accept_caller_supplied_authority_fields(self):
         signature = inspect.signature(build_synthetic_preregistration_approval_record)
         forbidden_parameters = {
             "operational_status",
@@ -719,17 +720,20 @@ class TestC4RDPreregistrationGovernance(unittest.TestCase):
             functions,
             {
                 "build_synthetic_preregistration_approval_record",
+                "build_operational_preregistration_approval_record",
                 "validate_preregistration_approval_history",
                 "build_preregistration_change_record",
                 "validate_preregistration_change_set",
                 "require_formal_backtest_authorization",
             },
         )
-        self.assertFalse(any(
-            term in name.lower()
-            for name in functions
-            for term in ("operational_approval", "verified_approval", "approve_protocol", "materialize")
-        ))
+        operational_signature = inspect.signature(
+            build_operational_preregistration_approval_record
+        )
+        self.assertEqual(
+            set(operational_signature.parameters),
+            {"protocol", "verified_evidence", "recorded_at"},
+        )
 
     def test_no_new_hash_domains_and_safety_boundary_unchanged(self):
         self.assertEqual(len(HASH_DOMAINS), 13)
