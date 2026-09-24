@@ -8,8 +8,13 @@ CREATE TABLE schema_migrations (
 
 CREATE TABLE source_registry (
     source_id VARCHAR PRIMARY KEY,
-    source_snapshot_json VARCHAR NOT NULL,
-    registered_at VARCHAR NOT NULL
+    source_name VARCHAR NOT NULL,
+    access_channel VARCHAR NOT NULL,
+    default_timezone VARCHAR NOT NULL,
+    data_classification VARCHAR NOT NULL,
+    registry_version VARCHAR NOT NULL,
+    active BOOLEAN NOT NULL,
+    created_at VARCHAR NOT NULL
 );
 
 CREATE TABLE subject_registry (
@@ -20,32 +25,82 @@ CREATE TABLE subject_registry (
 
 CREATE TABLE instrument_registry (
     instrument_id VARCHAR PRIMARY KEY,
-    instrument_snapshot_json VARCHAR NOT NULL,
-    registered_at VARCHAR NOT NULL
+    subject_id VARCHAR NOT NULL,
+    source_id VARCHAR NOT NULL,
+    source_symbol VARCHAR NOT NULL,
+    market_or_venue VARCHAR NOT NULL,
+    metric_id VARCHAR NOT NULL,
+    quote_type VARCHAR NOT NULL,
+    term VARCHAR NOT NULL,
+    currency VARCHAR NOT NULL,
+    unit VARCHAR NOT NULL,
+    source_period_type VARCHAR NOT NULL,
+    instrument_version VARCHAR NOT NULL,
+    active_from VARCHAR NOT NULL,
+    active_to VARCHAR
 );
 
 CREATE TABLE source_usage_rights (
-    source_usage_rights_id VARCHAR PRIMARY KEY,
+    rights_profile_id VARCHAR PRIMARY KEY,
     source_id VARCHAR NOT NULL,
-    rights_state VARCHAR NOT NULL CHECK (
-        rights_state IN ('ALLOWED', 'PROHIBITED', 'REVIEW_REQUIRED', 'UNKNOWN')
+    access_channel VARCHAR NOT NULL,
+    instrument_scope VARCHAR NOT NULL,
+    automated_access VARCHAR NOT NULL CHECK (
+        automated_access IN ('ALLOWED', 'PROHIBITED', 'REVIEW_REQUIRED', 'UNKNOWN')
     ),
-    evaluated_at VARCHAR NOT NULL,
-    rights_snapshot_json VARCHAR NOT NULL
+    private_storage VARCHAR NOT NULL CHECK (
+        private_storage IN ('ALLOWED', 'PROHIBITED', 'REVIEW_REQUIRED', 'UNKNOWN')
+    ),
+    historical_archive VARCHAR NOT NULL CHECK (
+        historical_archive IN ('ALLOWED', 'PROHIBITED', 'REVIEW_REQUIRED', 'UNKNOWN')
+    ),
+    internal_analysis VARCHAR NOT NULL CHECK (
+        internal_analysis IN ('ALLOWED', 'PROHIBITED', 'REVIEW_REQUIRED', 'UNKNOWN')
+    ),
+    backtest VARCHAR NOT NULL CHECK (
+        backtest IN ('ALLOWED', 'PROHIBITED', 'REVIEW_REQUIRED', 'UNKNOWN')
+    ),
+    prediction VARCHAR NOT NULL CHECK (
+        prediction IN ('ALLOWED', 'PROHIBITED', 'REVIEW_REQUIRED', 'UNKNOWN')
+    ),
+    internal_display VARCHAR NOT NULL CHECK (
+        internal_display IN ('ALLOWED', 'PROHIBITED', 'REVIEW_REQUIRED', 'UNKNOWN')
+    ),
+    internet_display VARCHAR NOT NULL CHECK (
+        internet_display IN ('ALLOWED', 'PROHIBITED', 'REVIEW_REQUIRED', 'UNKNOWN')
+    ),
+    redistribution VARCHAR NOT NULL CHECK (
+        redistribution IN ('ALLOWED', 'PROHIBITED', 'REVIEW_REQUIRED', 'UNKNOWN')
+    ),
+    evidence_reference VARCHAR NOT NULL,
+    review_status VARCHAR NOT NULL,
+    effective_from VARCHAR NOT NULL,
+    effective_to VARCHAR,
+    reviewed_at VARCHAR
 );
 
 CREATE TABLE raw_payload (
     raw_payload_hash VARCHAR PRIMARY KEY,
-    payload_bytes BLOB NOT NULL,
-    byte_length BIGINT NOT NULL CHECK (byte_length >= 0)
+    relative_path VARCHAR NOT NULL,
+    content_type VARCHAR NOT NULL,
+    byte_size BIGINT NOT NULL CHECK (byte_size >= 0),
+    data_classification VARCHAR NOT NULL,
+    first_seen_at VARCHAR NOT NULL
 );
 
 CREATE TABLE raw_capture (
-    raw_capture_id VARCHAR PRIMARY KEY,
-    raw_payload_hash VARCHAR NOT NULL,
+    capture_id VARCHAR PRIMARY KEY,
     source_id VARCHAR NOT NULL,
-    captured_at VARCHAR NOT NULL,
-    capture_snapshot_json VARCHAR NOT NULL
+    instrument_id VARCHAR,
+    access_channel VARCHAR NOT NULL,
+    source_locator_safe VARCHAR NOT NULL,
+    collected_at VARCHAR NOT NULL,
+    collection_status VARCHAR NOT NULL,
+    raw_payload_hash VARCHAR NOT NULL,
+    collector_version VARCHAR NOT NULL,
+    rights_profile_id VARCHAR NOT NULL,
+    error_class VARCHAR,
+    created_at VARCHAR NOT NULL
 );
 
 CREATE TABLE observation_identity (
@@ -119,29 +174,90 @@ CREATE TABLE observation_version_snapshot (
 );
 
 CREATE TABLE readiness_evaluation (
-    readiness_evaluation_id VARCHAR PRIMARY KEY,
+    evaluation_hash VARCHAR PRIMARY KEY,
+    observation_id VARCHAR NOT NULL,
     observation_version_id VARCHAR NOT NULL,
+    evaluation_role VARCHAR NOT NULL,
+    cutoff_at VARCHAR NOT NULL,
+    evaluation_as_of_at VARCHAR NOT NULL,
+    label_available_at VARCHAR,
+    readiness_state VARCHAR NOT NULL,
+    eligibility_state VARCHAR NOT NULL,
+    reason_codes_json VARCHAR NOT NULL,
+    blocker_ids_json VARCHAR NOT NULL,
+    evidence_references_json VARCHAR NOT NULL,
+    contract_version VARCHAR NOT NULL,
+    evaluator_version VARCHAR NOT NULL,
+    rule_bundle_version VARCHAR NOT NULL,
+    rule_bundle_hash VARCHAR NOT NULL,
+    source_profile_id VARCHAR NOT NULL,
+    source_profile_version VARCHAR NOT NULL,
+    observation_content_hash VARCHAR NOT NULL,
     observation_version_content_hash VARCHAR NOT NULL,
-    evaluated_at VARCHAR NOT NULL,
-    evaluation_snapshot_json VARCHAR NOT NULL
+    persisted_at VARCHAR NOT NULL
 );
 
 CREATE TABLE pit_dataset_manifest (
-    pit_dataset_manifest_id VARCHAR PRIMARY KEY,
-    manifest_content_hash VARCHAR NOT NULL,
-    created_at VARCHAR NOT NULL,
-    manifest_snapshot_json VARCHAR NOT NULL
+    dataset_identity VARCHAR PRIMARY KEY,
+    manifest_type VARCHAR NOT NULL,
+    manifest_version VARCHAR NOT NULL,
+    dataset_contract_version VARCHAR NOT NULL,
+    feature_set_version VARCHAR NOT NULL,
+    feature_computation_profile_version VARCHAR NOT NULL,
+    cutoff_policy_version VARCHAR NOT NULL,
+    rule_bundle_bindings_json VARCHAR NOT NULL,
+    source_profile_bindings_json VARCHAR NOT NULL,
+    authorization_snapshot_json VARCHAR NOT NULL,
+    request_scope_json VARCHAR NOT NULL,
+    include_count BIGINT NOT NULL CHECK (include_count >= 0),
+    exclude_count BIGINT NOT NULL CHECK (exclude_count >= 0),
+    quarantine_count BIGINT NOT NULL CHECK (quarantine_count >= 0),
+    exclusion_reason_summary_json VARCHAR NOT NULL,
+    quarantine_reason_summary_json VARCHAR NOT NULL,
+    persisted_at VARCHAR NOT NULL
 );
 
 CREATE TABLE pit_dataset_row (
-    pit_dataset_row_id VARCHAR PRIMARY KEY,
-    pit_dataset_manifest_id VARCHAR NOT NULL,
-    row_content_hash VARCHAR NOT NULL,
-    row_snapshot_json VARCHAR NOT NULL
+    row_content_hash VARCHAR PRIMARY KEY,
+    row_id VARCHAR NOT NULL,
+    dataset_identity VARCHAR NOT NULL,
+    manifest_row_ordinal BIGINT NOT NULL CHECK (manifest_row_ordinal >= 0),
+    research_subject_id VARCHAR NOT NULL,
+    observation_version_id VARCHAR NOT NULL,
+    research_cutoff_at VARCHAR NOT NULL,
+    feature_set_version VARCHAR NOT NULL,
+    feature_computation_profile_version VARCHAR NOT NULL,
+    cutoff_policy_version VARCHAR NOT NULL,
+    feature_available_at_max VARCHAR,
+    rd4_authority_bindings_json VARCHAR NOT NULL,
+    rd5_authority_bindings_json VARCHAR NOT NULL,
+    rule_bundle_bindings_json VARCHAR NOT NULL,
+    source_profile_bindings_json VARCHAR NOT NULL,
+    label_specification_json VARCHAR NOT NULL,
+    authorization_snapshot_json VARCHAR NOT NULL,
+    operational_status VARCHAR NOT NULL,
+    persisted_at VARCHAR NOT NULL
 );
 
 CREATE TABLE pit_feature_snapshot (
-    pit_feature_content_hash VARCHAR PRIMARY KEY,
-    pit_dataset_row_id VARCHAR NOT NULL,
-    feature_snapshot_json VARCHAR NOT NULL
+    row_content_hash VARCHAR NOT NULL,
+    feature_ordinal BIGINT NOT NULL CHECK (feature_ordinal >= 0),
+    feature_content_hash VARCHAR NOT NULL,
+    feature_definition_id VARCHAR NOT NULL,
+    feature_definition_version VARCHAR NOT NULL,
+    feature_computation_profile_version VARCHAR NOT NULL,
+    research_cutoff_at VARCHAR NOT NULL,
+    value_state VARCHAR NOT NULL,
+    value_json VARCHAR NOT NULL,
+    source_observation_id VARCHAR,
+    source_observation_version_id VARCHAR,
+    source_observed_at VARCHAR,
+    source_available_at VARCHAR,
+    source_profile_id VARCHAR NOT NULL,
+    source_profile_version VARCHAR NOT NULL,
+    evidence_refs_json VARCHAR NOT NULL,
+    rd4_evaluation_hash VARCHAR,
+    rd5_decision_hash VARCHAR,
+    authority_binding_ref VARCHAR NOT NULL,
+    PRIMARY KEY (row_content_hash, feature_ordinal)
 );

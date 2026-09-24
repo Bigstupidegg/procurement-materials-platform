@@ -48,6 +48,108 @@ APPROVED_TABLES = (
     "pit_dataset_row",
     "pit_feature_snapshot",
 )
+APPROVED_TABLE_COLUMNS = {
+    "schema_migrations": (
+        "schema_version", "migration_id", "applied_at", "code_commit_sha", "migration_checksum",
+    ),
+    "source_registry": (
+        "source_id", "source_name", "access_channel", "default_timezone", "data_classification",
+        "registry_version", "active", "created_at",
+    ),
+    "subject_registry": ("subject_id", "subject_snapshot_json", "registered_at"),
+    "instrument_registry": (
+        "instrument_id", "subject_id", "source_id", "source_symbol", "market_or_venue", "metric_id",
+        "quote_type", "term", "currency", "unit", "source_period_type", "instrument_version",
+        "active_from", "active_to",
+    ),
+    "source_usage_rights": (
+        "rights_profile_id", "source_id", "access_channel", "instrument_scope", "automated_access",
+        "private_storage", "historical_archive", "internal_analysis", "backtest", "prediction",
+        "internal_display", "internet_display", "redistribution", "evidence_reference", "review_status",
+        "effective_from", "effective_to", "reviewed_at",
+    ),
+    "raw_payload": (
+        "raw_payload_hash", "relative_path", "content_type", "byte_size", "data_classification",
+        "first_seen_at",
+    ),
+    "raw_capture": (
+        "capture_id", "source_id", "instrument_id", "access_channel", "source_locator_safe",
+        "collected_at", "collection_status", "raw_payload_hash", "collector_version", "rights_profile_id",
+        "error_class", "created_at",
+    ),
+    "observation_identity": (
+        "observation_id", "source_id", "source_record_identifier", "metric_id", "instrument_id",
+        "source_period_type", "source_market_date", "source_period_start_date", "source_period_end_date",
+        "identity_projection_json",
+    ),
+    "observation_snapshot": (
+        "observation_content_hash", "observation_id", "data_origin", "operational_status",
+        "scheduler_execution_at", "local_business_date", "source_business_date", "scheduler_business_date",
+        "source_publication_at", "collected_at", "observed_at", "source_available_at",
+        "channel_available_at", "created_at", "semantic_data_json", "content_projection_json",
+    ),
+    "observation_calendar_assignment": (
+        "observation_content_hash", "calendar_role", "subject_id", "assignment_status",
+        "calendar_reference_id", "calendar_version", "calendar_hash", "assignment_projection_json",
+    ),
+    "observation_version_identity": (
+        "observation_version_id", "observation_id", "source_version_or_release_key", "stable_version_key",
+        "raw_payload_hash", "transformation_version", "identity_projection_json",
+    ),
+    "observation_version_snapshot": (
+        "observation_version_content_hash", "observation_version_id", "parent_version_id",
+        "revision_available_at", "collected_at", "observed_at", "created_at", "semantic_data_json",
+        "content_projection_json",
+    ),
+    "readiness_evaluation": (
+        "evaluation_hash", "observation_id", "observation_version_id", "evaluation_role", "cutoff_at",
+        "evaluation_as_of_at", "label_available_at", "readiness_state", "eligibility_state",
+        "reason_codes_json", "blocker_ids_json", "evidence_references_json", "contract_version",
+        "evaluator_version", "rule_bundle_version", "rule_bundle_hash", "source_profile_id",
+        "source_profile_version", "observation_content_hash", "observation_version_content_hash",
+        "persisted_at",
+    ),
+    "pit_dataset_manifest": (
+        "dataset_identity", "manifest_type", "manifest_version", "dataset_contract_version",
+        "feature_set_version", "feature_computation_profile_version", "cutoff_policy_version",
+        "rule_bundle_bindings_json", "source_profile_bindings_json", "authorization_snapshot_json",
+        "request_scope_json", "include_count", "exclude_count", "quarantine_count",
+        "exclusion_reason_summary_json", "quarantine_reason_summary_json", "persisted_at",
+    ),
+    "pit_dataset_row": (
+        "row_content_hash", "row_id", "dataset_identity", "manifest_row_ordinal", "research_subject_id",
+        "observation_version_id", "research_cutoff_at", "feature_set_version",
+        "feature_computation_profile_version", "cutoff_policy_version", "feature_available_at_max",
+        "rd4_authority_bindings_json", "rd5_authority_bindings_json", "rule_bundle_bindings_json",
+        "source_profile_bindings_json", "label_specification_json", "authorization_snapshot_json",
+        "operational_status", "persisted_at",
+    ),
+    "pit_feature_snapshot": (
+        "row_content_hash", "feature_ordinal", "feature_content_hash", "feature_definition_id",
+        "feature_definition_version", "feature_computation_profile_version", "research_cutoff_at",
+        "value_state", "value_json", "source_observation_id", "source_observation_version_id",
+        "source_observed_at", "source_available_at", "source_profile_id", "source_profile_version",
+        "evidence_refs_json", "rd4_evaluation_hash", "rd5_decision_hash", "authority_binding_ref",
+    ),
+}
+APPROVED_PRIMARY_KEYS = {
+    "schema_migrations": ("migration_id",),
+    "source_registry": ("source_id",),
+    "subject_registry": ("subject_id",),
+    "instrument_registry": ("instrument_id",),
+    "source_usage_rights": ("rights_profile_id",),
+    "raw_payload": ("raw_payload_hash",),
+    "raw_capture": ("capture_id",),
+    "observation_identity": ("observation_id",),
+    "observation_snapshot": ("observation_content_hash",),
+    "observation_calendar_assignment": ("observation_content_hash", "calendar_role"),
+    "observation_version_identity": ("observation_version_id",),
+    "observation_version_snapshot": ("observation_version_content_hash",),
+    "readiness_evaluation": ("evaluation_hash",),
+    "pit_dataset_manifest": ("dataset_identity",),
+    "pit_dataset_row": ("row_content_hash",),
+    "pit_feature_snapshot": ("row_content_hash", "feature_ordinal"),
+}
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
@@ -122,6 +224,33 @@ class PrivateResearchDatabase:
         ).fetchone()
         return bool(row and row[0] == 1)
 
+    @staticmethod
+    def _table_columns(connection: duckdb.DuckDBPyConnection) -> dict[str, tuple[str, ...]]:
+        rows = connection.execute(
+            "SELECT table_name, column_name FROM information_schema.columns "
+            "WHERE table_schema = 'main' ORDER BY table_name, ordinal_position"
+        ).fetchall()
+        columns: dict[str, list[str]] = {}
+        for table_name, column_name in rows:
+            columns.setdefault(table_name, []).append(column_name)
+        return {table_name: tuple(names) for table_name, names in columns.items()}
+
+    @staticmethod
+    def _primary_keys(connection: duckdb.DuckDBPyConnection) -> dict[str, tuple[str, ...]]:
+        rows = connection.execute(
+            "SELECT tc.table_name, kcu.column_name FROM information_schema.table_constraints tc "
+            "JOIN information_schema.key_column_usage kcu "
+            "ON tc.constraint_catalog = kcu.constraint_catalog "
+            "AND tc.constraint_schema = kcu.constraint_schema "
+            "AND tc.constraint_name = kcu.constraint_name "
+            "WHERE tc.table_schema = 'main' AND tc.constraint_type = 'PRIMARY KEY' "
+            "ORDER BY tc.table_name, kcu.ordinal_position"
+        ).fetchall()
+        keys: dict[str, list[str]] = {}
+        for table_name, column_name in rows:
+            keys.setdefault(table_name, []).append(column_name)
+        return {table_name: tuple(names) for table_name, names in keys.items()}
+
     def initialize_schema(self, *, applied_at: str, code_commit_sha: str) -> str:
         """Apply the exact V1 migration, or verify an identical prior application."""
         if not isinstance(code_commit_sha, str) or not code_commit_sha:
@@ -166,6 +295,10 @@ class PrivateResearchDatabase:
             actual_tables = self._table_names(connection)
             if set(actual_tables) != set(APPROVED_TABLES):
                 raise MigrationError("database table set does not match the approved V1 schema")
+            if self._table_columns(connection) != APPROVED_TABLE_COLUMNS:
+                raise MigrationError("database columns do not match the approved V1 schema")
+            if self._primary_keys(connection) != APPROVED_PRIMARY_KEYS:
+                raise MigrationError("database primary keys do not match the approved V1 schema")
             connection.execute("COMMIT")
             return checksum
         except Exception:

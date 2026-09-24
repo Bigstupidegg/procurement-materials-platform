@@ -43,6 +43,94 @@ EXPECTED_BLOCKERS = (
     "RD3-YAHOO-001", "RD3-YAHOO-002", "RD3-YAHOO-003", "RD3-YAHOO-004",
     "RD3-BZ-001", "RD3-WB-001", "RD3-WB-002", "RD3-WB-003",
 )
+EXPECTED_COLUMNS = {
+    "schema_migrations": (
+        "schema_version", "migration_id", "applied_at", "code_commit_sha", "migration_checksum",
+    ),
+    "source_registry": (
+        "source_id", "source_name", "access_channel", "default_timezone", "data_classification",
+        "registry_version", "active", "created_at",
+    ),
+    "subject_registry": ("subject_id", "subject_snapshot_json", "registered_at"),
+    "instrument_registry": (
+        "instrument_id", "subject_id", "source_id", "source_symbol", "market_or_venue", "metric_id",
+        "quote_type", "term", "currency", "unit", "source_period_type", "instrument_version",
+        "active_from", "active_to",
+    ),
+    "source_usage_rights": (
+        "rights_profile_id", "source_id", "access_channel", "instrument_scope", "automated_access",
+        "private_storage", "historical_archive", "internal_analysis", "backtest", "prediction",
+        "internal_display", "internet_display", "redistribution", "evidence_reference", "review_status",
+        "effective_from", "effective_to", "reviewed_at",
+    ),
+    "raw_payload": (
+        "raw_payload_hash", "relative_path", "content_type", "byte_size", "data_classification",
+        "first_seen_at",
+    ),
+    "raw_capture": (
+        "capture_id", "source_id", "instrument_id", "access_channel", "source_locator_safe",
+        "collected_at", "collection_status", "raw_payload_hash", "collector_version", "rights_profile_id",
+        "error_class", "created_at",
+    ),
+    "observation_identity": (
+        "observation_id", "source_id", "source_record_identifier", "metric_id", "instrument_id",
+        "source_period_type", "source_market_date", "source_period_start_date", "source_period_end_date",
+        "identity_projection_json",
+    ),
+    "observation_snapshot": (
+        "observation_content_hash", "observation_id", "data_origin", "operational_status",
+        "scheduler_execution_at", "local_business_date", "source_business_date", "scheduler_business_date",
+        "source_publication_at", "collected_at", "observed_at", "source_available_at",
+        "channel_available_at", "created_at", "semantic_data_json", "content_projection_json",
+    ),
+    "observation_calendar_assignment": (
+        "observation_content_hash", "calendar_role", "subject_id", "assignment_status",
+        "calendar_reference_id", "calendar_version", "calendar_hash", "assignment_projection_json",
+    ),
+    "observation_version_identity": (
+        "observation_version_id", "observation_id", "source_version_or_release_key", "stable_version_key",
+        "raw_payload_hash", "transformation_version", "identity_projection_json",
+    ),
+    "observation_version_snapshot": (
+        "observation_version_content_hash", "observation_version_id", "parent_version_id",
+        "revision_available_at", "collected_at", "observed_at", "created_at", "semantic_data_json",
+        "content_projection_json",
+    ),
+    "readiness_evaluation": (
+        "evaluation_hash", "observation_id", "observation_version_id", "evaluation_role", "cutoff_at",
+        "evaluation_as_of_at", "label_available_at", "readiness_state", "eligibility_state",
+        "reason_codes_json", "blocker_ids_json", "evidence_references_json", "contract_version",
+        "evaluator_version", "rule_bundle_version", "rule_bundle_hash", "source_profile_id",
+        "source_profile_version", "observation_content_hash", "observation_version_content_hash",
+        "persisted_at",
+    ),
+    "pit_dataset_manifest": (
+        "dataset_identity", "manifest_type", "manifest_version", "dataset_contract_version",
+        "feature_set_version", "feature_computation_profile_version", "cutoff_policy_version",
+        "rule_bundle_bindings_json", "source_profile_bindings_json", "authorization_snapshot_json",
+        "request_scope_json", "include_count", "exclude_count", "quarantine_count",
+        "exclusion_reason_summary_json", "quarantine_reason_summary_json", "persisted_at",
+    ),
+    "pit_dataset_row": (
+        "row_content_hash", "row_id", "dataset_identity", "manifest_row_ordinal", "research_subject_id",
+        "observation_version_id", "research_cutoff_at", "feature_set_version",
+        "feature_computation_profile_version", "cutoff_policy_version", "feature_available_at_max",
+        "rd4_authority_bindings_json", "rd5_authority_bindings_json", "rule_bundle_bindings_json",
+        "source_profile_bindings_json", "label_specification_json", "authorization_snapshot_json",
+        "operational_status", "persisted_at",
+    ),
+    "pit_feature_snapshot": (
+        "row_content_hash", "feature_ordinal", "feature_content_hash", "feature_definition_id",
+        "feature_definition_version", "feature_computation_profile_version", "research_cutoff_at",
+        "value_state", "value_json", "source_observation_id", "source_observation_version_id",
+        "source_observed_at", "source_available_at", "source_profile_id", "source_profile_version",
+        "evidence_refs_json", "rd4_evaluation_hash", "rd5_decision_hash", "authority_binding_ref",
+    ),
+}
+RIGHTS_DIMENSIONS = (
+    "automated_access", "private_storage", "historical_archive", "internal_analysis", "backtest",
+    "prediction", "internal_display", "internet_display", "redistribution",
+)
 
 
 def assignments() -> tuple[CalendarAssignment, ...]:
@@ -112,6 +200,35 @@ class PrivateResearchDatabaseTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temporary_directory.cleanup()
 
+    def _columns(self, table_name: str) -> tuple[str, ...]:
+        connection = duckdb.connect(str(self.database_path), read_only=True)
+        try:
+            rows = connection.execute(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_schema = 'main' AND table_name = ? ORDER BY ordinal_position",
+                [table_name],
+            ).fetchall()
+            return tuple(row[0] for row in rows)
+        finally:
+            connection.close()
+
+    def _primary_key(self, table_name: str) -> tuple[str, ...]:
+        connection = duckdb.connect(str(self.database_path), read_only=True)
+        try:
+            rows = connection.execute(
+                "SELECT kcu.column_name FROM information_schema.table_constraints tc "
+                "JOIN information_schema.key_column_usage kcu "
+                "ON tc.constraint_catalog = kcu.constraint_catalog "
+                "AND tc.constraint_schema = kcu.constraint_schema "
+                "AND tc.constraint_name = kcu.constraint_name "
+                "WHERE tc.table_schema = 'main' AND tc.table_name = ? "
+                "AND tc.constraint_type = 'PRIMARY KEY' ORDER BY kcu.ordinal_position",
+                [table_name],
+            ).fetchall()
+            return tuple(row[0] for row in rows)
+        finally:
+            connection.close()
+
     def test_repository_path_is_rejected_without_creating_database(self) -> None:
         requested = REPOSITORY_ROOT / "forbidden-private-data.duckdb"
         with self.assertRaises(DatabasePathError):
@@ -126,6 +243,37 @@ class PrivateResearchDatabaseTests(unittest.TestCase):
         record = self.database.migration_record()
         self.assertEqual(record["schema_version"], SCHEMA_VERSION)
         self.assertEqual(record["migration_id"], MIGRATION_ID)
+
+    def test_schema_columns_exactly_match_approved_contract(self) -> None:
+        self.assertEqual(set(EXPECTED_COLUMNS), set(APPROVED_TABLES))
+        for table_name, expected_columns in EXPECTED_COLUMNS.items():
+            with self.subTest(table_name=table_name):
+                self.assertEqual(self._columns(table_name), expected_columns)
+
+    def test_subject_registry_remains_minimal_and_explicit(self) -> None:
+        self.assertEqual(
+            self._columns("subject_registry"),
+            ("subject_id", "subject_snapshot_json", "registered_at"),
+        )
+
+    def test_raw_payload_is_metadata_only_without_blob_storage(self) -> None:
+        connection = duckdb.connect(str(self.database_path), read_only=True)
+        try:
+            rows = connection.execute(
+                "SELECT column_name, data_type FROM information_schema.columns "
+                "WHERE table_schema = 'main' AND table_name = 'raw_payload' ORDER BY ordinal_position"
+            ).fetchall()
+        finally:
+            connection.close()
+        self.assertNotIn("payload_bytes", tuple(row[0] for row in rows))
+        self.assertTrue(all(row[1].upper() != "BLOB" for row in rows))
+
+    def test_dataset_order_and_feature_membership_keys_are_explicit(self) -> None:
+        self.assertIn("manifest_row_ordinal", self._columns("pit_dataset_row"))
+        self.assertEqual(
+            self._primary_key("pit_feature_snapshot"),
+            ("row_content_hash", "feature_ordinal"),
+        )
 
     def test_migration_checksum_uses_exact_sql_bytes_and_is_deterministic(self) -> None:
         expected = hashlib.sha256(MIGRATION_PATH.read_bytes()).hexdigest()
@@ -158,6 +306,18 @@ class PrivateResearchDatabaseTests(unittest.TestCase):
         finally:
             connection.close()
         with self.assertRaisesRegex(MigrationError, "checksum conflicts"):
+            self.database.initialize_schema(
+                applied_at="2026-09-24T00:00:00Z",
+                code_commit_sha="SYNTHETIC_TEST_COMMIT",
+            )
+
+    def test_existing_database_with_extra_column_is_rejected(self) -> None:
+        connection = duckdb.connect(str(self.database_path))
+        try:
+            connection.execute("ALTER TABLE subject_registry ADD COLUMN unexpected_column VARCHAR")
+        finally:
+            connection.close()
+        with self.assertRaisesRegex(MigrationError, "columns do not match"):
             self.database.initialize_schema(
                 applied_at="2026-09-24T00:00:00Z",
                 code_commit_sha="SYNTHETIC_TEST_COMMIT",
@@ -234,24 +394,46 @@ class PrivateResearchDatabaseTests(unittest.TestCase):
         finally:
             connection.close()
 
-    def test_source_usage_rights_state_allowlist_keeps_unknown_fail_closed(self) -> None:
+    def test_source_usage_rights_dimensions_are_independent_and_allowlisted(self) -> None:
         connection = duckdb.connect(str(self.database_path))
         try:
+            columns = (
+                "rights_profile_id", "source_id", "access_channel", "instrument_scope", *RIGHTS_DIMENSIONS,
+                "evidence_reference", "review_status", "effective_from", "effective_to", "reviewed_at",
+            )
+            insert_sql = (
+                f"INSERT INTO source_usage_rights ({', '.join(columns)}) "
+                f"VALUES ({', '.join('?' for _ in columns)})"
+            )
+            rights_values = (
+                "UNKNOWN", "ALLOWED", "PROHIBITED", "REVIEW_REQUIRED", "UNKNOWN", "ALLOWED",
+                "PROHIBITED", "REVIEW_REQUIRED", "UNKNOWN",
+            )
             connection.execute(
-                "INSERT INTO source_usage_rights VALUES (?, ?, ?, ?, ?)",
-                ["SYNTHETIC_RIGHTS_UNKNOWN", "SYNTHETIC_SOURCE", "UNKNOWN", "2026-09-24T00:00:00Z", "{}"],
+                insert_sql,
+                [
+                    "SYNTHETIC_RIGHTS_MATRIX", "SYNTHETIC_SOURCE", "SYNTHETIC_CHANNEL", "SYNTHETIC_SCOPE",
+                    *rights_values, "SYNTHETIC_EVIDENCE", "SYNTHETIC_REVIEW", "2026-09-24", None, None,
+                ],
             )
             stored = connection.execute(
-                "SELECT rights_state FROM source_usage_rights WHERE source_usage_rights_id = ?",
-                ["SYNTHETIC_RIGHTS_UNKNOWN"],
-            ).fetchone()[0]
-            self.assertEqual(stored, "UNKNOWN")
-            self.assertNotEqual(stored, "ALLOWED")
-            with self.assertRaises(duckdb.ConstraintException):
-                connection.execute(
-                    "INSERT INTO source_usage_rights VALUES (?, ?, ?, ?, ?)",
-                    ["SYNTHETIC_RIGHTS_INVALID", "SYNTHETIC_SOURCE", "UNREVIEWED", "2026-09-24T00:00:00Z", "{}"],
-                )
+                f"SELECT {', '.join(RIGHTS_DIMENSIONS)} FROM source_usage_rights WHERE rights_profile_id = ?",
+                ["SYNTHETIC_RIGHTS_MATRIX"],
+            ).fetchone()
+            self.assertEqual(stored, rights_values)
+            for invalid_dimension in RIGHTS_DIMENSIONS:
+                invalid_values = ["UNKNOWN"] * len(RIGHTS_DIMENSIONS)
+                invalid_values[RIGHTS_DIMENSIONS.index(invalid_dimension)] = "UNREVIEWED"
+                with self.subTest(invalid_dimension=invalid_dimension):
+                    with self.assertRaises(duckdb.ConstraintException):
+                        connection.execute(
+                            insert_sql,
+                            [
+                                f"SYNTHETIC_INVALID_{invalid_dimension}", "SYNTHETIC_SOURCE",
+                                "SYNTHETIC_CHANNEL", "SYNTHETIC_SCOPE", *invalid_values,
+                                "SYNTHETIC_EVIDENCE", "SYNTHETIC_REVIEW", "2026-09-24", None, None,
+                            ],
+                        )
         finally:
             connection.close()
 
