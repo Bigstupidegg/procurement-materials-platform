@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import ast
 import copy
-from dataclasses import FrozenInstanceError, replace
+from dataclasses import FrozenInstanceError, fields, replace
 from decimal import Decimal
 import inspect
 import re
@@ -21,8 +21,21 @@ from scripts.c4_rd_contract import (
 )
 from scripts.c4_rd_pit_dataset import PITDatasetResult, build_pit_dataset
 from scripts.c4_rd_preregistration import (
+    BaselineDefinition,
+    DatasetBinding,
+    EvaluationProtocol,
+    ExclusionPolicy,
+    ExclusionRule,
+    FeatureBinding,
+    FeatureDefinitionBinding,
+    LabelProtocol,
+    MetricDefinition,
+    MetricPlan,
     PreregistrationHardFail,
     PreregistrationInvalidProtocol,
+    PreregistrationProtocol,
+    PreregistrationResult,
+    ReportingPolicy,
     ResearchQuestion,
     build_preregistration_protocol,
 )
@@ -54,6 +67,9 @@ EXPECTED_TOP_LEVEL_KEYS = {
     "reporting_policy",
     "authorization_snapshot",
 }
+EXPECTED_PREREGISTRATION_IDENTITY = (
+    "34d520330c615754953c58545e2d6c29f08dd13faa7def6523adec96ae141dbe"
+)
 
 
 def plain(value):
@@ -165,6 +181,7 @@ class TestC4RDPreregistration(unittest.TestCase):
         second = build_protocol(self.results)
         self.assertEqual(first.validation_status, "VALID")
         self.assertEqual(first.preregistration_identity, second.preregistration_identity)
+        self.assertEqual(first.preregistration_identity, EXPECTED_PREREGISTRATION_IDENTITY)
         self.assertRegex(first.preregistration_identity, r"^[0-9a-f]{64}$")
         self.assertEqual(
             first.preregistration_identity,
@@ -543,6 +560,221 @@ class TestC4RDPreregistration(unittest.TestCase):
         self.assertFalse(hasattr(protocol, "__dict__"))
         with self.assertRaises(TypeError):
             protocol.authorization_snapshot["new"] = True
+
+    def test_authority_bearing_types_reject_ordinary_direct_construction(self):
+        valid = build_protocol(self.results)
+        binding_values = valid.protocol.dataset_bindings[0].semantic_projection()
+        with self.assertRaises(PreregistrationHardFail):
+            DatasetBinding(**binding_values)
+
+        protocol_values = {
+            item.name: getattr(valid.protocol, item.name)
+            for item in fields(PreregistrationProtocol)
+        }
+        with self.assertRaises(PreregistrationHardFail):
+            PreregistrationProtocol(**protocol_values)
+
+        with self.assertRaises(PreregistrationHardFail):
+            PreregistrationResult(
+                protocol=valid.protocol,
+                preregistration_identity=valid.preregistration_identity,
+                validation_status="VALID",
+            )
+
+    def test_fake_dataset_identity_cannot_enter_ordinary_authority_construction(self):
+        values = build_protocol(self.results).protocol.dataset_bindings[0].semantic_projection()
+        values["dataset_identity"] = "caller-controlled-value"
+        with self.assertRaises(PreregistrationHardFail):
+            DatasetBinding(**values)
+
+    def test_alternate_research_plans_cannot_enter_protocol_by_public_construction(self):
+        protocol = build_protocol(self.results).protocol
+        alternate_baseline = (
+            BaselineDefinition("caller_baseline", "1.0.0", "ANY", "ANY", "ANY", "ANY"),
+        )
+        alternate_metric = MetricPlan(
+            primary=[MetricDefinition("caller_metric", "1.0.0")],
+            secondary=[],
+            diagnostic=[],
+        )
+        evaluation_values = {
+            item.name: getattr(protocol.evaluation_protocol, item.name)
+            for item in fields(EvaluationProtocol)
+        }
+        evaluation_values["primary_horizon"] = "P7D"
+        alternate_evaluation = EvaluationProtocol(**evaluation_values)
+        for name, value in (
+            ("baseline_plan", alternate_baseline),
+            ("metric_plan", alternate_metric),
+            ("evaluation_protocol", alternate_evaluation),
+        ):
+            with self.subTest(name=name):
+                with self.assertRaises(PreregistrationHardFail):
+                    replace(protocol, **{name: value})
+
+    def test_matching_hash_cannot_create_valid_result_by_public_construction(self):
+        valid = build_protocol(self.results)
+        caller_hash = canonical_hash(
+            "PREREGISTRATION_CONTENT",
+            valid.protocol.semantic_projection(),
+        )
+        self.assertEqual(caller_hash, valid.preregistration_identity)
+        with self.assertRaises(PreregistrationHardFail):
+            PreregistrationResult(
+                protocol=valid.protocol,
+                preregistration_identity=caller_hash,
+                validation_status="VALID",
+                diagnostics=[],
+                runtime_metadata={},
+            )
+
+    def test_label_protocol_deep_freezes_direction_semantics(self):
+        source = {
+            "UP": "RETURN_GT_ZERO",
+            "DOWN": "RETURN_LT_ZERO",
+            "FLAT": "RETURN_EQ_ZERO",
+        }
+        value = LabelProtocol(
+            "SYNTHETIC_DIRECTION",
+            "SIGN_OF_EXACT_HORIZON_RETURN",
+            "LABEL_AVAILABLE_STRICTLY_AFTER_CUTOFF",
+            "EXCLUDE_FROM_EVALUATION",
+            source,
+            "ZERO_RETURN_NON_DIRECTIONAL_EXCLUDE_PRIMARY_KEEP_ACCOUNTING",
+        )
+        before = value.semantic_projection()
+        source["UP"] = "MUTATED"
+        source["NEW"] = "MUTATED"
+        self.assertEqual(value.semantic_projection(), before)
+        with self.assertRaises(TypeError):
+            value.direction_semantics["UP"] = "MUTATED"
+        with self.assertRaises(FrozenInstanceError):
+            value.direction_semantics = {}
+
+    def test_feature_binding_snapshots_typed_definition_list_without_sorting(self):
+        definitions = [
+            FeatureDefinitionBinding("z_feature", "1.0.0", "z", "MANDATORY"),
+            FeatureDefinitionBinding("a_feature", "1.0.0", "a", "OPTIONAL"),
+        ]
+        value = FeatureBinding("features@1.0.0", "profile@1.0.0", definitions)
+        definitions.reverse()
+        definitions.append(FeatureDefinitionBinding("later", "1.0.0", "later", "OPTIONAL"))
+        self.assertEqual(
+            [item.feature_definition_id for item in value.feature_definitions],
+            ["z_feature", "a_feature"],
+        )
+        self.assertIsInstance(value.feature_definitions, tuple)
+        with self.assertRaises(PreregistrationInvalidProtocol):
+            FeatureBinding("features@1.0.0", "profile@1.0.0", [{}])
+
+    def test_metric_plan_snapshots_typed_lists(self):
+        primary = [MetricDefinition("balanced_accuracy", "1.0.0", "SUBJECT_MACRO")]
+        secondary = [MetricDefinition("accuracy", "1.0.0")]
+        diagnostic = [MetricDefinition("confusion_matrix", "1.0.0")]
+        value = MetricPlan(primary, secondary, diagnostic)
+        primary.clear()
+        secondary.append(MetricDefinition("mutated", "1.0.0"))
+        diagnostic.clear()
+        self.assertEqual(len(value.primary), 1)
+        self.assertEqual([item.metric_id for item in value.secondary], ["accuracy"])
+        self.assertEqual([item.metric_id for item in value.diagnostic], ["confusion_matrix"])
+        self.assertTrue(all(isinstance(items, tuple) for items in (
+            value.primary, value.secondary, value.diagnostic
+        )))
+        with self.assertRaises(PreregistrationInvalidProtocol):
+            MetricPlan([{}], [], [])
+
+    def test_evaluation_protocol_snapshots_all_sequence_fields(self):
+        template = build_protocol(self.results).protocol.evaluation_protocol
+        values = {item.name: getattr(template, item.name) for item in fields(EvaluationProtocol)}
+        source_lists = {
+            name: list(values[name])
+            for name in (
+                "evaluation_unit_fields",
+                "pit_invariant_declarations",
+                "forbidden_practices",
+                "result_states",
+            )
+        }
+        values.update(source_lists)
+        frozen = EvaluationProtocol(**values)
+        expected = {
+            name: getattr(frozen, name)
+            for name in source_lists
+        }
+        for source in source_lists.values():
+            source.append("MUTATED")
+        for name, snapshot in expected.items():
+            self.assertEqual(getattr(frozen, name), snapshot)
+            self.assertIsInstance(getattr(frozen, name), tuple)
+
+    def test_exclusion_and_reporting_policies_snapshot_lists(self):
+        rules = [ExclusionRule("RULE", "1.0.0", "KEEP")]
+        substitutions = ["NO_FILL"]
+        exclusion = ExclusionPolicy(rules, substitutions)
+        fields_source = ["identity", "metrics"]
+        reporting = ReportingPolicy(fields_source, "REPORT", "REPORT")
+        rules.clear()
+        substitutions.append("MUTATED")
+        fields_source.clear()
+        self.assertEqual(len(exclusion.rules), 1)
+        self.assertEqual(exclusion.forbidden_substitutions, ("NO_FILL",))
+        self.assertEqual(reporting.mandatory_reporting_fields, ("identity", "metrics"))
+        with self.assertRaises(PreregistrationInvalidProtocol):
+            ExclusionPolicy([{}], [])
+        with self.assertRaises(PreregistrationInvalidProtocol):
+            ReportingPolicy([1], "REPORT", "REPORT")
+
+    def test_builder_protocol_owns_only_immutable_semantic_containers(self):
+        protocol = build_protocol(self.results).protocol
+        for value in (
+            protocol.research_subjects,
+            protocol.horizon_plan,
+            protocol.dataset_bindings,
+            protocol.baseline_plan,
+        ):
+            self.assertIsInstance(value, tuple)
+        with self.assertRaises(TypeError):
+            protocol.authorization_snapshot["safety_flags"] = {}
+        with self.assertRaises(TypeError):
+            protocol.authorization_snapshot["safety_flags"]["production_allowed"] = True
+
+    def test_result_deep_freezes_nested_runtime_metadata_and_diagnostics(self):
+        runtime = {"outer": {"values": ["one"]}}
+        built = build_protocol(self.results, runtime_metadata=runtime)
+        runtime["outer"]["values"].append("mutated")
+        runtime["outer"]["new"] = "mutated"
+        self.assertEqual(tuple(built.runtime_metadata["outer"]["values"]), ("one",))
+        self.assertNotIn("new", built.runtime_metadata["outer"])
+        with self.assertRaises(TypeError):
+            built.runtime_metadata["outer"]["new"] = "blocked"
+
+        diagnostics = [{"detail": {"values": ["one"]}}]
+        internally_built = PreregistrationResult(
+            protocol=built.protocol,
+            preregistration_identity=built.preregistration_identity,
+            validation_status="VALID",
+            diagnostics=diagnostics,
+            runtime_metadata={},
+            _construction_token=preregistration._TRUSTED_CONSTRUCTION_TOKEN,
+        )
+        diagnostics[0]["detail"]["values"].append("mutated")
+        diagnostics.append({"later": True})
+        self.assertEqual(
+            tuple(internally_built.diagnostics[0]["detail"]["values"]),
+            ("one",),
+        )
+        self.assertEqual(len(internally_built.diagnostics), 1)
+        with self.assertRaises(TypeError):
+            internally_built.diagnostics[0]["detail"]["new"] = "blocked"
+
+    def test_trusted_token_is_construction_only_and_nonsemantic(self):
+        result = build_protocol(self.results)
+        for core_type in (DatasetBinding, PreregistrationProtocol, PreregistrationResult):
+            self.assertNotIn("_construction_token", {item.name for item in fields(core_type)})
+            self.assertNotIn("_construction_token", getattr(core_type, "__slots__", ()))
+        self.assertNotIn("_construction_token", result.protocol.semantic_projection())
+        self.assertEqual(result.preregistration_identity, EXPECTED_PREREGISTRATION_IDENTITY)
 
     def test_safety_controls_and_authorization_changes_fail_closed(self):
         self.assertEqual(len(SAFETY_FLAGS), 9)

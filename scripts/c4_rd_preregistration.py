@@ -9,7 +9,7 @@ access external data.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field, fields, is_dataclass
+from dataclasses import InitVar, dataclass, field, fields, is_dataclass
 from decimal import Decimal
 import re
 from types import MappingProxyType
@@ -31,6 +31,7 @@ from scripts.c4_rd_pit_dataset import PITDatasetResult
 
 
 HORIZONS = ("P7D", "P14D", "P28D")
+_TRUSTED_CONSTRUCTION_TOKEN = object()
 _QUESTION_KEYS = (
     "objective",
     "population_scope",
@@ -115,6 +116,51 @@ def _freeze(value: Any, error_type: type[PreregistrationError]) -> Any:
     raise error_type(f"unsupported input type: {type(value).__name__}")
 
 
+def _freeze_semantic_mapping(
+    value: Any,
+    name: str,
+    error_type: type[PreregistrationError] = PreregistrationInvalidProtocol,
+) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping):
+        raise error_type(f"{name} must be a mapping")
+    return _freeze(value, error_type)
+
+
+def _freeze_typed_sequence(
+    value: Any,
+    name: str,
+    exact_type: type,
+    error_type: type[PreregistrationError] = PreregistrationInvalidProtocol,
+) -> tuple[Any, ...]:
+    if not isinstance(value, (list, tuple)):
+        raise error_type(f"{name} must be a list or tuple")
+    snapshot = tuple(value)
+    if any(type(item) is not exact_type for item in snapshot):
+        raise error_type(f"{name} contains an invalid semantic object")
+    return snapshot
+
+
+def _freeze_string_sequence(
+    value: Any,
+    name: str,
+    error_type: type[PreregistrationError] = PreregistrationInvalidProtocol,
+) -> tuple[str, ...]:
+    return _freeze_typed_sequence(value, name, str, error_type)
+
+
+def _freeze_mapping_sequence(
+    value: Any,
+    name: str,
+    error_type: type[PreregistrationError],
+) -> tuple[Mapping[str, Any], ...]:
+    if not isinstance(value, (list, tuple)):
+        raise error_type(f"{name} must be a list or tuple")
+    snapshot = tuple(value)
+    if any(not isinstance(item, Mapping) for item in snapshot):
+        raise error_type(f"{name} must contain mappings")
+    return tuple(_freeze_semantic_mapping(item, name, error_type) for item in snapshot)
+
+
 def _require_nonblank(value: Any, name: str, error_type: type[PreregistrationError]) -> str:
     if not isinstance(value, str) or not value or value.isspace():
         raise error_type(f"{name} must be a non-whitespace string")
@@ -180,6 +226,17 @@ class FeatureBinding:
     feature_computation_profile_version: str
     feature_definitions: tuple[FeatureDefinitionBinding, ...]
 
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "feature_definitions",
+            _freeze_typed_sequence(
+                self.feature_definitions,
+                "feature_definitions",
+                FeatureDefinitionBinding,
+            ),
+        )
+
     def semantic_projection(self) -> dict[str, Any]:
         return {
             "feature_set_version": self.feature_set_version,
@@ -200,6 +257,13 @@ class DatasetBinding:
     cutoff_policy_version: str
     label_definition_id: str
     label_reference_id: str
+    _construction_token: InitVar[object] = None
+
+    def __post_init__(self, _construction_token: object) -> None:
+        if _construction_token is not _TRUSTED_CONSTRUCTION_TOKEN:
+            raise PreregistrationHardFail(
+                "DatasetBinding must be created by the trusted preregistration builder"
+            )
 
     def semantic_projection(self) -> dict[str, Any]:
         return {
@@ -224,6 +288,13 @@ class LabelProtocol:
     missing_label_policy: str
     direction_semantics: Mapping[str, str]
     flat_evaluation_policy: str
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "direction_semantics",
+            _freeze_semantic_mapping(self.direction_semantics, "direction_semantics"),
+        )
 
     def semantic_projection(self) -> dict[str, Any]:
         return {
@@ -275,6 +346,14 @@ class MetricPlan:
     secondary: tuple[MetricDefinition, ...]
     diagnostic: tuple[MetricDefinition, ...]
 
+    def __post_init__(self) -> None:
+        for name in ("primary", "secondary", "diagnostic"):
+            object.__setattr__(
+                self,
+                name,
+                _freeze_typed_sequence(getattr(self, name), name, MetricDefinition),
+            )
+
     def semantic_projection(self) -> dict[str, Any]:
         return {
             "primary": [item.semantic_projection() for item in self.primary],
@@ -312,6 +391,19 @@ class EvaluationProtocol:
     forbidden_practices: tuple[str, ...]
     result_states: tuple[str, ...]
 
+    def __post_init__(self) -> None:
+        for name in (
+            "evaluation_unit_fields",
+            "pit_invariant_declarations",
+            "forbidden_practices",
+            "result_states",
+        ):
+            object.__setattr__(
+                self,
+                name,
+                _freeze_string_sequence(getattr(self, name), name),
+            )
+
     def semantic_projection(self) -> dict[str, Any]:
         return {item.name: _plain(getattr(self, item.name)) for item in fields(self)}
 
@@ -335,6 +427,21 @@ class ExclusionPolicy:
     rules: tuple[ExclusionRule, ...]
     forbidden_substitutions: tuple[str, ...]
 
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "rules",
+            _freeze_typed_sequence(self.rules, "rules", ExclusionRule),
+        )
+        object.__setattr__(
+            self,
+            "forbidden_substitutions",
+            _freeze_string_sequence(
+                self.forbidden_substitutions,
+                "forbidden_substitutions",
+            ),
+        )
+
     def semantic_projection(self) -> dict[str, Any]:
         return {
             "rules": [item.semantic_projection() for item in self.rules],
@@ -347,6 +454,16 @@ class ReportingPolicy:
     mandatory_reporting_fields: tuple[str, ...]
     null_result_policy: str
     failure_result_policy: str
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "mandatory_reporting_fields",
+            _freeze_string_sequence(
+                self.mandatory_reporting_fields,
+                "mandatory_reporting_fields",
+            ),
+        )
 
     def semantic_projection(self) -> dict[str, Any]:
         return {
@@ -374,8 +491,58 @@ class PreregistrationProtocol:
     exclusion_policy: ExclusionPolicy
     reporting_policy: ReportingPolicy
     authorization_snapshot: Mapping[str, Any]
+    _construction_token: InitVar[object] = None
 
-    def __post_init__(self) -> None:
+    def __post_init__(self, _construction_token: object) -> None:
+        if _construction_token is not _TRUSTED_CONSTRUCTION_TOKEN:
+            raise PreregistrationHardFail(
+                "PreregistrationProtocol must be created by the trusted preregistration builder"
+            )
+        exact_values = (
+            ("research_question", ResearchQuestion),
+            ("feature_binding", FeatureBinding),
+            ("label_protocol", LabelProtocol),
+            ("metric_plan", MetricPlan),
+            ("evaluation_protocol", EvaluationProtocol),
+            ("exclusion_policy", ExclusionPolicy),
+            ("reporting_policy", ReportingPolicy),
+        )
+        for name, exact_type in exact_values:
+            if type(getattr(self, name)) is not exact_type:
+                raise PreregistrationHardFail(f"{name} type mismatch")
+        object.__setattr__(
+            self,
+            "research_subjects",
+            _freeze_string_sequence(
+                self.research_subjects,
+                "research_subjects",
+                PreregistrationHardFail,
+            ),
+        )
+        for name, exact_type in (
+            ("horizon_plan", HorizonPlanEntry),
+            ("dataset_bindings", DatasetBinding),
+            ("baseline_plan", BaselineDefinition),
+        ):
+            object.__setattr__(
+                self,
+                name,
+                _freeze_typed_sequence(
+                    getattr(self, name),
+                    name,
+                    exact_type,
+                    PreregistrationHardFail,
+                ),
+            )
+        object.__setattr__(
+            self,
+            "authorization_snapshot",
+            _freeze_semantic_mapping(
+                self.authorization_snapshot,
+                "authorization_snapshot",
+                PreregistrationHardFail,
+            ),
+        )
         canonical_json_bytes(self.semantic_projection())
 
     def semantic_projection(self) -> dict[str, Any]:
@@ -410,16 +577,37 @@ class PreregistrationResult:
     validation_status: str
     diagnostics: tuple[Mapping[str, Any], ...] = ()
     runtime_metadata: Mapping[str, Any] = field(default_factory=dict, compare=False, repr=False)
+    _construction_token: InitVar[object] = None
 
-    def __post_init__(self) -> None:
+    def __post_init__(self, _construction_token: object) -> None:
+        if _construction_token is not _TRUSTED_CONSTRUCTION_TOKEN:
+            raise PreregistrationHardFail(
+                "PreregistrationResult must be created by the trusted preregistration builder"
+            )
         if type(self.protocol) is not PreregistrationProtocol:
             raise PreregistrationHardFail("result protocol type mismatch")
         if self.validation_status != "VALID":
             raise PreregistrationHardFail("successful result status must be VALID")
         if self.preregistration_identity != self.protocol.preregistration_identity:
             raise PreregistrationHardFail("result identity does not match protocol")
-        object.__setattr__(self, "diagnostics", tuple(_freeze(item, PreregistrationHardFail) for item in self.diagnostics))
-        object.__setattr__(self, "runtime_metadata", _freeze(self.runtime_metadata, PreregistrationInvalidProtocol))
+        object.__setattr__(
+            self,
+            "diagnostics",
+            _freeze_mapping_sequence(
+                self.diagnostics,
+                "diagnostics",
+                PreregistrationHardFail,
+            ),
+        )
+        object.__setattr__(
+            self,
+            "runtime_metadata",
+            _freeze_semantic_mapping(
+                self.runtime_metadata,
+                "runtime_metadata",
+                PreregistrationInvalidProtocol,
+            ),
+        )
 
 
 def _authorization_snapshot() -> Mapping[str, Any]:
@@ -747,6 +935,7 @@ def build_preregistration_protocol(
             cutoff_policy_version=results[horizon].manifest.cutoff_policy_version,
             label_definition_id=analyses[horizon][0],
             label_reference_id=analyses[horizon][1],
+            _construction_token=_TRUSTED_CONSTRUCTION_TOKEN,
         )
         for horizon in HORIZONS
     )
@@ -785,6 +974,7 @@ def build_preregistration_protocol(
         exclusion_policy=_fixed_exclusion_policy(),
         reporting_policy=_fixed_reporting_policy(),
         authorization_snapshot=authorization,
+        _construction_token=_TRUSTED_CONSTRUCTION_TOKEN,
     )
     identity = protocol.preregistration_identity
     return PreregistrationResult(
@@ -793,4 +983,5 @@ def build_preregistration_protocol(
         validation_status="VALID",
         diagnostics=(),
         runtime_metadata={} if runtime_metadata is None else runtime_metadata,
+        _construction_token=_TRUSTED_CONSTRUCTION_TOKEN,
     )
