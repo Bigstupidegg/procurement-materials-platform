@@ -1,3 +1,4 @@
 requests==2.32.5
 openpyxl==3.1.5
 jsonschema==4.23.0
+duckdb==1.5.5
