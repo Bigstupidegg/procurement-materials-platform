@@ -1,8 +1,7 @@
-"""Private, append-only DuckDB persistence for C4 Observation contracts.
+"""Private, append-only DuckDB persistence for approved C4 contracts.
 
-DB1A deliberately exposes persistence only for ``Observation`` and
-``ObservationVersion``.  The remaining V1 tables reserve the approved DB1
-shape for later stages and have no production persistence API here.
+DB1B adds synthetic/non-operational persistence for RD4 readiness evaluations
+and RD6 PIT dataset authority while preserving the frozen DB1A V1 schema.
 """
 
 from __future__ import annotations
@@ -20,10 +19,18 @@ from scripts.c4_rd_contract import (
     CalendarAssignment,
     Observation,
     ObservationVersion,
+    canonical_hash,
     canonical_json_bytes,
     canonical_timestamp,
     parse_json_strict,
 )
+from scripts.c4_rd_pit_dataset import (
+    PITDatasetManifest,
+    PITDatasetResult,
+    PITDatasetRow,
+    PITFeatureSnapshot,
+)
+from scripts.c4_rd_readiness_evaluator import EvidenceReference, ReadinessEvaluationResult
 
 
 SCHEMA_VERSION = "C4_PRIVATE_RESEARCH_DB_V1@1.0.0"
@@ -203,8 +210,31 @@ def _require_hash(value: str, field_name: str) -> None:
         raise PrivateResearchDBError(f"{field_name} must be lowercase SHA-256 hex")
 
 
+def _canonical_persisted_at(value: str) -> str:
+    if not isinstance(value, str):
+        raise PrivateResearchDBError("persisted_at must be an explicit canonicalizable timestamp")
+    try:
+        return canonical_timestamp(value)
+    except Exception as exc:
+        raise PrivateResearchDBError(
+            "persisted_at must be an explicit canonicalizable timestamp"
+        ) from exc
+
+
+def _stored_json(value: str, expected_type: type, field_name: str) -> Any:
+    try:
+        parsed = parse_json_strict(value)
+    except Exception as exc:
+        raise PersistenceConflictError(f"stored {field_name} is not strict JSON") from exc
+    if type(parsed) is not expected_type:
+        raise PersistenceConflictError(
+            f"stored {field_name} must be a JSON {expected_type.__name__}"
+        )
+    return parsed
+
+
 class PrivateResearchDatabase:
-    """Small explicit adapter for the append-only DB1A persistence boundary."""
+    """Small explicit adapter for the frozen append-only DB1 persistence boundary."""
 
     def __init__(self, database_path: str | Path) -> None:
         if str(database_path) in {"", ":memory:"}:
@@ -738,3 +768,472 @@ class PrivateResearchDatabase:
         if _canonical_text(loaded.content_projection()) != stored_content_json:
             raise PersistenceConflictError("loaded version content projection drifted")
         return loaded
+
+    def persist_readiness_evaluation(
+        self,
+        result: ReadinessEvaluationResult,
+        *,
+        persisted_at: str,
+    ) -> str:
+        """Append one exact RD4 result, retaining first-persistence metadata."""
+        if type(result) is not ReadinessEvaluationResult:
+            raise PrivateResearchDBError(
+                "only an exact validated ReadinessEvaluationResult may be persisted"
+            )
+        canonical_persisted_at = _canonical_persisted_at(persisted_at)
+        evaluation_hash = canonical_hash(
+            "MANIFEST_CONTENT",
+            {"rd4_2_evaluation_result": result.as_dict()},
+        )
+        values = (
+            evaluation_hash,
+            result.observation_id,
+            result.observation_version_id,
+            result.evaluation_role,
+            result.cutoff_at,
+            result.evaluation_as_of_at,
+            result.label_available_at,
+            result.readiness_state,
+            result.eligibility_state,
+            _canonical_text(result.reason_codes),
+            _canonical_text(result.blocker_ids),
+            _canonical_text(tuple(item.as_dict() for item in result.evidence_references)),
+            result.contract_version,
+            result.evaluator_version,
+            result.rule_bundle_version,
+            result.rule_bundle_hash,
+            result.source_profile_id,
+            result.source_profile_version,
+            result.observation_content_hash,
+            result.observation_version_content_hash,
+            canonical_persisted_at,
+        )
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN TRANSACTION")
+            stored = connection.execute(
+                "SELECT * FROM readiness_evaluation WHERE evaluation_hash = ?",
+                [evaluation_hash],
+            ).fetchone()
+            if stored is None:
+                connection.execute(
+                    f"INSERT INTO readiness_evaluation VALUES ({', '.join('?' for _ in values)})",
+                    values,
+                )
+            elif tuple(stored[:-1]) != values[:-1]:
+                raise PersistenceConflictError(
+                    "readiness evaluation hash contradicts immutable stored authority"
+                )
+            connection.execute("COMMIT")
+            return evaluation_hash
+        except Exception:
+            try:
+                connection.execute("ROLLBACK")
+            except Exception:
+                pass
+            raise
+        finally:
+            connection.close()
+
+    def load_readiness_evaluation(self, evaluation_hash: str) -> ReadinessEvaluationResult:
+        """Reconstruct and re-hash one exact persisted RD4 result."""
+        _require_hash(evaluation_hash, "evaluation_hash")
+        connection = self._connect()
+        try:
+            row = connection.execute(
+                "SELECT * FROM readiness_evaluation WHERE evaluation_hash = ?",
+                [evaluation_hash],
+            ).fetchone()
+        finally:
+            connection.close()
+        if row is None:
+            raise KeyError(evaluation_hash)
+        try:
+            reason_codes = _stored_json(row[9], list, "reason_codes_json")
+            blocker_ids = _stored_json(row[10], list, "blocker_ids_json")
+            evidence_values = _stored_json(row[11], list, "evidence_references_json")
+            if not all(type(item) is str for item in reason_codes + blocker_ids):
+                raise PersistenceConflictError("stored readiness codes must be strings")
+            evidence: list[EvidenceReference] = []
+            for item in evidence_values:
+                if type(item) is not dict or set(item) != {
+                    "evidence_kind", "evidence_id", "content_hash",
+                } or not all(type(value) is str for value in item.values()):
+                    raise PersistenceConflictError(
+                        "stored readiness evidence reference is malformed"
+                    )
+                evidence.append(EvidenceReference(**item))
+            loaded = ReadinessEvaluationResult(
+                observation_id=row[1],
+                observation_version_id=row[2],
+                evaluation_role=row[3],
+                cutoff_at=row[4],
+                evaluation_as_of_at=row[5],
+                label_available_at=row[6],
+                readiness_state=row[7],
+                eligibility_state=row[8],
+                reason_codes=tuple(reason_codes),
+                blocker_ids=tuple(blocker_ids),
+                evidence_references=tuple(evidence),
+                contract_version=row[12],
+                evaluator_version=row[13],
+                rule_bundle_version=row[14],
+                rule_bundle_hash=row[15],
+                source_profile_id=row[16],
+                source_profile_version=row[17],
+                observation_content_hash=row[18],
+                observation_version_content_hash=row[19],
+            )
+            recomputed_hash = canonical_hash(
+                "MANIFEST_CONTENT",
+                {"rd4_2_evaluation_result": loaded.as_dict()},
+            )
+            if row[0] != evaluation_hash or recomputed_hash != evaluation_hash:
+                raise PersistenceConflictError("loaded readiness evaluation hash drifted")
+            return loaded
+        except PersistenceConflictError:
+            raise
+        except Exception as exc:
+            raise PersistenceConflictError(
+                "stored readiness evaluation cannot reconstruct authoritative RD4 content"
+            ) from exc
+
+    def persist_pit_dataset(
+        self,
+        result: PITDatasetResult,
+        *,
+        persisted_at: str,
+    ) -> str:
+        """Atomically append one exact synthetic RD6 dataset authority."""
+        if type(result) is not PITDatasetResult:
+            raise PrivateResearchDBError(
+                "only an exact validated PITDatasetResult may be persisted"
+            )
+        canonical_persisted_at = _canonical_persisted_at(persisted_at)
+        dataset_identity = result.dataset_identity
+        if dataset_identity != result.manifest.manifest_hash:
+            raise PersistenceConflictError("PIT result identity does not match its manifest")
+
+        manifest = result.manifest
+        manifest_values = (
+            dataset_identity,
+            manifest.manifest_type,
+            manifest.manifest_version,
+            manifest.dataset_contract_version,
+            manifest.feature_set_version,
+            manifest.feature_computation_profile_version,
+            manifest.cutoff_policy_version,
+            _canonical_text(manifest.rule_bundle_bindings),
+            _canonical_text(manifest.source_profile_bindings),
+            _canonical_text(manifest.authorization_snapshot),
+            _canonical_text(manifest.request_scope),
+            manifest.include_count,
+            manifest.exclude_count,
+            manifest.quarantine_count,
+            _canonical_text(manifest.exclusion_reason_summary),
+            _canonical_text(manifest.quarantine_reason_summary),
+            canonical_persisted_at,
+        )
+        expected_rows: list[tuple[Any, ...]] = []
+        expected_features: dict[str, list[tuple[Any, ...]]] = {}
+        for row_ordinal, item in enumerate(result.rows):
+            row_values = (
+                item.row_content_hash,
+                item.row_id,
+                dataset_identity,
+                row_ordinal,
+                item.research_subject_id,
+                item.observation_version_id,
+                item.research_cutoff_at,
+                item.feature_set_version,
+                item.feature_computation_profile_version,
+                item.cutoff_policy_version,
+                item.feature_available_at_max,
+                _canonical_text(item.rd4_authority_bindings),
+                _canonical_text(item.rd5_authority_bindings),
+                _canonical_text(item.rule_bundle_bindings),
+                _canonical_text(item.source_profile_bindings),
+                _canonical_text(item.label_specification),
+                _canonical_text(item.authorization_snapshot),
+                item.operational_status,
+                canonical_persisted_at,
+            )
+            expected_rows.append(row_values)
+            feature_values: list[tuple[Any, ...]] = []
+            for feature_ordinal, feature in enumerate(item.features):
+                feature_values.append((
+                    item.row_content_hash,
+                    feature_ordinal,
+                    feature.feature_content_hash,
+                    feature.feature_definition_id,
+                    feature.feature_definition_version,
+                    feature.feature_computation_profile_version,
+                    feature.research_cutoff_at,
+                    feature.value_state,
+                    _canonical_text(feature.value),
+                    feature.source_observation_id,
+                    feature.source_observation_version_id,
+                    feature.source_observed_at,
+                    feature.source_available_at,
+                    feature.source_profile_id,
+                    feature.source_profile_version,
+                    _canonical_text(feature.evidence_refs),
+                    feature.rd4_evaluation_hash,
+                    feature.rd5_decision_hash,
+                    feature.authority_binding_ref,
+                ))
+            expected_features[item.row_content_hash] = feature_values
+
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN TRANSACTION")
+            stored_manifest = connection.execute(
+                "SELECT * FROM pit_dataset_manifest WHERE dataset_identity = ?",
+                [dataset_identity],
+            ).fetchone()
+            if stored_manifest is None:
+                connection.execute(
+                    f"INSERT INTO pit_dataset_manifest VALUES "
+                    f"({', '.join('?' for _ in manifest_values)})",
+                    manifest_values,
+                )
+            elif tuple(stored_manifest[:-1]) != manifest_values[:-1]:
+                raise PersistenceConflictError(
+                    "PIT manifest identity contradicts immutable stored authority"
+                )
+
+            for row_values in expected_rows:
+                stored_row = connection.execute(
+                    "SELECT * FROM pit_dataset_row "
+                    "WHERE dataset_identity = ? AND manifest_row_ordinal = ?",
+                    [dataset_identity, row_values[3]],
+                ).fetchone()
+                if stored_row is None:
+                    conflicting_membership = connection.execute(
+                        "SELECT 1 FROM pit_dataset_row "
+                        "WHERE dataset_identity = ? AND row_content_hash = ?",
+                        [dataset_identity, row_values[0]],
+                    ).fetchone()
+                    if conflicting_membership is not None:
+                        raise PersistenceConflictError(
+                            "PIT row hash already has conflicting manifest membership"
+                        )
+                    connection.execute(
+                        f"INSERT INTO pit_dataset_row VALUES "
+                        f"({', '.join('?' for _ in row_values)})",
+                        row_values,
+                    )
+                elif tuple(stored_row[:-1]) != row_values[:-1]:
+                    raise PersistenceConflictError(
+                        "PIT row membership contradicts immutable stored authority"
+                    )
+
+                for feature_values in expected_features[row_values[0]]:
+                    stored_feature = connection.execute(
+                        "SELECT * FROM pit_feature_snapshot "
+                        "WHERE row_content_hash = ? AND feature_ordinal = ?",
+                        [row_values[0], feature_values[1]],
+                    ).fetchone()
+                    if stored_feature is None:
+                        connection.execute(
+                            f"INSERT INTO pit_feature_snapshot VALUES "
+                            f"({', '.join('?' for _ in feature_values)})",
+                            feature_values,
+                        )
+                    elif tuple(stored_feature) != feature_values:
+                        raise PersistenceConflictError(
+                            "PIT feature key contradicts immutable shared row content"
+                        )
+
+            stored_rows = connection.execute(
+                "SELECT * FROM pit_dataset_row WHERE dataset_identity = ? "
+                "ORDER BY manifest_row_ordinal",
+                [dataset_identity],
+            ).fetchall()
+            if len(stored_rows) != len(expected_rows) or any(
+                tuple(stored[:-1]) != expected[:-1]
+                for stored, expected in zip(stored_rows, expected_rows, strict=True)
+            ):
+                raise PersistenceConflictError(
+                    "stored PIT manifest membership differs from authoritative rows"
+                )
+            for row_hash, feature_values in expected_features.items():
+                stored_features = connection.execute(
+                    "SELECT * FROM pit_feature_snapshot WHERE row_content_hash = ? "
+                    "ORDER BY feature_ordinal",
+                    [row_hash],
+                ).fetchall()
+                if [tuple(item) for item in stored_features] != feature_values:
+                    raise PersistenceConflictError(
+                        "stored PIT feature membership differs from immutable row content"
+                    )
+            connection.execute("COMMIT")
+            return dataset_identity
+        except duckdb.ConstraintException as exc:
+            try:
+                connection.execute("ROLLBACK")
+            except Exception:
+                pass
+            raise PersistenceConflictError("PIT persistence constraint conflict") from exc
+        except Exception:
+            try:
+                connection.execute("ROLLBACK")
+            except Exception:
+                pass
+            raise
+        finally:
+            connection.close()
+
+    def load_pit_dataset(self, dataset_identity: str) -> PITDatasetResult:
+        """Reconstruct and verify RD6 authority; runtime diagnostics intentionally return as ``()``."""
+        _require_hash(dataset_identity, "dataset_identity")
+        connection = self._connect()
+        try:
+            manifest_row = connection.execute(
+                "SELECT * FROM pit_dataset_manifest WHERE dataset_identity = ?",
+                [dataset_identity],
+            ).fetchone()
+            if manifest_row is None:
+                raise KeyError(dataset_identity)
+            row_records = connection.execute(
+                "SELECT * FROM pit_dataset_row WHERE dataset_identity = ? "
+                "ORDER BY manifest_row_ordinal",
+                [dataset_identity],
+            ).fetchall()
+            feature_records = {
+                row[0]: connection.execute(
+                    "SELECT * FROM pit_feature_snapshot WHERE row_content_hash = ? "
+                    "ORDER BY feature_ordinal",
+                    [row[0]],
+                ).fetchall()
+                for row in row_records
+            }
+        finally:
+            connection.close()
+
+        try:
+            if tuple(row[3] for row in row_records) != tuple(range(len(row_records))):
+                raise PersistenceConflictError("stored PIT row ordinals are not contiguous")
+            rows: list[PITDatasetRow] = []
+            for row in row_records:
+                stored_features = feature_records[row[0]]
+                if tuple(item[1] for item in stored_features) != tuple(
+                    range(len(stored_features))
+                ):
+                    raise PersistenceConflictError(
+                        "stored PIT feature ordinals are not contiguous"
+                    )
+                features: list[PITFeatureSnapshot] = []
+                for feature in stored_features:
+                    evidence_refs = _stored_json(feature[15], list, "evidence_refs_json")
+                    if any(type(item) is not dict for item in evidence_refs):
+                        raise PersistenceConflictError(
+                            "stored PIT evidence references must be JSON objects"
+                        )
+                    reconstructed = PITFeatureSnapshot(
+                        feature_definition_id=feature[3],
+                        feature_definition_version=feature[4],
+                        feature_computation_profile_version=feature[5],
+                        research_cutoff_at=feature[6],
+                        value_state=feature[7],
+                        value=parse_json_strict(feature[8]),
+                        source_observation_id=feature[9],
+                        source_observation_version_id=feature[10],
+                        source_observed_at=feature[11],
+                        source_available_at=feature[12],
+                        source_profile_id=feature[13],
+                        source_profile_version=feature[14],
+                        evidence_refs=tuple(evidence_refs),
+                        rd4_evaluation_hash=feature[16],
+                        rd5_decision_hash=feature[17],
+                        authority_binding_ref=feature[18],
+                    )
+                    if reconstructed.feature_content_hash != feature[2]:
+                        raise PersistenceConflictError("loaded PIT feature content hash drifted")
+                    features.append(reconstructed)
+
+                list_fields = {
+                    11: "rd4_authority_bindings_json",
+                    12: "rd5_authority_bindings_json",
+                    13: "rule_bundle_bindings_json",
+                    14: "source_profile_bindings_json",
+                }
+                parsed_lists = {
+                    index: _stored_json(row[index], list, name)
+                    for index, name in list_fields.items()
+                }
+                if any(
+                    any(type(item) is not dict for item in values)
+                    for values in parsed_lists.values()
+                ):
+                    raise PersistenceConflictError(
+                        "stored PIT authority bindings must be JSON objects"
+                    )
+                reconstructed_row = PITDatasetRow(
+                    dataset_contract_version=manifest_row[3],
+                    research_subject_id=row[4],
+                    observation_version_id=row[5],
+                    research_cutoff_at=row[6],
+                    feature_set_version=row[7],
+                    feature_computation_profile_version=row[8],
+                    cutoff_policy_version=row[9],
+                    features=tuple(features),
+                    feature_available_at_max=row[10],
+                    rd4_authority_bindings=tuple(parsed_lists[11]),
+                    rd5_authority_bindings=tuple(parsed_lists[12]),
+                    rule_bundle_bindings=tuple(parsed_lists[13]),
+                    source_profile_bindings=tuple(parsed_lists[14]),
+                    label_specification=_stored_json(
+                        row[15], dict, "label_specification_json"
+                    ),
+                    authorization_snapshot=_stored_json(
+                        row[16], dict, "row authorization_snapshot_json"
+                    ),
+                    operational_status=row[17],
+                )
+                if reconstructed_row.row_id != row[1]:
+                    raise PersistenceConflictError("loaded PIT row identity hash drifted")
+                if reconstructed_row.row_content_hash != row[0]:
+                    raise PersistenceConflictError("loaded PIT row content hash drifted")
+                rows.append(reconstructed_row)
+
+            manifest = PITDatasetManifest(
+                manifest_type=manifest_row[1],
+                manifest_version=manifest_row[2],
+                dataset_contract_version=manifest_row[3],
+                feature_set_version=manifest_row[4],
+                feature_computation_profile_version=manifest_row[5],
+                cutoff_policy_version=manifest_row[6],
+                rule_bundle_bindings=tuple(_stored_json(
+                    manifest_row[7], list, "manifest rule_bundle_bindings_json"
+                )),
+                source_profile_bindings=tuple(_stored_json(
+                    manifest_row[8], list, "manifest source_profile_bindings_json"
+                )),
+                authorization_snapshot=_stored_json(
+                    manifest_row[9], dict, "manifest authorization_snapshot_json"
+                ),
+                request_scope=tuple(_stored_json(
+                    manifest_row[10], list, "request_scope_json"
+                )),
+                ordered_row_ids=tuple(item.row_id for item in rows),
+                ordered_row_content_hashes=tuple(item.row_content_hash for item in rows),
+                include_count=manifest_row[11],
+                exclude_count=manifest_row[12],
+                quarantine_count=manifest_row[13],
+                exclusion_reason_summary=_stored_json(
+                    manifest_row[14], dict, "exclusion_reason_summary_json"
+                ),
+                quarantine_reason_summary=_stored_json(
+                    manifest_row[15], dict, "quarantine_reason_summary_json"
+                ),
+            )
+            if manifest_row[0] != dataset_identity or manifest.manifest_hash != dataset_identity:
+                raise PersistenceConflictError("loaded PIT manifest identity hash drifted")
+            return PITDatasetResult(tuple(rows), manifest, ())
+        except PersistenceConflictError:
+            raise
+        except Exception as exc:
+            raise PersistenceConflictError(
+                "stored PIT dataset cannot reconstruct authoritative RD6 content"
+            ) from exc
