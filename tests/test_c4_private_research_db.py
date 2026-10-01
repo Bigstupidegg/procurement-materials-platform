@@ -18,6 +18,7 @@ from scripts.c4_private_research_db import (
     MigrationError,
     PersistenceConflictError,
     PrivateResearchDatabase,
+    PrivateResearchDBError,
     migration_checksum,
     migration_sql_bytes,
 )
@@ -31,8 +32,16 @@ from scripts.c4_rd_contract import (
     CalendarAssignment,
     Observation,
     ObservationVersion,
+    canonical_hash,
     canonical_json_bytes,
     raw_payload_hash,
+)
+from scripts.c4_rd_pit_dataset import build_pit_dataset
+from tests.test_c4_rd_pit_dataset import (
+    build_one as build_synthetic_pit_dataset,
+    candidate as pit_candidate,
+    feature_definition as pit_feature_definition,
+    request as pit_request,
 )
 
 
@@ -213,6 +222,33 @@ def pit_dataset_row_values(
         "SYNTHETIC_NON_OPERATIONAL",
         "2026-01-03T00:00:01Z",
     )
+
+
+def pit_dataset_with_explicit_missing():
+    definitions = (
+        pit_feature_definition(),
+        pit_feature_definition(
+            "synthetic_optional",
+            requirement="OPTIONAL",
+            value_key="optional_value",
+        ),
+    )
+    return build_pit_dataset(
+        (pit_request(definitions=definitions),),
+        (pit_candidate(),),
+    )
+
+
+def pit_dataset_with_two_rows():
+    requests = (
+        pit_request(subject="SYNTHETIC_SUBJECT_B", target_version_id="b" * 64),
+        pit_request(subject="SYNTHETIC_SUBJECT_A", target_version_id="a" * 64),
+    )
+    candidates = (
+        pit_candidate(subject="SYNTHETIC_SUBJECT_B", record="B"),
+        pit_candidate(subject="SYNTHETIC_SUBJECT_A", record="A"),
+    )
+    return build_pit_dataset(requests, candidates)
 
 
 class PrivateResearchDatabaseTests(unittest.TestCase):
@@ -553,6 +589,325 @@ class PrivateResearchDatabaseTests(unittest.TestCase):
             self.assertEqual(connection.execute("SELECT COUNT(*) FROM observation_version_snapshot").fetchone()[0], 1)
         finally:
             connection.close()
+
+    def test_readiness_round_trip_hash_and_idempotency_preserve_first_timestamp(self) -> None:
+        original = pit_candidate().evaluation_result
+        expected_hash = canonical_hash(
+            "MANIFEST_CONTENT",
+            {"rd4_2_evaluation_result": original.as_dict()},
+        )
+        first = self.database.persist_readiness_evaluation(
+            original,
+            persisted_at="2026-01-06T08:00:00+08:00",
+        )
+        second = self.database.persist_readiness_evaluation(
+            original,
+            persisted_at="2026-01-07T00:00:00Z",
+        )
+        loaded = self.database.load_readiness_evaluation(first)
+        self.assertEqual(first, expected_hash)
+        self.assertEqual(second, first)
+        self.assertEqual(loaded.as_dict(), original.as_dict())
+        self.assertEqual(
+            canonical_hash(
+                "MANIFEST_CONTENT",
+                {"rd4_2_evaluation_result": loaded.as_dict()},
+            ),
+            first,
+        )
+        connection = duckdb.connect(str(self.database_path), read_only=True)
+        try:
+            count, persisted_at = connection.execute(
+                "SELECT COUNT(*), MIN(persisted_at) FROM readiness_evaluation"
+            ).fetchone()
+        finally:
+            connection.close()
+        self.assertEqual(count, 1)
+        self.assertEqual(persisted_at, "2026-01-06T00:00:00Z")
+
+    def test_readiness_rejects_wrong_type_and_detects_stored_semantic_corruption(self) -> None:
+        with self.assertRaises(PrivateResearchDBError):
+            self.database.persist_readiness_evaluation(
+                {"not": "an RD4 result"},
+                persisted_at="2026-01-06T00:00:00Z",
+            )
+        original = pit_candidate().evaluation_result
+        evaluation_hash = self.database.persist_readiness_evaluation(
+            original,
+            persisted_at="2026-01-06T00:00:00Z",
+        )
+        connection = duckdb.connect(str(self.database_path))
+        try:
+            connection.execute(
+                "UPDATE readiness_evaluation SET readiness_state = ? WHERE evaluation_hash = ?",
+                ["QUARANTINED", evaluation_hash],
+            )
+        finally:
+            connection.close()
+        with self.assertRaises(PersistenceConflictError):
+            self.database.load_readiness_evaluation(evaluation_hash)
+
+    def test_pit_round_trip_preserves_manifest_rows_features_and_explicit_missing(self) -> None:
+        original = pit_dataset_with_explicit_missing()
+        identity = self.database.persist_pit_dataset(
+            original,
+            persisted_at="2026-01-06T00:00:00Z",
+        )
+        loaded = self.database.load_pit_dataset(identity)
+        self.assertEqual(loaded.dataset_identity, original.dataset_identity)
+        self.assertEqual(
+            loaded.manifest.content_projection(),
+            original.manifest.content_projection(),
+        )
+        self.assertEqual(
+            tuple(item.row_id for item in loaded.rows),
+            tuple(item.row_id for item in original.rows),
+        )
+        self.assertEqual(
+            tuple(item.row_content_hash for item in loaded.rows),
+            tuple(item.row_content_hash for item in original.rows),
+        )
+        for loaded_row, original_row in zip(loaded.rows, original.rows, strict=True):
+            self.assertEqual(
+                tuple(item.feature_content_hash for item in loaded_row.features),
+                tuple(item.feature_content_hash for item in original_row.features),
+            )
+        missing = loaded.rows[0].features[1]
+        self.assertEqual(missing.value_state, "EXPLICIT_MISSING")
+        self.assertIsNone(missing.value)
+        self.assertEqual(missing.evidence_refs, ())
+        for name in (
+            "source_observation_id", "source_observation_version_id", "source_observed_at",
+            "source_available_at", "source_profile_id", "source_profile_version",
+            "rd4_evaluation_hash", "rd5_decision_hash", "authority_binding_ref",
+        ):
+            self.assertIsNone(getattr(missing, name))
+
+    def test_pit_runtime_diagnostics_are_intentionally_not_persisted(self) -> None:
+        item_request = pit_request()
+        original = build_pit_dataset(
+            (item_request, item_request),
+            (pit_candidate(),),
+        )
+        self.assertTrue(original.diagnostics)
+        identity = self.database.persist_pit_dataset(
+            original,
+            persisted_at="2026-01-06T00:00:00Z",
+        )
+        loaded = self.database.load_pit_dataset(identity)
+        self.assertEqual(loaded.diagnostics, ())
+        self.assertEqual(loaded.dataset_identity, original.dataset_identity)
+        self.assertEqual(
+            loaded.manifest.content_projection(),
+            original.manifest.content_projection(),
+        )
+        self.assertEqual(
+            tuple(item.content_projection() for item in loaded.rows),
+            tuple(item.content_projection() for item in original.rows),
+        )
+
+    def test_pit_duplicate_preserves_first_timestamps_and_shared_row_content(self) -> None:
+        first = build_synthetic_pit_dataset()
+        second = build_pit_dataset(
+            (
+                pit_request(),
+                pit_request(subject="SYNTHETIC_SUBJECT_B", target_version_id="b" * 64),
+            ),
+            (pit_candidate(),),
+        )
+        self.assertNotEqual(first.dataset_identity, second.dataset_identity)
+        self.assertEqual(first.rows[0].row_content_hash, second.rows[0].row_content_hash)
+        first_identity = self.database.persist_pit_dataset(
+            first,
+            persisted_at="2026-01-06T08:00:00+08:00",
+        )
+        duplicate_identity = self.database.persist_pit_dataset(
+            first,
+            persisted_at="2026-01-07T00:00:00Z",
+        )
+        second_identity = self.database.persist_pit_dataset(
+            second,
+            persisted_at="2026-01-08T00:00:00Z",
+        )
+        self.assertEqual(first_identity, duplicate_identity)
+        self.assertEqual(self.database.load_pit_dataset(second_identity).dataset_identity, second_identity)
+        connection = duckdb.connect(str(self.database_path), read_only=True)
+        try:
+            first_manifest_at = connection.execute(
+                "SELECT persisted_at FROM pit_dataset_manifest WHERE dataset_identity = ?",
+                [first_identity],
+            ).fetchone()[0]
+            first_row_at = connection.execute(
+                "SELECT persisted_at FROM pit_dataset_row WHERE dataset_identity = ?",
+                [first_identity],
+            ).fetchone()[0]
+            counts = (
+                connection.execute("SELECT COUNT(*) FROM pit_dataset_manifest").fetchone()[0],
+                connection.execute("SELECT COUNT(*) FROM pit_dataset_row").fetchone()[0],
+                connection.execute("SELECT COUNT(*) FROM pit_feature_snapshot").fetchone()[0],
+            )
+        finally:
+            connection.close()
+        self.assertEqual(first_manifest_at, "2026-01-06T00:00:00Z")
+        self.assertEqual(first_row_at, "2026-01-06T00:00:00Z")
+        self.assertEqual(counts, (2, 2, 1))
+
+    def test_pit_conflict_rolls_back_new_manifest_and_membership(self) -> None:
+        first = build_synthetic_pit_dataset()
+        second = build_pit_dataset(
+            (
+                pit_request(),
+                pit_request(subject="SYNTHETIC_SUBJECT_B", target_version_id="b" * 64),
+            ),
+            (pit_candidate(),),
+        )
+        self.database.persist_pit_dataset(
+            first,
+            persisted_at="2026-01-06T00:00:00Z",
+        )
+        connection = duckdb.connect(str(self.database_path))
+        try:
+            connection.execute(
+                "UPDATE pit_feature_snapshot SET value_json = '13' WHERE row_content_hash = ?",
+                [first.rows[0].row_content_hash],
+            )
+        finally:
+            connection.close()
+        with self.assertRaises(PersistenceConflictError):
+            self.database.persist_pit_dataset(
+                second,
+                persisted_at="2026-01-07T00:00:00Z",
+            )
+        connection = duckdb.connect(str(self.database_path), read_only=True)
+        try:
+            manifest_count = connection.execute(
+                "SELECT COUNT(*) FROM pit_dataset_manifest WHERE dataset_identity = ?",
+                [second.dataset_identity],
+            ).fetchone()[0]
+            row_count = connection.execute(
+                "SELECT COUNT(*) FROM pit_dataset_row WHERE dataset_identity = ?",
+                [second.dataset_identity],
+            ).fetchone()[0]
+        finally:
+            connection.close()
+        self.assertEqual((manifest_count, row_count), (0, 0))
+
+    def test_pit_manifest_and_feature_order_are_reconstructed_by_ordinal(self) -> None:
+        original = pit_dataset_with_two_rows()
+        identity = self.database.persist_pit_dataset(
+            original,
+            persisted_at="2026-01-06T00:00:00Z",
+        )
+        loaded = self.database.load_pit_dataset(identity)
+        self.assertEqual(
+            tuple(item.research_subject_id for item in loaded.rows),
+            tuple(item.research_subject_id for item in original.rows),
+        )
+        self.assertEqual(
+            tuple(
+                tuple(feature.feature_definition_id for feature in row.features)
+                for row in loaded.rows
+            ),
+            tuple(
+                tuple(feature.feature_definition_id for feature in row.features)
+                for row in original.rows
+            ),
+        )
+
+    def test_pit_load_rejects_noncontiguous_row_ordinal(self) -> None:
+        original = build_synthetic_pit_dataset()
+        identity = self.database.persist_pit_dataset(
+            original,
+            persisted_at="2026-01-06T00:00:00Z",
+        )
+        connection = duckdb.connect(str(self.database_path))
+        try:
+            connection.execute(
+                "UPDATE pit_dataset_row SET manifest_row_ordinal = 2 WHERE dataset_identity = ?",
+                [identity],
+            )
+        finally:
+            connection.close()
+        with self.assertRaises(PersistenceConflictError):
+            self.database.load_pit_dataset(identity)
+
+    def test_pit_load_rejects_noncontiguous_feature_ordinal(self) -> None:
+        original = pit_dataset_with_explicit_missing()
+        identity = self.database.persist_pit_dataset(
+            original,
+            persisted_at="2026-01-06T00:00:00Z",
+        )
+        row_hash = original.rows[0].row_content_hash
+        connection = duckdb.connect(str(self.database_path))
+        try:
+            connection.execute(
+                "UPDATE pit_feature_snapshot SET feature_ordinal = 2 "
+                "WHERE row_content_hash = ? AND feature_ordinal = 1",
+                [row_hash],
+            )
+        finally:
+            connection.close()
+        with self.assertRaises(PersistenceConflictError):
+            self.database.load_pit_dataset(identity)
+
+    def test_pit_load_detects_feature_semantic_corruption(self) -> None:
+        original = build_synthetic_pit_dataset()
+        identity = self.database.persist_pit_dataset(
+            original,
+            persisted_at="2026-01-06T00:00:00Z",
+        )
+        connection = duckdb.connect(str(self.database_path))
+        try:
+            connection.execute(
+                "UPDATE pit_feature_snapshot SET value_json = '13' WHERE row_content_hash = ?",
+                [original.rows[0].row_content_hash],
+            )
+        finally:
+            connection.close()
+        with self.assertRaises(PersistenceConflictError):
+            self.database.load_pit_dataset(identity)
+
+    def test_pit_load_detects_row_semantic_corruption(self) -> None:
+        original = build_synthetic_pit_dataset()
+        identity = self.database.persist_pit_dataset(
+            original,
+            persisted_at="2026-01-06T00:00:00Z",
+        )
+        connection = duckdb.connect(str(self.database_path))
+        try:
+            connection.execute(
+                "UPDATE pit_dataset_row SET feature_available_at_max = ? WHERE dataset_identity = ?",
+                ["2026-01-03T09:59:59Z", identity],
+            )
+        finally:
+            connection.close()
+        with self.assertRaises(PersistenceConflictError):
+            self.database.load_pit_dataset(identity)
+
+    def test_pit_load_detects_manifest_semantic_corruption(self) -> None:
+        original = build_synthetic_pit_dataset()
+        identity = self.database.persist_pit_dataset(
+            original,
+            persisted_at="2026-01-06T00:00:00Z",
+        )
+        connection = duckdb.connect(str(self.database_path))
+        try:
+            connection.execute(
+                "UPDATE pit_dataset_manifest SET exclude_count = exclude_count + 1 "
+                "WHERE dataset_identity = ?",
+                [identity],
+            )
+        finally:
+            connection.close()
+        with self.assertRaises(PersistenceConflictError):
+            self.database.load_pit_dataset(identity)
+
+    def test_pit_persistence_rejects_wrong_type(self) -> None:
+        with self.assertRaises(PrivateResearchDBError):
+            self.database.persist_pit_dataset(
+                {"not": "an RD6 result"},
+                persisted_at="2026-01-06T00:00:00Z",
+            )
 
     def test_source_usage_rights_dimensions_are_independent_and_allowlisted(self) -> None:
         connection = duckdb.connect(str(self.database_path))
