@@ -14,6 +14,7 @@ from scripts.c4_db2_copper_historical_import import (
     EXPECTED_PILOT_PERIODS,
     INSTRUMENT_ID,
     PILOT_MONTHS,
+    RIGHTS_EVIDENCE_REFERENCE,
     RIGHTS_PROFILE_ID,
     SOURCE_ID,
     DB2SourceFormatError,
@@ -31,6 +32,7 @@ from scripts.c4_rd_contract import (
     RD3_OPEN_BLOCKERS,
     RESEARCH_ENABLED_SOURCES,
     SAFETY_FLAGS,
+    ContractError,
     raw_payload_hash,
 )
 
@@ -173,6 +175,8 @@ class WorldBankCopperRawStorageTests(unittest.TestCase):
 
 
 class WorldBankCopperImportTests(unittest.TestCase):
+    CANONICAL_RIGHTS_REVIEWED_AT = "2026-09-30T16:00:00Z"
+
     def setUp(self) -> None:
         self.temporary_directory = tempfile.TemporaryDirectory(prefix="c4_db2_import_")
         self.private_root = Path(self.temporary_directory.name)
@@ -194,6 +198,7 @@ class WorldBankCopperImportTests(unittest.TestCase):
         raw: bytes | None = None,
         *,
         suffix: str = "00",
+        rights_reviewed_at: str = "2026-10-01T00:00:00+08:00",
         source_locator_safe: str = ACCESS_CHANNEL,
     ):
         return import_world_bank_copper_historical(
@@ -202,8 +207,41 @@ class WorldBankCopperImportTests(unittest.TestCase):
             database=self.database,
             collected_at=f"2026-10-01T00:00:{suffix}Z",
             created_at=f"2026-10-01T00:01:{suffix}Z",
+            rights_reviewed_at=rights_reviewed_at,
             source_locator_safe=source_locator_safe,
         )
+
+    def test_rights_reviewed_at_is_mandatory_and_invalid_value_has_no_side_effects(self) -> None:
+        common = {
+            "private_data_root": self.private_root,
+            "database": self.database,
+            "collected_at": "2026-10-01T00:00:00Z",
+            "created_at": "2026-10-01T00:01:00Z",
+        }
+        with self.assertRaises(TypeError):
+            import_world_bank_copper_historical(self.raw, **common)
+        with self.assertRaises(ContractError):
+            import_world_bank_copper_historical(
+                self.raw,
+                rights_reviewed_at="2026-10-01",
+                **common,
+            )
+        self.assertFalse((self.private_root / "raw").exists())
+        connection = duckdb.connect(str(self.database_path), read_only=True)
+        try:
+            for table in (
+                "source_registry", "subject_registry", "instrument_registry",
+                "source_usage_rights", "raw_payload", "raw_capture",
+                "observation_identity", "observation_snapshot",
+                "observation_version_identity", "observation_version_snapshot",
+            ):
+                with self.subTest(table=table):
+                    self.assertEqual(
+                        connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0],
+                        0,
+                    )
+        finally:
+            connection.close()
 
     def test_import_persists_registries_rights_raw_and_exact_round_trips(self) -> None:
         result = self._import()
@@ -219,7 +257,9 @@ class WorldBankCopperImportTests(unittest.TestCase):
         self.assertEqual(instrument["active_from"], "2022-01-01")
         self.assertEqual(rights["backtest"], "REVIEW_REQUIRED")
         self.assertEqual(rights["redistribution"], "REVIEW_REQUIRED")
-        self.assertIn("World Bank", rights["evidence_reference"])
+        self.assertEqual(rights["reviewed_at"], self.CANONICAL_RIGHTS_REVIEWED_AT)
+        self.assertIsNotNone(rights["reviewed_at"])
+        self.assertEqual(rights["evidence_reference"], RIGHTS_EVIDENCE_REFERENCE)
         self.assertEqual(raw["byte_size"], len(self.raw))
         self.assertEqual(capture["raw_payload_hash"], result.raw_payload_hash)
         observation = self.database.load_observation(result.observation_content_hashes[0])
@@ -233,8 +273,16 @@ class WorldBankCopperImportTests(unittest.TestCase):
 
     def test_same_raw_reimport_is_idempotent_and_retains_first_metadata(self) -> None:
         first = self._import(suffix="00")
-        second = self._import(suffix="30", source_locator_safe="LATER_EQUIVALENT_LOCATOR")
+        second = self._import(
+            suffix="30",
+            rights_reviewed_at="2026-10-02T12:34:56Z",
+            source_locator_safe="LATER_EQUIVALENT_LOCATOR",
+        )
         self.assertEqual(first, second)
+        self.assertEqual(
+            self.database.load_source_usage_rights(RIGHTS_PROFILE_ID)["reviewed_at"],
+            self.CANONICAL_RIGHTS_REVIEWED_AT,
+        )
         self.assertEqual(
             self.database.load_raw_payload(first.raw_payload_hash)["first_seen_at"],
             "2026-10-01T00:00:00Z",
@@ -262,6 +310,40 @@ class WorldBankCopperImportTests(unittest.TestCase):
         self.assertEqual(counts["observation_snapshot"], 48)
         self.assertEqual(counts["observation_version_identity"], 48)
         self.assertEqual(counts["observation_version_snapshot"], 48)
+
+    def test_rights_evidence_and_decisions_are_exactly_the_approved_profile(self) -> None:
+        self._import()
+        rights = self.database.load_source_usage_rights(RIGHTS_PROFILE_ID)
+        evidence = rights["evidence_reference"]
+        for required in (
+            "World Bank",
+            "0038238",
+            "Creative Commons Attribution 4.0",
+            "private historical pilot",
+        ):
+            with self.subTest(required=required):
+                self.assertIn(required, evidence)
+        for forbidden in ("FRED", "Westmetall", "IMF"):
+            with self.subTest(forbidden=forbidden):
+                self.assertNotIn(forbidden, evidence)
+        self.assertEqual(
+            {key: rights[key] for key in (
+                "automated_access", "private_storage", "historical_archive",
+                "internal_analysis", "backtest", "prediction", "internal_display",
+                "internet_display", "redistribution",
+            )},
+            {
+                "automated_access": "ALLOWED",
+                "private_storage": "ALLOWED",
+                "historical_archive": "ALLOWED",
+                "internal_analysis": "ALLOWED",
+                "backtest": "REVIEW_REQUIRED",
+                "prediction": "REVIEW_REQUIRED",
+                "internal_display": "REVIEW_REQUIRED",
+                "internet_display": "REVIEW_REQUIRED",
+                "redistribution": "REVIEW_REQUIRED",
+            },
+        )
 
     def test_different_raw_workbook_retains_old_lineage(self) -> None:
         first = self._import(suffix="00")

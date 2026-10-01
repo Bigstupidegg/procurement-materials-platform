@@ -33,6 +33,7 @@ from scripts.c4_rd_contract import (
     ObservationVersion,
     build_real_historical_observation,
     canonical_json_bytes,
+    canonical_timestamp,
     raw_payload_hash,
 )
 from scripts.sync_world_bank import (
@@ -64,9 +65,12 @@ PILOT_END = "2025-12"
 PILOT_MONTHS = 48
 XLSX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 RIGHTS_EVIDENCE_REFERENCE = (
-    "Official World Bank Commodity Markets (Pink Sheet) dataset/terms evidence at "
-    "https://www.worldbank.org/en/research/commodity-markets; "
-    "C4-DB2 Revised Scope Freeze — HUMAN APPROVED"
+    "Dataset: World Bank Commodity Markets Data / Pink Sheet; "
+    "World Bank Data Catalog dataset: 0038238 — Commodity Prices - History and Projections; "
+    "Classification: Public; License: Creative Commons Attribution 4.0; "
+    "Official evidence families: World Bank Commodity Markets / Using this Data; "
+    "World Bank Summary Terms of Use; World Bank Data Access and Licensing; "
+    "Human-approved scope: C4-DB2 private historical pilot"
 )
 
 
@@ -362,6 +366,7 @@ def _persist_registries(
     parsed: ParsedCopperWorkbook,
     *,
     created_at: str,
+    rights_reviewed_at: str,
 ) -> None:
     source = _existing(database, "load_source_registry", SOURCE_ID)
     database.persist_source_registry(
@@ -420,7 +425,7 @@ def _persist_registries(
         review_status="HUMAN_REVIEWED_DB2_PRIVATE_HISTORICAL_PILOT",
         effective_from="2026-10-01",
         effective_to=None,
-        reviewed_at=rights["reviewed_at"] if rights else None,
+        reviewed_at=rights["reviewed_at"] if rights else rights_reviewed_at,
     )
 
 
@@ -431,17 +436,29 @@ def import_world_bank_copper_historical(
     database: PrivateResearchDatabase,
     collected_at: str,
     created_at: str,
+    rights_reviewed_at: str,
     source_locator_safe: str = ACCESS_CHANNEL,
 ) -> CopperImportResult:
     """Persist the guarded DB2 pilot after a caller's separate Human Gate."""
 
     if type(database) is not PrivateResearchDatabase:
         raise DB2CopperImportError("database must be an exact PrivateResearchDatabase")
+    canonical_rights_reviewed_at = canonical_timestamp(rights_reviewed_at)
+    existing_rights = _existing(database, "load_source_usage_rights", RIGHTS_PROFILE_ID)
+    if existing_rights is not None and existing_rights["reviewed_at"] is None:
+        raise PersistenceConflictError(
+            "existing immutable DB2 rights profile has no reviewed_at timestamp"
+        )
     parsed = parse_world_bank_copper_workbook(raw_xlsx)
     digest, relative_path, _absolute_path = store_raw_world_bank_xlsx(
         raw_xlsx, private_data_root,
     )
-    _persist_registries(database, parsed, created_at=created_at)
+    _persist_registries(
+        database,
+        parsed,
+        created_at=created_at,
+        rights_reviewed_at=canonical_rights_reviewed_at,
+    )
 
     raw_metadata = _existing(database, "load_raw_payload", digest)
     database.persist_raw_payload(
@@ -522,11 +539,17 @@ def import_world_bank_copper_historical(
 
 def import_world_bank_copper_historical_path(
     workbook_path: str | Path,
+    *,
+    rights_reviewed_at: str,
     **kwargs: Any,
 ) -> CopperImportResult:
     """Explicit local-file API; the path itself is never persisted."""
 
-    return import_world_bank_copper_historical(Path(workbook_path).read_bytes(), **kwargs)
+    return import_world_bank_copper_historical(
+        Path(workbook_path).read_bytes(),
+        rights_reviewed_at=rights_reviewed_at,
+        **kwargs,
+    )
 
 
 def download_official_world_bank_monthly_xlsx(
