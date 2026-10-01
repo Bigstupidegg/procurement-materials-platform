@@ -11,7 +11,7 @@ arbitrary same-process introspection, monkeypatching, or interpreter manipulatio
 from __future__ import annotations
 
 from collections.abc import Mapping as ABCMapping
-from dataclasses import dataclass, field, fields, is_dataclass
+from dataclasses import InitVar, dataclass, field, fields, is_dataclass
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from enum import Enum
@@ -103,6 +103,10 @@ _RFC3339 = re.compile(
 )
 _DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
+_WORLD_BANK_COPPER_RECORD = re.compile(
+    r"^WORLD_BANK:PINK_SHEET:COPPER:(?P<year>\d{4})-(?P<month>0[1-9]|1[0-2])$"
+)
+_REAL_HISTORICAL_CONSTRUCTION_AUTHORITY = object()
 
 
 class ContractError(ValueError):
@@ -494,8 +498,9 @@ class Observation:
     channel_available_at: str | None = None
     created_at: str | None = None
     semantic_data: Mapping[str, Any] = field(default_factory=dict)
+    _construction_authority: InitVar[object | None] = None
 
-    def __post_init__(self) -> None:
+    def __post_init__(self, _construction_authority: object | None) -> None:
         for name in ("source_id", "source_record_identifier", "metric_id", "instrument_id"):
             _require_non_empty(getattr(self, name), name)
         validate_source_period(self.source_period_type, self.source_market_date, self.source_period_start_date, self.source_period_end_date)
@@ -512,7 +517,17 @@ class Observation:
             value = getattr(self, name)
             if value is not None:
                 parse_date(value)
-        if self.data_origin != "SYNTHETIC_FIXTURE" or self.operational_status != "SYNTHETIC_NON_OPERATIONAL":
+        synthetic = (
+            self.data_origin == "SYNTHETIC_FIXTURE"
+            and self.operational_status == "SYNTHETIC_NON_OPERATIONAL"
+            and _construction_authority is None
+        )
+        guarded_real = (
+            self.data_origin == "REAL_HISTORICAL"
+            and self.operational_status == "REAL_NON_OPERATIONAL"
+            and _construction_authority is _REAL_HISTORICAL_CONSTRUCTION_AUTHORITY
+        )
+        if not synthetic and not guarded_real:
             raise ContractError("RD-4.1 models accept synthetic non-operational construction only")
 
     def identity_projection(self) -> dict[str, Any]:
@@ -537,6 +552,128 @@ class Observation:
     @property
     def content_hash(self) -> str:
         return canonical_hash("OBSERVATION_CONTENT", self.content_projection())
+
+
+def build_real_historical_observation(
+    *,
+    source_id: str,
+    source_record_identifier: str,
+    metric_id: str,
+    instrument_id: str,
+    source_period_type: str,
+    source_market_date: str | None,
+    source_period_start_date: str | None,
+    source_period_end_date: str | None,
+    calendar_assignments: tuple[CalendarAssignment, ...],
+    collected_at: str,
+    created_at: str,
+    semantic_data: Mapping[str, Any],
+    data_origin: str = "REAL_HISTORICAL",
+    operational_status: str = "REAL_NON_OPERATIONAL",
+    scheduler_execution_at: str | None = None,
+    local_business_date: str | None = None,
+    source_business_date: str | None = None,
+    scheduler_business_date: str | None = None,
+    source_publication_at: str | None = None,
+    observed_at: str | None = None,
+    source_available_at: str | None = None,
+    channel_available_at: str | None = None,
+) -> Observation:
+    """Build the single approved, non-operational DB2 World Bank Copper shape."""
+
+    if data_origin != "REAL_HISTORICAL" or operational_status != "REAL_NON_OPERATIONAL":
+        raise ContractError("guarded historical construction requires the approved real classifications")
+    if (source_id, metric_id, instrument_id, source_period_type) != (
+        "WORLD_BANK",
+        "MONTHLY_PRICE",
+        "copper_world_bank_monthly",
+        "MONTH",
+    ):
+        raise ContractError("guarded historical construction is limited to the DB2 World Bank Copper pilot")
+    record_match = _WORLD_BANK_COPPER_RECORD.fullmatch(source_record_identifier)
+    if record_match is None or source_period_start_date is None:
+        raise ContractError("World Bank Copper source record identity is malformed")
+    record_period = f"{record_match.group('year')}-{record_match.group('month')}"
+    if source_period_start_date != f"{record_period}-01":
+        raise ContractError("World Bank Copper record period contradicts its monthly bounds")
+    if collected_at is None or created_at is None:
+        raise ContractError("real historical observations require explicit collection and creation timestamps")
+    if any(
+        value is not None
+        for value in (
+            scheduler_execution_at,
+            local_business_date,
+            source_business_date,
+            scheduler_business_date,
+            source_publication_at,
+            observed_at,
+            source_available_at,
+            channel_available_at,
+        )
+    ):
+        raise ContractError("unproven operational, publication, observation, or availability fields are forbidden")
+
+    normalized_assignments = normalize_calendar_assignments(calendar_assignments)
+    expected_statuses = {
+        "MARKET": "NOT_APPLICABLE",
+        "PUBLICATION": "UNVERIFIED",
+        "LOCAL_OPERATIONAL": "NOT_APPLICABLE",
+        "SCHEDULER": "NOT_APPLICABLE",
+    }
+    if any(
+        item.subject_id != "copper"
+        or item.status != expected_statuses[item.role]
+        or any(
+            value is not None
+            for value in (item.calendar_reference_id, item.calendar_version, item.calendar_hash)
+        )
+        for item in normalized_assignments
+    ):
+        raise ContractError("World Bank Copper calendar assignments do not match the approved unresolved shape")
+
+    required_semantic_fields = {
+        "value", "currency", "unit", "source_column", "source_unit", "frequency",
+    }
+    if not isinstance(semantic_data, Mapping) or set(semantic_data) != required_semantic_fields:
+        raise ContractError("World Bank Copper semantic data must use the exact approved fields")
+    value = semantic_data["value"]
+    if type(value) is not Decimal or not value.is_finite() or value <= 0:
+        raise ContractError("World Bank Copper authoritative value must be a positive finite Decimal")
+    if (
+        semantic_data["currency"] != "USD"
+        or semantic_data["unit"] != "USD/MT"
+        or semantic_data["source_column"] != "Copper"
+        or semantic_data["frequency"] != "MONTHLY"
+        or not isinstance(semantic_data["source_unit"], str)
+        or semantic_data["source_unit"].strip().casefold() != "$/mt"
+    ):
+        raise ContractError("World Bank Copper semantic metadata does not match the approved pilot")
+
+    return Observation(
+        source_id=source_id,
+        source_record_identifier=source_record_identifier,
+        metric_id=metric_id,
+        instrument_id=instrument_id,
+        source_period_type=source_period_type,
+        source_market_date=source_market_date,
+        source_period_start_date=source_period_start_date,
+        source_period_end_date=source_period_end_date,
+        calendar_assignments=normalized_assignments,
+        data_origin=data_origin,
+        operational_status=operational_status,
+        scheduler_execution_at=scheduler_execution_at,
+        local_business_date=local_business_date,
+        source_business_date=source_business_date,
+        scheduler_business_date=scheduler_business_date,
+        source_publication_at=source_publication_at,
+        collected_at=collected_at,
+        observed_at=observed_at,
+        source_available_at=source_available_at,
+        channel_available_at=channel_available_at,
+        created_at=created_at,
+        semantic_data=semantic_data,
+        _construction_authority=_REAL_HISTORICAL_CONSTRUCTION_AUTHORITY,
+    )
 
 
 @dataclass(frozen=True, slots=True)

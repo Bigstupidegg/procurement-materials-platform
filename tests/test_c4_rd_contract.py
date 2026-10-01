@@ -23,7 +23,8 @@ from scripts.c4_rd_contract import (
     CalendarAssignment, CalendarReference, ContractError, ExclusionReason, ImmutableMapping,
     LineageAssessment, Observation, ObservationVersion, PITEligibilityAssessment,
     ReadinessManifest, ResearchEligibilityAssessment, RuleBundle, TrustQualityAssessment,
-    canonical_hash, canonical_json_bytes, canonical_timestamp, normalize_calendar_assignments,
+    build_real_historical_observation, canonical_hash, canonical_json_bytes, canonical_timestamp,
+    normalize_calendar_assignments,
     normalize_exclusion_reasons, model_field_names,
     parse_json_strict, parse_rfc3339, raw_payload_hash, validate_pit_structure,
     validate_source_period,
@@ -122,6 +123,43 @@ def exclusion_reasons() -> tuple[ExclusionReason, ...]:
     )
 
 
+def real_observation_values(**changes):
+    values = {
+        "source_id": "WORLD_BANK",
+        "source_record_identifier": "WORLD_BANK:PINK_SHEET:COPPER:2024-02",
+        "metric_id": "MONTHLY_PRICE",
+        "instrument_id": "copper_world_bank_monthly",
+        "source_period_type": "MONTH",
+        "source_market_date": None,
+        "source_period_start_date": "2024-02-01",
+        "source_period_end_date": "2024-02-29",
+        "calendar_assignments": (
+            CalendarAssignment("copper", "MARKET", "NOT_APPLICABLE"),
+            CalendarAssignment("copper", "PUBLICATION", "UNVERIFIED"),
+            CalendarAssignment("copper", "LOCAL_OPERATIONAL", "NOT_APPLICABLE"),
+            CalendarAssignment("copper", "SCHEDULER", "NOT_APPLICABLE"),
+        ),
+        "data_origin": "REAL_HISTORICAL",
+        "operational_status": "REAL_NON_OPERATIONAL",
+        "collected_at": "2026-10-01T00:00:00Z",
+        "created_at": "2026-10-01T00:00:01Z",
+        "semantic_data": {
+            "value": Decimal("9123.45"),
+            "currency": "USD",
+            "unit": "USD/MT",
+            "source_column": "Copper",
+            "source_unit": "$/mt",
+            "frequency": "MONTHLY",
+        },
+    }
+    values.update(changes)
+    return values
+
+
+def real_observation(**changes):
+    return build_real_historical_observation(**real_observation_values(**changes))
+
+
 def semantic_fingerprint(item):
     values = [item.content_projection()]
     for name in (
@@ -165,6 +203,44 @@ class FrozenContractTests(unittest.TestCase):
         validate_source_period("MONTH", None, "2024-02-01", "2024-02-29")
         with self.assertRaises(ContractError):
             validate_source_period("MONTH", None, "2024-02-02", "2024-02-29")
+
+    def test_guarded_real_historical_builder_is_narrow_and_non_operational(self):
+        item = real_observation()
+        self.assertEqual(item.data_origin, "REAL_HISTORICAL")
+        self.assertEqual(item.operational_status, "REAL_NON_OPERATIONAL")
+        self.assertEqual(item.source_period_end_date, "2024-02-29")
+        self.assertIsNone(item.source_publication_at)
+        self.assertIsNone(item.source_available_at)
+        self.assertIsNone(item.channel_available_at)
+        self.assertNotIn("_construction_authority", item.content_projection())
+        self.assertNotIn("_construction_authority", model_field_names(Observation))
+
+    def test_ordinary_real_historical_construction_remains_rejected(self):
+        with self.assertRaises(ContractError):
+            Observation(**real_observation_values())
+
+    def test_guarded_real_historical_builder_rejects_wrong_classification_and_float(self):
+        with self.assertRaises(ContractError):
+            real_observation(data_origin="SYNTHETIC_FIXTURE")
+        with self.assertRaises(ContractError):
+            real_observation(operational_status="REAL_OPERATIONAL")
+        with self.assertRaises(ContractError):
+            real_observation(semantic_data={
+                "value": 9123.45,
+                "currency": "USD",
+                "unit": "USD/MT",
+                "source_column": "Copper",
+                "source_unit": "$/mt",
+                "frequency": "MONTHLY",
+            })
+
+    def test_guarded_real_historical_builder_rejects_malformed_or_fabricated_fields(self):
+        with self.assertRaises(ContractError):
+            real_observation(source_period_end_date="2024-02-28")
+        with self.assertRaises(ContractError):
+            real_observation(source_record_identifier="WORLD_BANK:PINK_SHEET:COPPER:2024-03")
+        with self.assertRaises(ContractError):
+            real_observation(source_available_at="2026-10-01T00:00:00Z")
 
     def test_exact_quarter_boundaries(self):
         validate_source_period("QUARTER", None, "2026-10-01", "2026-12-31")
