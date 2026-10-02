@@ -32,6 +32,7 @@ from scripts.c4_rd_contract import (
     CalendarAssignment,
     Observation,
     ObservationVersion,
+    build_real_historical_observation,
     canonical_hash,
     canonical_json_bytes,
     raw_payload_hash,
@@ -365,6 +366,159 @@ class PrivateResearchDatabaseTests(unittest.TestCase):
             connection.close()
         self.assertNotIn("payload_bytes", tuple(row[0] for row in rows))
         self.assertTrue(all(row[1].upper() != "BLOB" for row in rows))
+
+    def test_registry_persistence_is_idempotent_and_conflicts_fail_closed(self) -> None:
+        source_values = {
+            "source_id": "SYNTHETIC_REGISTRY_SOURCE",
+            "source_name": "Synthetic Registry Source",
+            "access_channel": "SYNTHETIC_CHANNEL",
+            "default_timezone": "UTC",
+            "data_classification": "SYNTHETIC_ONLY",
+            "registry_version": "SYNTHETIC_REGISTRY@1.0.0",
+            "active": True,
+            "created_at": "2026-10-01T00:00:00Z",
+        }
+        self.assertEqual(
+            self.database.persist_source_registry(**source_values),
+            "SYNTHETIC_REGISTRY_SOURCE",
+        )
+        self.assertEqual(
+            self.database.persist_source_registry(**source_values),
+            "SYNTHETIC_REGISTRY_SOURCE",
+        )
+        self.assertEqual(
+            self.database.load_source_registry("SYNTHETIC_REGISTRY_SOURCE")["source_name"],
+            "Synthetic Registry Source",
+        )
+        with self.assertRaises(PersistenceConflictError):
+            self.database.persist_source_registry(
+                **{**source_values, "source_name": "Contradictory Source"}
+            )
+
+    def test_subject_instrument_and_rights_round_trip_and_conflict(self) -> None:
+        self.database.persist_subject_registry(
+            subject_id="synthetic-copper",
+            subject_snapshot={"name": "Synthetic Copper"},
+            registered_at="2026-10-01T00:00:00Z",
+        )
+        self.database.persist_instrument_registry(
+            instrument_id="synthetic-instrument",
+            subject_id="synthetic-copper",
+            source_id="synthetic-source",
+            source_symbol="SYN",
+            market_or_venue="SYNTHETIC",
+            metric_id="PRICE",
+            quote_type="PERIOD_AVERAGE",
+            term="MONTHLY",
+            currency="USD",
+            unit="USD/MT",
+            source_period_type="MONTH",
+            instrument_version="SYNTHETIC@1.0.0",
+            active_from="2022-01-01",
+            active_to=None,
+        )
+        rights_values = {
+            "rights_profile_id": "SYNTHETIC_PRIVATE_RIGHTS",
+            "source_id": "synthetic-source",
+            "access_channel": "SYNTHETIC_CHANNEL",
+            "instrument_scope": "synthetic-instrument",
+            "automated_access": "ALLOWED",
+            "private_storage": "ALLOWED",
+            "historical_archive": "ALLOWED",
+            "internal_analysis": "ALLOWED",
+            "backtest": "REVIEW_REQUIRED",
+            "prediction": "REVIEW_REQUIRED",
+            "internal_display": "REVIEW_REQUIRED",
+            "internet_display": "REVIEW_REQUIRED",
+            "redistribution": "REVIEW_REQUIRED",
+            "evidence_reference": "SYNTHETIC_EVIDENCE",
+            "review_status": "SYNTHETIC_REVIEW",
+            "effective_from": "2026-10-01",
+            "effective_to": None,
+            "reviewed_at": None,
+        }
+        self.database.persist_source_usage_rights(**rights_values)
+        self.database.persist_subject_registry(
+            subject_id="synthetic-copper",
+            subject_snapshot={"name": "Synthetic Copper"},
+            registered_at="2026-10-01T00:00:00Z",
+        )
+        self.assertEqual(
+            self.database.load_instrument_registry("synthetic-instrument")["active_from"],
+            "2022-01-01",
+        )
+        self.assertEqual(
+            self.database.load_source_usage_rights("SYNTHETIC_PRIVATE_RIGHTS")["backtest"],
+            "REVIEW_REQUIRED",
+        )
+        with self.assertRaises(PersistenceConflictError):
+            self.database.persist_source_usage_rights(
+                **{**rights_values, "backtest": "ALLOWED"}
+            )
+
+    def test_raw_metadata_and_capture_are_append_only_and_exact(self) -> None:
+        digest = raw_payload_hash(b"synthetic xlsx bytes")
+        self.database.persist_raw_payload(
+            raw_payload_hash=digest,
+            relative_path=f"raw/world-bank/{digest}.xlsx",
+            content_type="application/xlsx",
+            byte_size=20,
+            data_classification="SYNTHETIC_ONLY",
+            first_seen_at="2026-10-01T00:00:00Z",
+        )
+        capture_values = {
+            "capture_id": "SYNTHETIC_CAPTURE",
+            "source_id": "SYNTHETIC_SOURCE",
+            "instrument_id": "SYNTHETIC_INSTRUMENT",
+            "access_channel": "SYNTHETIC_CHANNEL",
+            "source_locator_safe": "SYNTHETIC_LOCATOR",
+            "collected_at": "2026-10-01T00:00:00Z",
+            "collection_status": "SUCCESS",
+            "raw_payload_hash": digest,
+            "collector_version": "SYNTHETIC@1.0.0",
+            "rights_profile_id": "SYNTHETIC_RIGHTS",
+            "error_class": None,
+            "created_at": "2026-10-01T00:00:01Z",
+        }
+        self.database.persist_raw_capture(**capture_values)
+        self.database.persist_raw_capture(**capture_values)
+        self.assertEqual(self.database.load_raw_payload(digest)["byte_size"], 20)
+        self.assertEqual(
+            self.database.load_raw_capture("SYNTHETIC_CAPTURE")["raw_payload_hash"], digest,
+        )
+        with self.assertRaises(PersistenceConflictError):
+            self.database.persist_raw_capture(
+                **{**capture_values, "collection_status": "FAILED"}
+            )
+
+    def test_guarded_real_observation_round_trip_uses_trusted_loader(self) -> None:
+        real = build_real_historical_observation(
+            source_id="WORLD_BANK",
+            source_record_identifier="WORLD_BANK:PINK_SHEET:COPPER:2024-02",
+            metric_id="MONTHLY_PRICE",
+            instrument_id="copper_world_bank_monthly",
+            source_period_type="MONTH",
+            source_market_date=None,
+            source_period_start_date="2024-02-01",
+            source_period_end_date="2024-02-29",
+            calendar_assignments=(
+                CalendarAssignment("copper", "MARKET", "NOT_APPLICABLE"),
+                CalendarAssignment("copper", "PUBLICATION", "UNVERIFIED"),
+                CalendarAssignment("copper", "LOCAL_OPERATIONAL", "NOT_APPLICABLE"),
+                CalendarAssignment("copper", "SCHEDULER", "NOT_APPLICABLE"),
+            ),
+            collected_at="2026-10-01T00:00:00Z",
+            created_at="2026-10-01T00:00:01Z",
+            semantic_data={
+                "value": Decimal("9123.45"), "currency": "USD", "unit": "USD/MT",
+                "source_column": "Copper", "source_unit": "$/mt", "frequency": "MONTHLY",
+            },
+        )
+        content_hash = self.database.persist_observation(real)
+        loaded = self.database.load_observation(content_hash)
+        self.assertEqual(loaded.content_projection(), real.content_projection())
+        self.assertEqual(loaded.data_origin, "REAL_HISTORICAL")
+        self.assertEqual(loaded.operational_status, "REAL_NON_OPERATIONAL")
 
     def test_dataset_order_and_feature_membership_keys_are_explicit(self) -> None:
         self.assertIn("manifest_row_ordinal", self._columns("pit_dataset_row"))

@@ -19,9 +19,11 @@ from scripts.c4_rd_contract import (
     CalendarAssignment,
     Observation,
     ObservationVersion,
+    build_real_historical_observation,
     canonical_hash,
     canonical_json_bytes,
     canonical_timestamp,
+    parse_date,
     parse_json_strict,
 )
 from scripts.c4_rd_pit_dataset import (
@@ -424,6 +426,282 @@ class PrivateResearchDatabase:
         finally:
             connection.close()
 
+    def _persist_immutable_row(
+        self,
+        table_name: str,
+        values: tuple[Any, ...],
+    ) -> str:
+        if table_name not in {
+            "source_registry", "subject_registry", "instrument_registry",
+            "source_usage_rights", "raw_payload", "raw_capture",
+        }:
+            raise PrivateResearchDBError("unsupported immutable registry table")
+        columns = APPROVED_TABLE_COLUMNS[table_name]
+        if len(values) != len(columns):
+            raise PrivateResearchDBError("immutable registry row does not match the frozen schema")
+        key_column = APPROVED_PRIMARY_KEYS[table_name][0]
+        key_value = values[columns.index(key_column)]
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN TRANSACTION")
+            stored = connection.execute(
+                f"SELECT {', '.join(columns)} FROM {table_name} WHERE {key_column} = ?",
+                [key_value],
+            ).fetchone()
+            if stored is None:
+                connection.execute(
+                    f"INSERT INTO {table_name} ({', '.join(columns)}) "
+                    f"VALUES ({', '.join('?' for _ in values)})",
+                    values,
+                )
+            elif tuple(stored) != values:
+                raise PersistenceConflictError(
+                    f"{table_name} key contradicts immutable stored content"
+                )
+            connection.execute("COMMIT")
+            return str(key_value)
+        except duckdb.ConstraintException as exc:
+            try:
+                connection.execute("ROLLBACK")
+            except Exception:
+                pass
+            raise PersistenceConflictError(
+                f"{table_name} persistence constraint conflict"
+            ) from exc
+        except Exception:
+            try:
+                connection.execute("ROLLBACK")
+            except Exception:
+                pass
+            raise
+        finally:
+            connection.close()
+
+    def _load_immutable_row(self, table_name: str, key_value: str) -> Mapping[str, Any]:
+        if table_name not in {
+            "source_registry", "subject_registry", "instrument_registry",
+            "source_usage_rights", "raw_payload", "raw_capture",
+        }:
+            raise PrivateResearchDBError("unsupported immutable registry table")
+        columns = APPROVED_TABLE_COLUMNS[table_name]
+        key_column = APPROVED_PRIMARY_KEYS[table_name][0]
+        connection = self._connect()
+        try:
+            row = connection.execute(
+                f"SELECT {', '.join(columns)} FROM {table_name} WHERE {key_column} = ?",
+                [key_value],
+            ).fetchone()
+        finally:
+            connection.close()
+        if row is None:
+            raise KeyError(key_value)
+        return dict(zip(columns, row, strict=True))
+
+    def persist_source_registry(
+        self,
+        *,
+        source_id: str,
+        source_name: str,
+        access_channel: str,
+        default_timezone: str,
+        data_classification: str,
+        registry_version: str,
+        active: bool,
+        created_at: str,
+    ) -> str:
+        if type(active) is not bool:
+            raise PrivateResearchDBError("source registry active must be a strict boolean")
+        values = (
+            source_id, source_name, access_channel, default_timezone, data_classification,
+            registry_version, active, _canonical_persisted_at(created_at),
+        )
+        if any(not isinstance(value, str) or not value for value in values[:6]):
+            raise PrivateResearchDBError("source registry strings must be explicit")
+        return self._persist_immutable_row("source_registry", values)
+
+    def load_source_registry(self, source_id: str) -> Mapping[str, Any]:
+        return self._load_immutable_row("source_registry", source_id)
+
+    def persist_subject_registry(
+        self,
+        *,
+        subject_id: str,
+        subject_snapshot: Mapping[str, Any],
+        registered_at: str,
+    ) -> str:
+        if not isinstance(subject_id, str) or not subject_id or not isinstance(subject_snapshot, Mapping):
+            raise PrivateResearchDBError("subject registry values must be explicit")
+        return self._persist_immutable_row(
+            "subject_registry",
+            (subject_id, _canonical_text(subject_snapshot), _canonical_persisted_at(registered_at)),
+        )
+
+    def load_subject_registry(self, subject_id: str) -> Mapping[str, Any]:
+        return self._load_immutable_row("subject_registry", subject_id)
+
+    def persist_instrument_registry(
+        self,
+        *,
+        instrument_id: str,
+        subject_id: str,
+        source_id: str,
+        source_symbol: str,
+        market_or_venue: str,
+        metric_id: str,
+        quote_type: str,
+        term: str,
+        currency: str,
+        unit: str,
+        source_period_type: str,
+        instrument_version: str,
+        active_from: str,
+        active_to: str | None,
+    ) -> str:
+        string_values = (
+            instrument_id, subject_id, source_id, source_symbol, market_or_venue, metric_id,
+            quote_type, term, currency, unit, source_period_type, instrument_version,
+        )
+        if any(not isinstance(value, str) or not value for value in string_values):
+            raise PrivateResearchDBError("instrument registry strings must be explicit")
+        parse_date(active_from)
+        if active_to is not None:
+            parse_date(active_to)
+            if active_to < active_from:
+                raise PrivateResearchDBError("instrument active_to must not precede active_from")
+        return self._persist_immutable_row(
+            "instrument_registry", string_values + (active_from, active_to),
+        )
+
+    def load_instrument_registry(self, instrument_id: str) -> Mapping[str, Any]:
+        return self._load_immutable_row("instrument_registry", instrument_id)
+
+    def persist_source_usage_rights(
+        self,
+        *,
+        rights_profile_id: str,
+        source_id: str,
+        access_channel: str,
+        instrument_scope: str,
+        automated_access: str,
+        private_storage: str,
+        historical_archive: str,
+        internal_analysis: str,
+        backtest: str,
+        prediction: str,
+        internal_display: str,
+        internet_display: str,
+        redistribution: str,
+        evidence_reference: str,
+        review_status: str,
+        effective_from: str,
+        effective_to: str | None,
+        reviewed_at: str | None,
+    ) -> str:
+        decisions = (
+            automated_access, private_storage, historical_archive, internal_analysis, backtest,
+            prediction, internal_display, internet_display, redistribution,
+        )
+        if any(
+            value not in {"ALLOWED", "PROHIBITED", "REVIEW_REQUIRED", "UNKNOWN"}
+            for value in decisions
+        ):
+            raise PrivateResearchDBError("source usage rights decision is not allowlisted")
+        required_strings = (
+            rights_profile_id, source_id, access_channel, instrument_scope,
+            evidence_reference, review_status,
+        )
+        if any(not isinstance(value, str) or not value for value in required_strings):
+            raise PrivateResearchDBError("source usage rights strings must be explicit")
+        parse_date(effective_from)
+        if effective_to is not None:
+            parse_date(effective_to)
+            if effective_to < effective_from:
+                raise PrivateResearchDBError("rights effective_to must not precede effective_from")
+        canonical_reviewed_at = (
+            None if reviewed_at is None else _canonical_persisted_at(reviewed_at)
+        )
+        return self._persist_immutable_row(
+            "source_usage_rights",
+            (
+                rights_profile_id, source_id, access_channel, instrument_scope, *decisions,
+                evidence_reference, review_status, effective_from, effective_to,
+                canonical_reviewed_at,
+            ),
+        )
+
+    def load_source_usage_rights(self, rights_profile_id: str) -> Mapping[str, Any]:
+        return self._load_immutable_row("source_usage_rights", rights_profile_id)
+
+    def persist_raw_payload(
+        self,
+        *,
+        raw_payload_hash: str,
+        relative_path: str,
+        content_type: str,
+        byte_size: int,
+        data_classification: str,
+        first_seen_at: str,
+    ) -> str:
+        _require_hash(raw_payload_hash, "raw_payload_hash")
+        path = Path(relative_path)
+        if path.is_absolute() or ".." in path.parts or not path.parts:
+            raise PrivateResearchDBError("raw payload path must be a safe relative path")
+        if type(byte_size) is not int or byte_size < 0:
+            raise PrivateResearchDBError("raw payload byte_size must be a non-negative integer")
+        if any(not isinstance(value, str) or not value for value in (content_type, data_classification)):
+            raise PrivateResearchDBError("raw payload metadata strings must be explicit")
+        return self._persist_immutable_row(
+            "raw_payload",
+            (
+                raw_payload_hash, path.as_posix(), content_type, byte_size, data_classification,
+                _canonical_persisted_at(first_seen_at),
+            ),
+        )
+
+    def load_raw_payload(self, raw_payload_hash: str) -> Mapping[str, Any]:
+        _require_hash(raw_payload_hash, "raw_payload_hash")
+        return self._load_immutable_row("raw_payload", raw_payload_hash)
+
+    def persist_raw_capture(
+        self,
+        *,
+        capture_id: str,
+        source_id: str,
+        instrument_id: str | None,
+        access_channel: str,
+        source_locator_safe: str,
+        collected_at: str,
+        collection_status: str,
+        raw_payload_hash: str,
+        collector_version: str,
+        rights_profile_id: str,
+        error_class: str | None,
+        created_at: str,
+    ) -> str:
+        _require_hash(raw_payload_hash, "raw_payload_hash")
+        required_strings = (
+            capture_id, source_id, access_channel, source_locator_safe, collection_status,
+            collector_version, rights_profile_id,
+        )
+        if any(not isinstance(value, str) or not value for value in required_strings):
+            raise PrivateResearchDBError("raw capture strings must be explicit")
+        if instrument_id is not None and (not isinstance(instrument_id, str) or not instrument_id):
+            raise PrivateResearchDBError("raw capture instrument_id must be explicit when present")
+        if error_class is not None and (not isinstance(error_class, str) or not error_class):
+            raise PrivateResearchDBError("raw capture error_class must be explicit when present")
+        return self._persist_immutable_row(
+            "raw_capture",
+            (
+                capture_id, source_id, instrument_id, access_channel, source_locator_safe,
+                _canonical_persisted_at(collected_at), collection_status, raw_payload_hash,
+                collector_version, rights_profile_id, error_class,
+                _canonical_persisted_at(created_at),
+            ),
+        )
+
+    def load_raw_capture(self, capture_id: str) -> Mapping[str, Any]:
+        return self._load_immutable_row("raw_capture", capture_id)
+
     def persist_observation(self, observation: Observation) -> str:
         if type(observation) is not Observation:
             raise PrivateResearchDBError("only an exact validated Observation may be persisted")
@@ -599,30 +877,34 @@ class PrivateResearchDatabase:
         semantic_data = parse_json_strict(semantic_data_json)
         if not isinstance(semantic_data, dict):
             raise PersistenceConflictError("stored observation semantic_data is not an object")
-        loaded = Observation(
-            source_id=source_id,
-            source_record_identifier=source_record_identifier,
-            metric_id=metric_id,
-            instrument_id=instrument_id,
-            source_period_type=source_period_type,
-            source_market_date=source_market_date,
-            source_period_start_date=source_period_start_date,
-            source_period_end_date=source_period_end_date,
-            calendar_assignments=tuple(by_role[role] for role in CALENDAR_ROLES),
-            data_origin=data_origin,
-            operational_status=operational_status,
-            scheduler_execution_at=scheduler_execution_at,
-            local_business_date=local_business_date,
-            source_business_date=source_business_date,
-            scheduler_business_date=scheduler_business_date,
-            source_publication_at=source_publication_at,
-            collected_at=collected_at,
-            observed_at=observed_at,
-            source_available_at=source_available_at,
-            channel_available_at=channel_available_at,
-            created_at=created_at,
-            semantic_data=semantic_data,
-        )
+        observation_values = {
+            "source_id": source_id,
+            "source_record_identifier": source_record_identifier,
+            "metric_id": metric_id,
+            "instrument_id": instrument_id,
+            "source_period_type": source_period_type,
+            "source_market_date": source_market_date,
+            "source_period_start_date": source_period_start_date,
+            "source_period_end_date": source_period_end_date,
+            "calendar_assignments": tuple(by_role[role] for role in CALENDAR_ROLES),
+            "data_origin": data_origin,
+            "operational_status": operational_status,
+            "scheduler_execution_at": scheduler_execution_at,
+            "local_business_date": local_business_date,
+            "source_business_date": source_business_date,
+            "scheduler_business_date": scheduler_business_date,
+            "source_publication_at": source_publication_at,
+            "collected_at": collected_at,
+            "observed_at": observed_at,
+            "source_available_at": source_available_at,
+            "channel_available_at": channel_available_at,
+            "created_at": created_at,
+            "semantic_data": semantic_data,
+        }
+        if data_origin == "REAL_HISTORICAL" and operational_status == "REAL_NON_OPERATIONAL":
+            loaded = build_real_historical_observation(**observation_values)
+        else:
+            loaded = Observation(**observation_values)
         if loaded.observation_id != stored_observation_id:
             raise PersistenceConflictError("loaded observation identity hash drifted")
         if loaded.content_hash != observation_content_hash:
@@ -648,6 +930,19 @@ class PrivateResearchDatabase:
 
     def has_multiple_observation_snapshots(self, observation_id: str) -> bool:
         return len(self.observation_content_hashes(observation_id)) > 1
+
+    def observation_version_content_hashes(self, observation_version_id: str) -> tuple[str, ...]:
+        _require_hash(observation_version_id, "observation_version_id")
+        connection = self._connect()
+        try:
+            rows = connection.execute(
+                "SELECT observation_version_content_hash FROM observation_version_snapshot "
+                "WHERE observation_version_id = ? ORDER BY observation_version_content_hash",
+                [observation_version_id],
+            ).fetchall()
+            return tuple(row[0] for row in rows)
+        finally:
+            connection.close()
 
     def persist_observation_version(self, version: ObservationVersion) -> str:
         if type(version) is not ObservationVersion:
