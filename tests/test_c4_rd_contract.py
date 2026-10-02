@@ -19,6 +19,7 @@ from scripts.c4_rd_contract import (
     HASH_PROFILE, PIT_ENABLED_SOURCES, QUALITY_STATUSES, RAW_BYTES_HASH_PROFILE,
     RD3_OPEN_BLOCKERS, READINESS_STATES, RESEARCH_ENABLED_SOURCES, SAFETY_FLAGS,
     SOURCE_PERIOD_TYPES, STALE_REASON_ALIASES, TRUST_STATES, AvailabilityAssessment,
+    WORLD_BANK_COPPER_APPROVED_SOURCE_UNITS,
     Assessment, BacktestDatasetEligibilityAssessment, BacktestRecordEligibilityAssessment,
     CalendarAssignment, CalendarReference, ContractError, ExclusionReason, ImmutableMapping,
     LineageAssessment, Observation, ObservationVersion, PITEligibilityAssessment,
@@ -214,6 +215,45 @@ class FrozenContractTests(unittest.TestCase):
         self.assertIsNone(item.channel_available_at)
         self.assertNotIn("_construction_authority", item.content_projection())
         self.assertNotIn("_construction_authority", model_field_names(Observation))
+
+    def test_world_bank_copper_source_unit_allowlist_is_exact_and_fail_closed(self):
+        self.assertEqual(
+            WORLD_BANK_COPPER_APPROVED_SOURCE_UNITS,
+            frozenset({"$/mt", "($/mt)"}),
+        )
+        for source_unit in ("$/mt", "($/mt)"):
+            semantic_data = dict(real_observation_values()["semantic_data"])
+            semantic_data["source_unit"] = source_unit
+            with self.subTest(approved=source_unit):
+                self.assertEqual(
+                    real_observation(semantic_data=semantic_data).semantic_data["source_unit"],
+                    source_unit,
+                )
+        for source_unit in ("USD/MT", "$/ton", "($/ton)", "cents/lb", "", "$ / mt"):
+            semantic_data = dict(real_observation_values()["semantic_data"])
+            semantic_data["source_unit"] = source_unit
+            with self.subTest(rejected=source_unit), self.assertRaises(ContractError):
+                real_observation(semantic_data=semantic_data)
+
+    def test_world_bank_copper_source_unit_changes_content_not_identity(self):
+        plain_semantic = dict(real_observation_values()["semantic_data"])
+        plain_semantic["source_unit"] = "$/mt"
+        parenthesized_semantic = dict(plain_semantic)
+        parenthesized_semantic["source_unit"] = "($/mt)"
+        plain = real_observation(semantic_data=plain_semantic)
+        parenthesized = real_observation(semantic_data=parenthesized_semantic)
+        self.assertEqual(plain.observation_id, parenthesized.observation_id)
+        self.assertNotEqual(plain.content_hash, parenthesized.content_hash)
+
+    def test_guarded_real_historical_builder_scope_is_unchanged(self):
+        for changes in (
+            {"source_id": "OTHER_SOURCE"},
+            {"metric_id": "OTHER_METRIC"},
+            {"instrument_id": "other_instrument"},
+            {"source_period_type": "OTHER_BOUNDED_PERIOD"},
+        ):
+            with self.subTest(changes=changes), self.assertRaises(ContractError):
+                real_observation(**changes)
 
     def test_ordinary_real_historical_construction_remains_rejected(self):
         with self.assertRaises(ContractError):

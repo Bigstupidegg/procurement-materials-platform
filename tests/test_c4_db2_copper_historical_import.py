@@ -17,6 +17,7 @@ from scripts.c4_db2_copper_historical_import import (
     RIGHTS_EVIDENCE_REFERENCE,
     RIGHTS_PROFILE_ID,
     SOURCE_ID,
+    TRANSFORMATION_VERSION,
     DB2SourceFormatError,
     PrivateRawStorageError,
     _decimal_from_cell,
@@ -42,7 +43,7 @@ def workbook_bytes(
     periods: tuple[str, ...] = EXPECTED_PILOT_PERIODS,
     copper_header: str = "Copper",
     duplicate_copper: bool = False,
-    source_unit: str = "$/mt",
+    source_unit: str = "($/mt)",
     value_overrides: dict[str, object] | None = None,
 ) -> bytes:
     workbook = openpyxl.Workbook()
@@ -77,8 +78,12 @@ class WorldBankCopperParserTests(unittest.TestCase):
         self.assertEqual(parsed.observations[0].period, "2022-01")
         self.assertEqual(parsed.observations[-1].period, "2025-12")
         self.assertTrue(all(type(item.value) is Decimal for item in parsed.observations))
-        self.assertEqual(parsed.source_unit, "$/mt")
+        self.assertEqual(parsed.source_unit, "($/mt)")
         self.assertEqual(parsed.instrument_active_from, "2022-01-01")
+
+    def test_legacy_dollar_per_metric_ton_unit_remains_approved(self) -> None:
+        parsed = parse_world_bank_copper_workbook(workbook_bytes(source_unit="$/mt"))
+        self.assertEqual(parsed.source_unit, "$/mt")
 
     def test_missing_or_duplicate_copper_column_fails_closed(self) -> None:
         with self.assertRaises(DB2SourceFormatError):
@@ -105,9 +110,10 @@ class WorldBankCopperParserTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(DB2SourceFormatError):
                 _decimal_from_cell(value, "2024-01")
 
-    def test_wrong_source_unit_fails_closed(self) -> None:
-        with self.assertRaises(DB2SourceFormatError):
-            parse_world_bank_copper_workbook(workbook_bytes(source_unit="cents/lb"))
+    def test_unknown_source_units_fail_closed(self) -> None:
+        for source_unit in ("USD/MT", "$/ton", "($/ton)", "cents/lb", "", "$ / mt"):
+            with self.subTest(source_unit=source_unit), self.assertRaises(DB2SourceFormatError):
+                parse_world_bank_copper_workbook(workbook_bytes(source_unit=source_unit))
 
     def test_month_boundaries_and_calendar_assignments_are_exact(self) -> None:
         parsed = parse_world_bank_copper_workbook(workbook_bytes())
@@ -120,6 +126,9 @@ class WorldBankCopperParserTests(unittest.TestCase):
         )
         self.assertEqual(observation.source_period_start_date, "2024-02-01")
         self.assertEqual(observation.source_period_end_date, "2024-02-29")
+        self.assertEqual(parsed.source_unit, "($/mt)")
+        self.assertEqual(observation.semantic_data["source_unit"], "($/mt)")
+        self.assertEqual(observation.semantic_data["unit"], "USD/MT")
         self.assertEqual(
             {item.role: item.status for item in observation.calendar_assignments},
             {
@@ -268,6 +277,8 @@ class WorldBankCopperImportTests(unittest.TestCase):
         )
         self.assertEqual(observation.semantic_data["value"], Decimal("8000.07"))
         self.assertEqual(version.raw_payload_hash, result.raw_payload_hash)
+        self.assertEqual(TRANSFORMATION_VERSION, "C4_DB2_WB_COPPER_MONTHLY_V1@1.0.1")
+        self.assertEqual(version.transformation_version, TRANSFORMATION_VERSION)
         self.assertEqual(version.semantic_data, observation.semantic_data)
         self.assertIsNone(version.revision_available_at)
 

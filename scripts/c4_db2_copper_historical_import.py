@@ -28,6 +28,7 @@ from scripts.c4_private_research_db import (
 )
 from scripts.c4_rd_contract import (
     CALENDAR_ROLES,
+    WORLD_BANK_COPPER_APPROVED_SOURCE_UNITS,
     CalendarAssignment,
     Observation,
     ObservationVersion,
@@ -55,7 +56,7 @@ ACCESS_CHANNEL = "WORLD_BANK_OFFICIAL_XLSX"
 SOURCE_COLUMN = "Copper"
 MARKET_OR_VENUE = "WORLD_BANK_PINK_SHEET"
 METRIC_ID = "MONTHLY_PRICE"
-TRANSFORMATION_VERSION = "C4_DB2_WB_COPPER_MONTHLY_V1@1.0.0"
+TRANSFORMATION_VERSION = "C4_DB2_WB_COPPER_MONTHLY_V1@1.0.1"
 SOURCE_REGISTRY_VERSION = "C4_DB2_WORLD_BANK_SOURCE_V1@1.0.0"
 INSTRUMENT_VERSION = "C4_DB2_WORLD_BANK_COPPER_MONTHLY_V1@1.0.0"
 RIGHTS_PROFILE_ID = "WORLD_BANK_PINK_SHEET_DB2_PRIVATE_RESEARCH_V1"
@@ -188,8 +189,8 @@ def parse_world_bank_copper_workbook(
         source_unit = normalize_text(
             unit_values[copper_column - 1] if len(unit_values) >= copper_column else None
         )
-        if source_unit.casefold() != "$/mt":
-            raise DB2SourceFormatError("Copper source unit is not the approved $/mt unit")
+        if source_unit.casefold() not in WORLD_BANK_COPPER_APPROVED_SOURCE_UNITS:
+            raise DB2SourceFormatError("Copper source unit is not an approved literal")
 
         all_values: list[CopperMonthlyValue] = []
         for row in worksheet.iter_rows(min_row=data_start_row, values_only=True):
