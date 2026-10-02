@@ -28,6 +28,7 @@ CANONICAL_JSON_PROFILE = "C4_CANONICAL_JSON_V1@1.0.0"
 HASH_PROFILE = "C4_HASH_PROFILE_V1@1.0.0"
 RAW_BYTES_HASH_PROFILE = "C4_RAW_BYTES_HASH_V1@1.0.0"
 EXCLUSION_CATALOG_VERSION = "1.1.0"
+WORLD_BANK_COPPER_APPROVED_SOURCE_UNITS = frozenset({"$/mt", "($/mt)"})
 
 TRUST_STATES = (
     "REAL_ORIGIN_UNVERIFIED", "REAL_ORIGIN_VERIFIED", "SHADOW_UNRESOLVED",
@@ -645,7 +646,8 @@ def build_real_historical_observation(
         or semantic_data["source_column"] != "Copper"
         or semantic_data["frequency"] != "MONTHLY"
         or not isinstance(semantic_data["source_unit"], str)
-        or semantic_data["source_unit"].strip().casefold() != "$/mt"
+        or semantic_data["source_unit"].strip().casefold()
+        not in WORLD_BANK_COPPER_APPROVED_SOURCE_UNITS
     ):
         raise ContractError("World Bank Copper semantic metadata does not match the approved pilot")
 
