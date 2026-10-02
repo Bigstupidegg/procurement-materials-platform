@@ -38,6 +38,9 @@ from scripts.c4_rd_readiness_evaluator import EvidenceReference, ReadinessEvalua
 SCHEMA_VERSION = "C4_PRIVATE_RESEARCH_DB_V1@1.0.0"
 MIGRATION_ID = "C4_PRIVATE_RESEARCH_DB_V1_INITIAL"
 MIGRATION_PATH = Path(__file__).resolve().parent / "sql" / "c4_private_research_db_v1.sql"
+APPROVED_MIGRATION_CHECKSUM = (
+    "91b858d068df103e2d6629153923f597999cee222470f98321fcc4b89f93dcd3"
+)
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 APPROVED_TABLES = (
     "schema_migrations",
@@ -193,13 +196,25 @@ class PersistenceConflictError(PrivateResearchDBError):
     """Raised when stored authoritative content contradicts a contract object."""
 
 
+def _canonicalize_migration_sql_bytes(raw_bytes: bytes) -> bytes:
+    """Canonicalize only CRLF newlines and reject unsupported bare CR bytes."""
+    canonical_bytes = raw_bytes.replace(b"\r\n", b"\n")
+    if b"\r" in canonical_bytes:
+        raise MigrationError("migration SQL contains an unsupported bare CR byte")
+    return canonical_bytes
+
+
 def migration_sql_bytes() -> bytes:
-    """Return the exact checked-in V1 migration bytes."""
-    return MIGRATION_PATH.read_bytes()
+    """Return the canonical LF bytes of the frozen approved V1 migration."""
+    canonical_bytes = _canonicalize_migration_sql_bytes(MIGRATION_PATH.read_bytes())
+    computed_checksum = hashlib.sha256(canonical_bytes).hexdigest()
+    if computed_checksum != APPROVED_MIGRATION_CHECKSUM:
+        raise MigrationError("canonical migration SQL checksum does not match approved V1 authority")
+    return canonical_bytes
 
 
 def migration_checksum() -> str:
-    """Return SHA-256 of the exact checked-in migration bytes."""
+    """Return SHA-256 of the canonical approved V1 migration bytes."""
     return hashlib.sha256(migration_sql_bytes()).hexdigest()
 
 
