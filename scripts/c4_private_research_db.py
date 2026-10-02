@@ -7,6 +7,7 @@ and RD6 PIT dataset authority while preserving the frozen DB1A V1 schema.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from decimal import Decimal
 import hashlib
 from pathlib import Path
 import re
@@ -248,6 +249,38 @@ def _stored_json(value: str, expected_type: type, field_name: str) -> Any:
             f"stored {field_name} must be a JSON {expected_type.__name__}"
         )
     return parsed
+
+
+def _rehydrate_world_bank_copper_semantic_data(
+    semantic_data: dict[str, Any],
+    *,
+    source_id: str | None,
+    metric_id: str | None,
+    instrument_id: str | None,
+    source_period_type: str | None,
+) -> dict[str, Any]:
+    """Restore persisted Decimal type only for the approved World Bank domain."""
+    if (
+        source_id,
+        metric_id,
+        instrument_id,
+        source_period_type,
+    ) != (
+        "WORLD_BANK",
+        "MONTHLY_PRICE",
+        "copper_world_bank_monthly",
+        "MONTH",
+    ):
+        return semantic_data
+
+    value = semantic_data.get("value")
+    if type(value) is Decimal:
+        return semantic_data
+    if type(value) is int:
+        return {**semantic_data, "value": Decimal(value)}
+    raise PersistenceConflictError(
+        "stored World Bank Copper semantic value is not a Decimal or exact integer"
+    )
 
 
 class PrivateResearchDatabase:
@@ -892,6 +925,13 @@ class PrivateResearchDatabase:
         semantic_data = parse_json_strict(semantic_data_json)
         if not isinstance(semantic_data, dict):
             raise PersistenceConflictError("stored observation semantic_data is not an object")
+        semantic_data = _rehydrate_world_bank_copper_semantic_data(
+            semantic_data,
+            source_id=source_id,
+            metric_id=metric_id,
+            instrument_id=instrument_id,
+            source_period_type=source_period_type,
+        )
         observation_values = {
             "source_id": source_id,
             "source_record_identifier": source_record_identifier,
@@ -1028,8 +1068,10 @@ class PrivateResearchDatabase:
                 "i.stable_version_key, i.raw_payload_hash, i.transformation_version, "
                 "i.identity_projection_json, s.parent_version_id, s.revision_available_at, "
                 "s.collected_at, s.observed_at, s.created_at, s.semantic_data_json, "
-                "s.content_projection_json FROM observation_version_snapshot s "
+                "s.content_projection_json, o.source_id, o.metric_id, o.instrument_id, "
+                "o.source_period_type FROM observation_version_snapshot s "
                 "JOIN observation_version_identity i USING (observation_version_id) "
+                "LEFT JOIN observation_identity o ON o.observation_id = i.observation_id "
                 "WHERE s.observation_version_content_hash = ?",
                 [observation_version_content_hash],
             ).fetchone()
@@ -1052,10 +1094,21 @@ class PrivateResearchDatabase:
             created_at,
             semantic_data_json,
             stored_content_json,
+            source_id,
+            metric_id,
+            instrument_id,
+            source_period_type,
         ) = row
         semantic_data = parse_json_strict(semantic_data_json)
         if not isinstance(semantic_data, dict):
             raise PersistenceConflictError("stored version semantic_data is not an object")
+        semantic_data = _rehydrate_world_bank_copper_semantic_data(
+            semantic_data,
+            source_id=source_id,
+            metric_id=metric_id,
+            instrument_id=instrument_id,
+            source_period_type=source_period_type,
+        )
         loaded = ObservationVersion(
             observation_id=observation_id,
             source_version_or_release_key=source_version_or_release_key,
