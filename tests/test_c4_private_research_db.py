@@ -181,6 +181,31 @@ def observation(**changes) -> Observation:
     return Observation(**values)
 
 
+def world_bank_observation(value: Decimal = Decimal("9123.45")) -> Observation:
+    return build_real_historical_observation(
+        source_id="WORLD_BANK",
+        source_record_identifier="WORLD_BANK:PINK_SHEET:COPPER:2024-02",
+        metric_id="MONTHLY_PRICE",
+        instrument_id="copper_world_bank_monthly",
+        source_period_type="MONTH",
+        source_market_date=None,
+        source_period_start_date="2024-02-01",
+        source_period_end_date="2024-02-29",
+        calendar_assignments=(
+            CalendarAssignment("copper", "MARKET", "NOT_APPLICABLE"),
+            CalendarAssignment("copper", "PUBLICATION", "UNVERIFIED"),
+            CalendarAssignment("copper", "LOCAL_OPERATIONAL", "NOT_APPLICABLE"),
+            CalendarAssignment("copper", "SCHEDULER", "NOT_APPLICABLE"),
+        ),
+        collected_at="2026-10-01T00:00:00Z",
+        created_at="2026-10-01T00:00:01Z",
+        semantic_data={
+            "value": value, "currency": "USD", "unit": "USD/MT",
+            "source_column": "Copper", "source_unit": "$/mt", "frequency": "MONTHLY",
+        },
+    )
+
+
 def version(item: Observation, **changes) -> ObservationVersion:
     values = {
         "observation_id": item.observation_id,
@@ -494,33 +519,123 @@ class PrivateResearchDatabaseTests(unittest.TestCase):
             )
 
     def test_guarded_real_observation_round_trip_uses_trusted_loader(self) -> None:
-        real = build_real_historical_observation(
-            source_id="WORLD_BANK",
-            source_record_identifier="WORLD_BANK:PINK_SHEET:COPPER:2024-02",
-            metric_id="MONTHLY_PRICE",
-            instrument_id="copper_world_bank_monthly",
-            source_period_type="MONTH",
-            source_market_date=None,
-            source_period_start_date="2024-02-01",
-            source_period_end_date="2024-02-29",
-            calendar_assignments=(
-                CalendarAssignment("copper", "MARKET", "NOT_APPLICABLE"),
-                CalendarAssignment("copper", "PUBLICATION", "UNVERIFIED"),
-                CalendarAssignment("copper", "LOCAL_OPERATIONAL", "NOT_APPLICABLE"),
-                CalendarAssignment("copper", "SCHEDULER", "NOT_APPLICABLE"),
-            ),
-            collected_at="2026-10-01T00:00:00Z",
-            created_at="2026-10-01T00:00:01Z",
-            semantic_data={
-                "value": Decimal("9123.45"), "currency": "USD", "unit": "USD/MT",
-                "source_column": "Copper", "source_unit": "$/mt", "frequency": "MONTHLY",
-            },
-        )
+        real = world_bank_observation()
         content_hash = self.database.persist_observation(real)
         loaded = self.database.load_observation(content_hash)
         self.assertEqual(loaded.content_projection(), real.content_projection())
         self.assertEqual(loaded.data_origin, "REAL_HISTORICAL")
         self.assertEqual(loaded.operational_status, "REAL_NON_OPERATIONAL")
+        self.assertIs(type(loaded.semantic_data["value"]), Decimal)
+        self.assertEqual(loaded.semantic_data["value"], Decimal("9123.45"))
+        self.assertEqual(loaded.observation_id, real.observation_id)
+        self.assertEqual(loaded.content_hash, real.content_hash)
+
+    def test_guarded_real_integral_decimal_observation_round_trip_preserves_type(self) -> None:
+        real = world_bank_observation(Decimal("8000"))
+        content_hash = self.database.persist_observation(real)
+        connection = duckdb.connect(str(self.database_path), read_only=True)
+        try:
+            stored_json = connection.execute(
+                "SELECT semantic_data_json FROM observation_snapshot "
+                "WHERE observation_content_hash = ?",
+                [content_hash],
+            ).fetchone()[0]
+        finally:
+            connection.close()
+        self.assertIn('"value":8000', stored_json)
+        self.assertNotIn('"value":"8000"', stored_json)
+
+        loaded = self.database.load_observation(content_hash)
+        self.assertIs(type(loaded.semantic_data["value"]), Decimal)
+        self.assertEqual(loaded.semantic_data["value"], Decimal("8000"))
+        self.assertEqual(loaded.observation_id, real.observation_id)
+        self.assertEqual(loaded.content_hash, real.content_hash)
+        self.assertEqual(loaded.content_projection(), real.content_projection())
+        self.assertEqual(
+            canonical_json_bytes(loaded.semantic_data),
+            canonical_json_bytes(real.semantic_data),
+        )
+
+    def test_guarded_real_integral_decimal_version_round_trip_preserves_type(self) -> None:
+        real = world_bank_observation(Decimal("8000"))
+        self.database.persist_observation(real)
+        original = version(
+            real,
+            semantic_data=real.semantic_data,
+            transformation_version="synthetic-world-bank-transform@1.0.0",
+        )
+        content_hash = self.database.persist_observation_version(original)
+        loaded = self.database.load_observation_version(content_hash)
+        self.assertIs(type(loaded.semantic_data["value"]), Decimal)
+        self.assertEqual(loaded.semantic_data["value"], Decimal("8000"))
+        self.assertEqual(loaded.observation_version_id, original.observation_version_id)
+        self.assertEqual(loaded.content_hash, original.content_hash)
+        self.assertEqual(
+            canonical_json_bytes(loaded.semantic_data),
+            canonical_json_bytes(original.semantic_data),
+        )
+
+    def test_generic_integral_values_remain_int_for_observation_and_version(self) -> None:
+        item = observation(semantic_data={"value": 123, "unit": "SYNTHETIC_UNIT"})
+        self.database.persist_observation(item)
+        item_version = version(item, semantic_data={"value": 123, "revision": 1})
+        self.database.persist_observation_version(item_version)
+
+        loaded_item = self.database.load_observation(item.content_hash)
+        loaded_version = self.database.load_observation_version(item_version.content_hash)
+        self.assertIs(type(loaded_item.semantic_data["value"]), int)
+        self.assertEqual(loaded_item.semantic_data["value"], 123)
+        self.assertIs(type(loaded_version.semantic_data["value"]), int)
+        self.assertEqual(loaded_version.semantic_data["value"], 123)
+
+    def test_malformed_world_bank_values_fail_closed_for_both_loaders(self) -> None:
+        real = world_bank_observation(Decimal("8000"))
+        self.database.persist_observation(real)
+        item_version = version(
+            real,
+            semantic_data=real.semantic_data,
+            transformation_version="synthetic-world-bank-transform@1.0.0",
+        )
+        self.database.persist_observation_version(item_version)
+        connection = duckdb.connect(str(self.database_path))
+        try:
+            observation_json = connection.execute(
+                "SELECT semantic_data_json FROM observation_snapshot "
+                "WHERE observation_content_hash = ?",
+                [real.content_hash],
+            ).fetchone()[0]
+            version_json = connection.execute(
+                "SELECT semantic_data_json FROM observation_version_snapshot "
+                "WHERE observation_version_content_hash = ?",
+                [item_version.content_hash],
+            ).fetchone()[0]
+            self.assertIn('"value":8000', observation_json)
+            self.assertIn('"value":8000', version_json)
+            for malformed_token in ("true", '"8000"', "null"):
+                with self.subTest(loader="observation", token=malformed_token):
+                    connection.execute(
+                        "UPDATE observation_snapshot SET semantic_data_json = ? "
+                        "WHERE observation_content_hash = ?",
+                        [
+                            observation_json.replace('"value":8000', f'"value":{malformed_token}'),
+                            real.content_hash,
+                        ],
+                    )
+                    with self.assertRaises(PersistenceConflictError):
+                        self.database.load_observation(real.content_hash)
+                with self.subTest(loader="version", token=malformed_token):
+                    connection.execute(
+                        "UPDATE observation_version_snapshot SET semantic_data_json = ? "
+                        "WHERE observation_version_content_hash = ?",
+                        [
+                            version_json.replace('"value":8000', f'"value":{malformed_token}'),
+                            item_version.content_hash,
+                        ],
+                    )
+                    with self.assertRaises(PersistenceConflictError):
+                        self.database.load_observation_version(item_version.content_hash)
+        finally:
+            connection.close()
 
     def test_dataset_order_and_feature_membership_keys_are_explicit(self) -> None:
         self.assertIn("manifest_row_ordinal", self._columns("pit_dataset_row"))
