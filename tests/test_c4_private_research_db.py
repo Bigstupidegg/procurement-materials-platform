@@ -5,13 +5,14 @@ import hashlib
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import duckdb
 
 from scripts.c4_private_research_db import (
+    APPROVED_MIGRATION_CHECKSUM,
     APPROVED_TABLES,
     MIGRATION_ID,
-    MIGRATION_PATH,
     REPOSITORY_ROOT,
     SCHEMA_VERSION,
     DatabasePathError,
@@ -19,6 +20,7 @@ from scripts.c4_private_research_db import (
     PersistenceConflictError,
     PrivateResearchDatabase,
     PrivateResearchDBError,
+    _canonicalize_migration_sql_bytes,
     migration_checksum,
     migration_sql_bytes,
 )
@@ -625,12 +627,109 @@ class PrivateResearchDatabaseTests(unittest.TestCase):
         self.assertEqual(stored[:3], ("EXPLICIT_MISSING", "null", "[]"))
         self.assertEqual(stored[3:], (None,) * len(lineage_columns))
 
-    def test_migration_checksum_uses_exact_sql_bytes_and_is_deterministic(self) -> None:
-        expected = hashlib.sha256(MIGRATION_PATH.read_bytes()).hexdigest()
-        self.assertEqual(migration_sql_bytes(), MIGRATION_PATH.read_bytes())
-        self.assertEqual(migration_checksum(), expected)
+    def test_migration_checksum_uses_frozen_canonical_authority(self) -> None:
+        canonical_bytes = migration_sql_bytes()
+        self.assertEqual(
+            APPROVED_MIGRATION_CHECKSUM,
+            "91b858d068df103e2d6629153923f597999cee222470f98321fcc4b89f93dcd3",
+        )
+        self.assertEqual(hashlib.sha256(canonical_bytes).hexdigest(), APPROVED_MIGRATION_CHECKSUM)
+        self.assertEqual(migration_checksum(), APPROVED_MIGRATION_CHECKSUM)
         self.assertEqual(migration_checksum(), migration_checksum())
-        self.assertEqual(self.database.migration_record()["migration_checksum"], expected)
+        self.assertEqual(
+            self.database.migration_record()["migration_checksum"],
+            APPROVED_MIGRATION_CHECKSUM,
+        )
+
+    def test_migration_newline_canonicalization_is_byte_limited(self) -> None:
+        lf_bytes = migration_sql_bytes()
+        crlf_bytes = lf_bytes.replace(b"\n", b"\r\n")
+        mixed_bytes = lf_bytes.replace(b"\n", b"\r\n", 1)
+
+        for candidate in (lf_bytes, crlf_bytes, mixed_bytes):
+            with self.subTest(candidate_hash=hashlib.sha256(candidate).hexdigest()):
+                canonical = _canonicalize_migration_sql_bytes(candidate)
+                self.assertEqual(canonical, lf_bytes)
+                self.assertEqual(
+                    hashlib.sha256(canonical).hexdigest(),
+                    APPROVED_MIGRATION_CHECKSUM,
+                )
+
+        with self.assertRaisesRegex(MigrationError, "bare CR"):
+            _canonicalize_migration_sql_bytes(lf_bytes + b"\rSELECT 1;\n")
+
+    def test_crlf_checkout_initializes_with_approved_canonical_checksum(self) -> None:
+        canonical_bytes = migration_sql_bytes()
+        crlf_bytes = canonical_bytes.replace(b"\n", b"\r\n")
+        self.assertNotEqual(
+            hashlib.sha256(crlf_bytes).hexdigest(),
+            APPROVED_MIGRATION_CHECKSUM,
+        )
+        with tempfile.TemporaryDirectory(prefix="c4_db2_crlf_") as temporary_directory:
+            temporary_root = Path(temporary_directory)
+            migration_path = temporary_root / "migration.sql"
+            migration_path.write_bytes(crlf_bytes)
+            database = PrivateResearchDatabase(temporary_root / "crlf-test.duckdb")
+            with patch("scripts.c4_private_research_db.MIGRATION_PATH", migration_path):
+                self.assertEqual(migration_sql_bytes(), canonical_bytes)
+                self.assertEqual(migration_checksum(), APPROVED_MIGRATION_CHECKSUM)
+                self.assertEqual(
+                    database.initialize_schema(
+                        applied_at="2026-09-24T00:00:00Z",
+                        code_commit_sha="SYNTHETIC_CRLF_TEST_COMMIT",
+                    ),
+                    APPROVED_MIGRATION_CHECKSUM,
+                )
+            self.assertEqual(
+                database.migration_record()["migration_checksum"],
+                APPROVED_MIGRATION_CHECKSUM,
+            )
+            self.assertEqual(len(database.table_names()), 16)
+
+    def test_non_newline_migration_drift_fails_closed_before_database_creation(self) -> None:
+        canonical_bytes = migration_sql_bytes()
+        drift_variants = {
+            "appended_comment": canonical_bytes + b"-- unexpected drift\n",
+            "changed_non_newline_byte": canonical_bytes.replace(b"CREATE", b"CREATX", 1),
+            "changed_identifier": canonical_bytes.replace(
+                b"schema_migrations", b"schema_migrationz", 1
+            ),
+            "trailing_space": canonical_bytes.replace(b"\n", b" \n", 1),
+        }
+        with tempfile.TemporaryDirectory(prefix="c4_db2_drift_") as temporary_directory:
+            temporary_root = Path(temporary_directory)
+            for name, drift_bytes in drift_variants.items():
+                with self.subTest(name=name):
+                    self.assertNotEqual(
+                        hashlib.sha256(
+                            _canonicalize_migration_sql_bytes(drift_bytes)
+                        ).hexdigest(),
+                        APPROVED_MIGRATION_CHECKSUM,
+                    )
+                    migration_path = temporary_root / f"{name}.sql"
+                    migration_path.write_bytes(drift_bytes)
+                    database_path = temporary_root / f"{name}.duckdb"
+                    with patch("scripts.c4_private_research_db.MIGRATION_PATH", migration_path):
+                        with self.assertRaisesRegex(MigrationError, "approved V1 authority"):
+                            PrivateResearchDatabase(database_path).initialize_schema(
+                                applied_at="2026-09-24T00:00:00Z",
+                                code_commit_sha="SYNTHETIC_DRIFT_TEST_COMMIT",
+                            )
+                    self.assertFalse(database_path.exists())
+
+    def test_bare_cr_migration_fails_closed_before_database_creation(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="c4_db2_bare_cr_") as temporary_directory:
+            temporary_root = Path(temporary_directory)
+            migration_path = temporary_root / "bare-cr.sql"
+            migration_path.write_bytes(migration_sql_bytes() + b"\rSELECT 1;\n")
+            database_path = temporary_root / "bare-cr.duckdb"
+            with patch("scripts.c4_private_research_db.MIGRATION_PATH", migration_path):
+                with self.assertRaisesRegex(MigrationError, "bare CR"):
+                    PrivateResearchDatabase(database_path).initialize_schema(
+                        applied_at="2026-09-24T00:00:00Z",
+                        code_commit_sha="SYNTHETIC_BARE_CR_TEST_COMMIT",
+                    )
+            self.assertFalse(database_path.exists())
 
     def test_second_identical_migration_application_is_idempotent(self) -> None:
         first = self.database.migration_record()
