@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-02T07:02:35Z",
+  "generatedAt": "2026-10-03T06:35:50Z",
   "source": "WORLD_BANK_PINK_SHEET",
   "isRealData": true,
   "frequency": "monthly",
@@ -8,9 +8,9 @@
     "name": "World Bank Commodity Price Data (The Pink Sheet)",
     "sheetName": "Monthly Prices",
     "currencyBasis": "nominal US dollars",
-    "workbookUpdatedText": "Updated on September 02, 2026",
-    "workbookUpdatedOn": "2026-09-02",
-    "latestPeriod": "2026-08",
+    "workbookUpdatedText": "Updated on October 02, 2026",
+    "workbookUpdatedOn": "2026-10-02",
+    "latestPeriod": "2026-09",
     "download": {
       "requestedUrl": "https://thedocs.worldbank.org/en/doc/74e8be41ceb20fa0da750cda2f6b9e4e-0050012026/related/CMO-Historical-Data-Monthly.xlsx",
       "finalUrl": "https://thedocs.worldbank.org/en/doc/74e8be41ceb20fa0da750cda2f6b9e4e-0050012026/related/CMO-Historical-Data-Monthly.xlsx",
@@ -18,9 +18,9 @@
       "contentType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       "contentLengthHeader": null,
       "etag": null,
-      "lastModified": "Wed, 02 Sep 2026 20:17:37 GMT",
-      "fileSizeBytes": 586735,
-      "sha256": "9fdcfa8a2aed9a1bb545a10c1a5ce036c6a0acd4766f450424ca800b4b5a0225"
+      "lastModified": "Fri, 02 Oct 2026 18:57:55 GMT",
+      "fileSizeBytes": 586099,
+      "sha256": "ea1c350827878ea3bbe30e3cda16a13fd3bd5b409b8458940dc94a36b5a33154"
     }
   },
   "series": {
@@ -34,9 +34,9 @@
       "sourceUnit": "($/mt)",
       "isLmeDerived": true,
       "attributionNote": "資料提供：World Bank Pink Sheet；價格基準說明：LME金屬價格之月度彙整資料。",
-      "observationCount": 800,
+      "observationCount": 801,
       "firstPeriod": "1960-01",
-      "latestPeriod": "2026-08",
+      "latestPeriod": "2026-09",
       "observations": [
         {
           "period": "1960-01",
@@ -3237,6 +3237,10 @@
         {
           "period": "2026-08",
           "value": 3875
+        },
+        {
+          "period": "2026-09",
+          "value": 4021
         }
       ]
     },
@@ -3250,9 +3254,9 @@
       "sourceUnit": "($/mt)",
       "isLmeDerived": true,
       "attributionNote": "資料提供：World Bank Pink Sheet；價格基準說明：LME金屬價格之月度彙整資料。",
-      "observationCount": 800,
+      "observationCount": 801,
       "firstPeriod": "1960-01",
-      "latestPeriod": "2026-08",
+      "latestPeriod": "2026-09",
       "observations": [
         {
           "period": "1960-01",
@@ -6453,6 +6457,10 @@
         {
           "period": "2026-08",
           "value": 14326
+        },
+        {
+          "period": "2026-09",
+          "value": 14474
         }
       ]
     },
@@ -6466,9 +6474,9 @@
       "sourceUnit": "($/mt)",
       "isLmeDerived": true,
       "attributionNote": "資料提供：World Bank Pink Sheet；價格基準說明：LME金屬價格之月度彙整資料。",
-      "observationCount": 800,
+      "observationCount": 801,
       "firstPeriod": "1960-01",
-      "latestPeriod": "2026-08",
+      "latestPeriod": "2026-09",
       "observations": [
         {
           "period": "1960-01",
@@ -9669,6 +9677,10 @@
         {
           "period": "2026-08",
           "value": 3251
+        },
+        {
+          "period": "2026-09",
+          "value": 3283
         }
       ]
     },
@@ -9682,9 +9694,9 @@
       "sourceUnit": "($/mt)",
       "isLmeDerived": true,
       "attributionNote": "資料提供：World Bank Pink Sheet；價格基準說明：LME金屬價格之月度彙整資料。",
-      "observationCount": 800,
+      "observationCount": 801,
       "firstPeriod": "1960-01",
-      "latestPeriod": "2026-08",
+      "latestPeriod": "2026-09",
       "observations": [
         {
           "period": "1960-01",
@@ -12885,6 +12897,10 @@
         {
           "period": "2026-08",
           "value": 16751
+        },
+        {
+          "period": "2026-09",
+          "value": 16324
         }
       ]
     },
@@ -12898,9 +12914,9 @@
       "sourceUnit": "($/dmtu)",
       "isLmeDerived": false,
       "attributionNote": "資料提供：World Bank Pink Sheet；品項為Iron ore, cfr spot，原始單位為美元／乾公噸單位(dmtu)。",
-      "observationCount": 800,
+      "observationCount": 801,
       "firstPeriod": "1960-01",
-      "latestPeriod": "2026-08",
+      "latestPeriod": "2026-09",
       "observations": [
         {
           "period": "1960-01",
@@ -16101,6 +16117,10 @@
         {
           "period": "2026-08",
           "value": 96.3
+        },
+        {
+          "period": "2026-09",
+          "value": 97.7
         }
       ]
     },
@@ -16114,9 +16134,9 @@
       "sourceUnit": "($/bbl)",
       "isLmeDerived": false,
       "attributionNote": "資料提供：World Bank Pink Sheet；品項為布蘭特原油(Brent)。",
-      "observationCount": 800,
+      "observationCount": 801,
       "firstPeriod": "1960-01",
-      "latestPeriod": "2026-08",
+      "latestPeriod": "2026-09",
       "observations": [
         {
           "period": "1960-01",
@@ -19317,6 +19337,10 @@
         {
           "period": "2026-08",
           "value": 90.9
+        },
+        {
+          "period": "2026-09",
+          "value": 116.8
         }
       ]
     },
@@ -19330,9 +19354,9 @@
       "sourceUnit": "($/mmbtu)",
       "isLmeDerived": false,
       "attributionNote": "資料提供：World Bank Pink Sheet；品項為Natural gas, US，原始單位為美元／MMBtu。",
-      "observationCount": 800,
+      "observationCount": 801,
       "firstPeriod": "1960-01",
-      "latestPeriod": "2026-08",
+      "latestPeriod": "2026-09",
       "observations": [
         {
           "period": "1960-01",
@@ -22533,6 +22557,10 @@
         {
           "period": "2026-08",
           "value": 2.77
+        },
+        {
+          "period": "2026-09",
+          "value": 2.95
         }
       ]
     }
