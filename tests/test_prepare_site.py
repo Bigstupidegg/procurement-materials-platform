@@ -88,6 +88,14 @@ class PrepareSiteV23Tests(unittest.TestCase):
         finally:
             prepare_site.SITE = original_site
 
+    def test_world_bank_sync_timestamps_are_labeled_by_source(self):
+        js = (prepare_site.ASSETS / "world-bank-live.js").read_text(encoding="utf-8")
+        self.assertIn("World Bank 價格資料最後同步時間為", js)
+        self.assertIn("World Bank 最後同步：", js)
+        self.assertIn("World Bank同步時間", js)
+        self.assertNotIn("系統最後同步時間為", js)
+        self.assertNotIn("系統最後同步：", js)
+
     def test_freshness_panel_uses_same_origin_status(self):
         js = (prepare_site.ASSETS / "data-freshness.js").read_text(encoding="utf-8")
         for token in (
