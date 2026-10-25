@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-24T06:31:08Z",
+  "generatedAt": "2026-10-25T06:11:36Z",
   "dataMode": "WORLD_BANK_PRIMARY",
   "worldBank": {
     "status": "SUCCESS",
-    "lastAttemptAt": "2026-10-24T05:57:06Z",
-    "lastSuccessAt": "2026-10-24T05:57:06Z",
+    "lastAttemptAt": "2026-10-25T06:11:36Z",
+    "lastSuccessAt": "2026-10-25T06:11:36Z",
     "latestPeriod": "2026-09",
     "sourceUpdatedOn": "2026-10-02",
     "sourceSha256": "ea1c350827878ea3bbe30e3cda16a13fd3bd5b409b8458940dc94a36b5a33154",
