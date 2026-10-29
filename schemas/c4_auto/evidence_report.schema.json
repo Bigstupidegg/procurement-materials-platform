@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:c4-auto:schema:evidence-report:1.3.0",
+  "title": "C4-AUTO Evidence Report R1.3",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "stage_id", "run_id", "approval_boundary_id", "approval_identity", "contract_id", "contract_version", "contract_sha256", "manifest_sha256", "base_branch", "base_sha", "start_time", "end_time", "current_branch", "head_sha", "changed_files", "scope_drift", "remediation_cycles", "counterexamples", "targeted_tests", "focused_tests", "coupled_tests", "full_regression", "replay_e2e", "failed", "skipped", "hard_gate_triggered", "remaining_risks", "rollback_boundary", "event_chain", "acceptance_results", "candidate_seal_sha256", "ledger_tip_sha256", "verdict", "evidence_sha256"],
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "git_sha": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "basis": {"enum": ["OBSERVED", "DERIVED", "DECLARED", "NOT_VERIFIED"]},
+    "string_array": {"type": "array", "items": {"type": "string"}},
+    "artifact_reference": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "role", "sha256", "size"],
+      "properties": {"path": {"type": "string", "minLength": 1}, "role": {"type": "string", "minLength": 1}, "sha256": {"$ref": "#/$defs/hash"}, "size": {"type": "integer", "minimum": 0}}
+    },
+    "approval_identity": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "stage_id", "contract_sha256", "manifest_sha256", "approved_base_sha", "approval_id"],
+      "properties": {"schema_version": {"const": "c4_auto.approval_identity.v1"}, "stage_id": {"type": "string", "minLength": 1}, "contract_sha256": {"$ref": "#/$defs/hash"}, "manifest_sha256": {"$ref": "#/$defs/hash"}, "approved_base_sha": {"$ref": "#/$defs/git_sha"}, "approval_id": {"type": "string", "minLength": 1}}
+    },
+    "bootstrap_terminal": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "approval_boundary_id", "approval_identity", "state", "code", "detail", "timestamp", "ledger_tip_sha256", "latch_sha256"],
+      "properties": {"schema_version": {"const": "c4_auto.bootstrap_terminal.v1"}, "approval_boundary_id": {"$ref": "#/$defs/hash"}, "approval_identity": {"$ref": "#/$defs/approval_identity"}, "state": {"const": "HUMAN_REVIEW_REQUIRED"}, "code": {"type": "string", "minLength": 1}, "detail": {"type": "string"}, "timestamp": {"type": "string", "format": "date-time"}, "ledger_tip_sha256": {"anyOf": [{"$ref": "#/$defs/hash"}, {"type": "null"}]}, "latch_sha256": {"$ref": "#/$defs/hash"}}
+    },
+    "ledger_entry": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "sequence", "timestamp", "approval_boundary_id", "entry_type", "run_id", "previous_entry_sha256", "payload", "artifact_references", "entry_sha256"],
+      "properties": {"schema_version": {"const": "c4_auto.approval_ledger_entry.v1"}, "sequence": {"type": "integer", "minimum": 1}, "timestamp": {"type": "string", "format": "date-time"}, "approval_boundary_id": {"$ref": "#/$defs/hash"}, "entry_type": {"type": "string", "minLength": 1}, "run_id": {"type": ["string", "null"]}, "previous_entry_sha256": {"anyOf": [{"$ref": "#/$defs/hash"}, {"type": "null"}]}, "payload": {"type": "object"}, "artifact_references": {"type": "array", "items": {"$ref": "#/$defs/artifact_reference"}}, "entry_sha256": {"$ref": "#/$defs/hash"}}
+    },
+    "run_event": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "sequence", "timestamp", "run_id", "from_state", "state", "event_type", "basis", "payload", "previous_event_sha256", "event_sha256"],
+      "properties": {"schema_version": {"const": "c4_auto.run_event.v1"}, "sequence": {"type": "integer", "minimum": 1}, "timestamp": {"type": "string", "format": "date-time"}, "run_id": {"type": "string", "minLength": 1}, "from_state": {"type": ["string", "null"]}, "state": {"type": "string", "minLength": 1}, "event_type": {"type": "string", "minLength": 1}, "basis": {"$ref": "#/$defs/basis"}, "payload": {"type": "object"}, "previous_event_sha256": {"anyOf": [{"$ref": "#/$defs/hash"}, {"type": "null"}]}, "event_sha256": {"$ref": "#/$defs/hash"}}
+    },
+    "index_state_record": {
+      "oneOf": [
+        {"type": "object", "additionalProperties": false, "required": ["path", "index_present", "index_state"], "properties": {"path": {"type": "string", "minLength": 1}, "index_present": {"const": false}, "index_state": {"const": "INDEX_ABSENT"}}},
+        {"type": "object", "additionalProperties": false, "required": ["path", "index_present", "index_state", "stage_number", "blob_oid", "git_mode", "object_type"], "properties": {"path": {"type": "string", "minLength": 1}, "index_present": {"const": true}, "index_state": {"const": "INDEX_PRESENT"}, "stage_number": {"const": 0}, "blob_oid": {"type": "string", "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$"}, "git_mode": {"enum": ["100644", "100755"]}, "object_type": {"const": "blob"}}}
+      ]
+    },
+    "working_tree_state_record": {
+      "oneOf": [
+        {"type": "object", "additionalProperties": false, "required": ["path", "filesystem_present", "file_type"], "properties": {"path": {"type": "string", "minLength": 1}, "filesystem_present": {"const": false}, "file_type": {"const": "ABSENT"}}},
+        {"type": "object", "additionalProperties": false, "required": ["path", "filesystem_present", "file_type", "filesystem_mode", "size", "content_sha256"], "properties": {"path": {"type": "string", "minLength": 1}, "filesystem_present": {"const": true}, "file_type": {"const": "REGULAR"}, "filesystem_mode": {"type": "integer", "minimum": 0}, "size": {"type": "integer", "minimum": 0}, "content_sha256": {"$ref": "#/$defs/hash"}}}
+      ]
+    },
+    "candidate_seal": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "approval_boundary_id", "contract_sha256", "manifest_sha256", "base_sha", "head_sha", "test_baseline_sha256", "command_bindings", "sealed_path_patterns", "scope_universe", "index_state_records", "working_tree_state_records", "seal_sha256"],
+      "properties": {"schema_version": {"const": "c4_auto.candidate_seal.v2"}, "approval_boundary_id": {"$ref": "#/$defs/hash"}, "contract_sha256": {"$ref": "#/$defs/hash"}, "manifest_sha256": {"$ref": "#/$defs/hash"}, "base_sha": {"$ref": "#/$defs/git_sha"}, "head_sha": {"$ref": "#/$defs/git_sha"}, "test_baseline_sha256": {"$ref": "#/$defs/hash"}, "command_bindings": {"type": "object", "additionalProperties": {"$ref": "#/$defs/hash"}}, "sealed_path_patterns": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}}, "scope_universe": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}}, "index_state_records": {"type": "array", "items": {"$ref": "#/$defs/index_state_record"}}, "working_tree_state_records": {"type": "array", "items": {"$ref": "#/$defs/working_tree_state_record"}}, "seal_sha256": {"$ref": "#/$defs/hash"}}
+    },
+    "command_result": {
+      "type": "object",
+      "required": ["check_id", "kind", "tier", "attempt", "argv_safe", "argv_sha256", "executable_path", "executable_sha256", "started_at", "ended_at", "timeout_seconds", "timed_out", "exit_code", "expected_exit_codes", "required_sentinel", "sentinel_found", "stdout_sha256", "stderr_sha256", "log_references", "basis", "passed", "failure_reasons"],
+      "properties": {"check_id": {"type": "string", "minLength": 1}, "kind": {"enum": ["TEST", "VALIDATION", "REPLAY"]}, "tier": {"enum": ["targeted", "focused", "coupled", "full", "replay_e2e"]}, "attempt": {"type": "integer", "minimum": 1}, "argv_safe": {"const": true}, "argv_sha256": {"$ref": "#/$defs/hash"}, "executable_path": {"type": "string", "minLength": 1}, "executable_sha256": {"$ref": "#/$defs/hash"}, "started_at": {"type": "string", "format": "date-time"}, "ended_at": {"type": "string", "format": "date-time"}, "timeout_seconds": {"type": "integer", "minimum": 1}, "timed_out": {"type": "boolean"}, "exit_code": {"type": ["integer", "null"]}, "expected_exit_codes": {"type": "array", "items": {"type": "integer"}}, "expected_test_count": {"type": "integer", "minimum": 1}, "observed_test_count": {"type": ["integer", "null"]}, "count_error": {"type": ["string", "null"]}, "allowed_skips": {"$ref": "#/$defs/string_array"}, "observed_skips": {"$ref": "#/$defs/string_array"}, "unexpected_skips": {"$ref": "#/$defs/string_array"}, "required_sentinel": {"type": ["string", "null"]}, "sentinel_found": {"type": "boolean"}, "stdout_sha256": {"$ref": "#/$defs/hash"}, "stderr_sha256": {"$ref": "#/$defs/hash"}, "log_references": {"$ref": "#/$defs/string_array"}, "basis": {"const": "OBSERVED"}, "passed": {"type": "boolean"}, "failure_reasons": {"$ref": "#/$defs/string_array"}},
+      "allOf": [
+        {"if": {"properties": {"kind": {"const": "TEST"}}}, "then": {"required": ["expected_test_count", "observed_test_count", "count_error", "allowed_skips", "observed_skips", "unexpected_skips"]}, "else": {"not": {"anyOf": [{"required": ["expected_test_count"]}, {"required": ["observed_test_count"]}, {"required": ["count_error"]}, {"required": ["allowed_skips"]}, {"required": ["observed_skips"]}, {"required": ["unexpected_skips"]}]}}}
+      ],
+      "unevaluatedProperties": false
+    },
+    "event_ref": {
+      "type": "object", "additionalProperties": false,
+      "required": ["sequence", "state", "event_type", "event_sha256", "previous_event_sha256", "path"],
+      "properties": {"sequence": {"type": "integer", "minimum": 1}, "state": {"type": "string", "minLength": 1}, "event_type": {"type": "string", "minLength": 1}, "event_sha256": {"$ref": "#/$defs/hash"}, "previous_event_sha256": {"anyOf": [{"$ref": "#/$defs/hash"}, {"type": "null"}]}, "path": {"type": "string", "minLength": 1}}
+    }
+  },
+  "properties": {
+    "schema_version": {"const": "c4_auto.evidence_report.v1"}, "stage_id": {"type": "string", "minLength": 1}, "run_id": {"type": "string", "pattern": "^[A-Za-z0-9_.-]{1,96}$"}, "approval_boundary_id": {"$ref": "#/$defs/hash"}, "approval_identity": {"$ref": "#/$defs/approval_identity"}, "contract_id": {"const": "C4-AUTO-ENGINEERING-CONTRACT"}, "contract_version": {"const": "1.3.0"}, "contract_sha256": {"$ref": "#/$defs/hash"}, "manifest_sha256": {"$ref": "#/$defs/hash"}, "base_branch": {"type": "string", "minLength": 1}, "base_sha": {"$ref": "#/$defs/git_sha"}, "start_time": {"type": "string", "format": "date-time"}, "end_time": {"type": "string", "format": "date-time"}, "current_branch": {"type": "string", "minLength": 1}, "head_sha": {"$ref": "#/$defs/git_sha"},
+    "changed_files": {"type": "object", "additionalProperties": false, "required": ["committed", "staged", "unstaged", "untracked"], "properties": {"committed": {"$ref": "#/$defs/string_array"}, "staged": {"$ref": "#/$defs/string_array"}, "unstaged": {"$ref": "#/$defs/string_array"}, "untracked": {"$ref": "#/$defs/string_array"}}},
+    "scope_drift": {"$ref": "#/$defs/string_array"},
+    "remediation_cycles": {"type": "array", "maxItems": 2, "items": {"type": "object", "additionalProperties": false, "required": ["cycle_number", "run_id", "failure_id", "root_cause_status", "root_cause_detail", "change_class", "hard_gate_ids", "result"], "properties": {"cycle_number": {"type": "integer", "minimum": 1, "maximum": 2}, "run_id": {"type": "string", "minLength": 1}, "failure_id": {"type": "string", "minLength": 1}, "root_cause_status": {"enum": ["CONFIRMED_BOUNDED", "UNKNOWN", "AMBIGUOUS", "NOT_VERIFIED"]}, "root_cause_detail": {"type": "string", "minLength": 1}, "change_class": {"type": "string", "minLength": 1}, "hard_gate_ids": {"$ref": "#/$defs/string_array"}, "result": {"enum": ["AUTHORIZED", "REJECTED"]}}}},
+    "counterexamples": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["id", "invariant", "check_id", "expected_result"], "properties": {"id": {"type": "string", "minLength": 1}, "invariant": {"type": "string", "minLength": 1}, "check_id": {"type": "string", "minLength": 1}, "expected_result": {"type": "object", "additionalProperties": false, "required": ["passed", "failure_reasons"], "properties": {"passed": {"type": "boolean"}, "failure_reasons": {"$ref": "#/$defs/string_array"}}}}}},
+    "targeted_tests": {"type": "array", "items": {"$ref": "#/$defs/command_result"}}, "focused_tests": {"type": "array", "items": {"$ref": "#/$defs/command_result"}}, "coupled_tests": {"type": "array", "items": {"$ref": "#/$defs/command_result"}}, "full_regression": {"type": "array", "items": {"$ref": "#/$defs/command_result"}}, "replay_e2e": {"type": "array", "items": {"$ref": "#/$defs/command_result"}},
+    "failed": {"$ref": "#/$defs/string_array"}, "skipped": {"$ref": "#/$defs/string_array"}, "hard_gate_triggered": {"$ref": "#/$defs/string_array"}, "remaining_risks": {"$ref": "#/$defs/string_array"},
+    "rollback_boundary": {"type": "object", "additionalProperties": false, "required": ["reversible", "instructions"], "properties": {"reversible": {"const": true}, "instructions": {"$ref": "#/$defs/string_array"}}},
+    "event_chain": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/event_ref"}},
+    "acceptance_results": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["id", "basis", "passed", "observed"], "properties": {"id": {"type": "string", "minLength": 1}, "basis": {"$ref": "#/$defs/basis"}, "passed": {"type": "boolean"}, "observed": {}}}},
+    "candidate_seal_sha256": {"anyOf": [{"$ref": "#/$defs/hash"}, {"type": "null"}]}, "ledger_tip_sha256": {"$ref": "#/$defs/hash"}, "verdict": {"enum": ["PASS_CANDIDATE", "FAIL", "HUMAN_REVIEW_REQUIRED"]}, "evidence_sha256": {"$ref": "#/$defs/hash"}
+  }
+}
