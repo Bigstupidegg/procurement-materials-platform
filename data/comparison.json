@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-11-05T07:56:05Z",
+  "generatedAt": "2026-11-05T08:33:42Z",
   "isRealData": true,
   "primarySource": "WORLD_BANK_PINK_SHEET",
   "comparisonSource": "FRED",
@@ -11834,19 +11834,19 @@
       },
       "fred": {
         "seriesId": "MCOILBRENTEU",
-        "latestPeriod": "2026-09",
+        "latestPeriod": "2026-10",
         "displayUnit": "桶(bbl)",
         "sourceUnits": "Dollars per Barrel"
       },
-      "overlapCount": 473,
+      "overlapCount": 474,
       "firstOverlapPeriod": "1987-05",
-      "latestOverlapPeriod": "2026-09",
+      "latestOverlapPeriod": "2026-10",
       "comparisonAvailable": true,
       "comparisonReason": null,
-      "latestWorldBankValue": 116.8,
-      "latestFredValue": 114.16,
-      "latestDifferencePercentVsWorldBank": -2.260274,
-      "recent12MonthMeanAbsoluteDifferencePercent": 0.647438,
+      "latestWorldBankValue": 125,
+      "latestFredValue": 123.93,
+      "latestDifferencePercentVsWorldBank": -0.856,
+      "recent12MonthMeanAbsoluteDifferencePercent": 0.698163,
       "recent12MonthMaxAbsoluteDifferencePercent": 2.583056,
       "observations": [
         {
@@ -15159,6 +15159,13 @@
           "fredValue": 114.16,
           "differenceFredMinusWorldBank": -2.64,
           "differencePercentVsWorldBank": -2.260274
+        },
+        {
+          "period": "2026-10",
+          "worldBankValue": 125,
+          "fredValue": 123.93,
+          "differenceFredMinusWorldBank": -1.07,
+          "differencePercentVsWorldBank": -0.856
         }
       ]
     },
@@ -15173,19 +15180,19 @@
       },
       "fred": {
         "seriesId": "MHHNGSP",
-        "latestPeriod": "2026-09",
+        "latestPeriod": "2026-10",
         "displayUnit": "MMBtu",
         "sourceUnits": "Dollars per Million BTU"
       },
-      "overlapCount": 357,
+      "overlapCount": 358,
       "firstOverlapPeriod": "1997-01",
-      "latestOverlapPeriod": "2026-09",
+      "latestOverlapPeriod": "2026-10",
       "comparisonAvailable": true,
       "comparisonReason": null,
-      "latestWorldBankValue": 2.95,
-      "latestFredValue": 2.95,
-      "latestDifferencePercentVsWorldBank": 0,
-      "recent12MonthMeanAbsoluteDifferencePercent": 0.335639,
+      "latestWorldBankValue": 2.96,
+      "latestFredValue": 2.99,
+      "latestDifferencePercentVsWorldBank": 1.013514,
+      "recent12MonthMeanAbsoluteDifferencePercent": 0.394057,
       "recent12MonthMaxAbsoluteDifferencePercent": 1.846966,
       "observations": [
         {
@@ -17686,6 +17693,13 @@
           "fredValue": 2.95,
           "differenceFredMinusWorldBank": 0,
           "differencePercentVsWorldBank": 0
+        },
+        {
+          "period": "2026-10",
+          "worldBankValue": 2.96,
+          "fredValue": 2.99,
+          "differenceFredMinusWorldBank": 0.03,
+          "differencePercentVsWorldBank": 1.013514
         }
       ]
     }
