@@ -87,7 +87,7 @@ function addPanel(){
       <span id="nrStatus" role="status">完成有效Should-Cost分析後即可匯出。</span>
     </div>
 
-    <article class="nr-report" id="nrReport" aria-live="polite">
+    <article class="nr-report" id="nrReport" aria-live="polite" hidden>
       <header class="nr-report-header">
         <div>
           <div class="nr-report-kicker">INTERNATIONAL RAW MATERIALS PROCUREMENT ANALYTICS</div>
@@ -255,6 +255,8 @@ function render(snapshot){
   $('#nrState').textContent=valid?'摘要可匯出':'等待有效分析';
   $('#nrState').className=`nr-state ${valid?'ready':'waiting'}`;
   $('#nrStatus').textContent=valid?'摘要已同步目前Should-Cost欄位與合理性判讀。':'暫停匯出：'+snapshot.reason;
+  $('#nrReport').hidden=!valid;
+  if(!valid)return;
   if(!snapshot.values)return;
 
   setText('nrOutTime',snapshot.generatedAt);
