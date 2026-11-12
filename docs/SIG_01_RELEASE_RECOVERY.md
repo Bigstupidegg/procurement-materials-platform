@@ -94,3 +94,21 @@ Those remain release-time checks at the existing Human Gate.
 Primary action documentation:
 - https://github.com/actions/download-artifact
 - https://github.com/actions/upload-pages-artifact
+# Production archive compatibility (2026-11-12)
+
+The first versioned run, 43192958277, published source
+`d7aec129aa00fcf02ccb7a90c3676f95f2168e57`, release
+`ba7a8100a467de69dd4b`. `upload-pages-artifact@v4` omitted its empty
+`.nojekyll` marker despite the unsupported `include-hidden-files` input.
+The follow-up publisher correctly blocked the incomplete tree before upload.
+The publisher now creates the complete `artifact.tar` explicitly and uploads
+that single file with `upload-artifact`, preserving the Pages deployment format.
+
+History import may reconstruct a missing empty `.nojekyll` only when the
+complete release subtree then matches its original sealed hash. The original
+publication hash, all retained release hashes, source ancestry, and downloaded
+ZIP digest must still pass. No manifest is resealed to accept altered payloads.
+Duplicate events for the same source reuse the retained release only after
+comparing every candidate file and its manifest with the immutable copy;
+different bytes at the same release ID block publication.
+

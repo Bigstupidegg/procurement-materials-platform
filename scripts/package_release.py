@@ -12,6 +12,7 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 from datetime import date
 from pathlib import Path
 
@@ -199,10 +200,6 @@ def package_release(root: Path, site: Path, output: Path, source_commit: str,
         verify_release(previous_site, read_json(previous_site / PUBLICATION)["releaseId"])
         shutil.copytree(previous_site / "releases", output / "releases")
     release = output / "releases" / fingerprint
-    require(not release.exists(), "release ID already retained")
-    shutil.copytree(site, release)
-    (release / "config").mkdir(exist_ok=True)
-    shutil.copy2(root / "config" / "release.json", release / "config" / "release.json")
     index = output / "index.html"
     index.write_text(
         '<!doctype html><html lang="zh-Hant"><meta charset="utf-8">'
@@ -213,18 +210,27 @@ def package_release(root: Path, site: Path, output: Path, source_commit: str,
         f'<script>location.replace("./releases/{fingerprint}/index.html"+location.search+location.hash)</script>'
         '</html>', encoding="utf-8"
     )
-    manifest = {
-        "schemaVersion": 2, "releaseId": fingerprint, "sourceCommit": source_commit,
-        "projectBasePath": "/procurement-materials-platform/",
-        "legacyRootCommit": "d55d156556368570ac4a5b290b5d9762019a61ca",
-        "legacyRootHashes": legacy_hashes,
-        "hashes": hashes,
-        "releaseTreeSha256": tree_hash(release),
-    }
-    (release / "release-manifest.json").write_text(
-        json.dumps(manifest, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
-        encoding="utf-8",
-    )
+    with tempfile.TemporaryDirectory(prefix="pages-candidate-") as temporary:
+        candidate = Path(temporary) / fingerprint
+        shutil.copytree(site, candidate)
+        (candidate / "config").mkdir(exist_ok=True)
+        shutil.copy2(root / "config/release.json", candidate / "config/release.json")
+        manifest = {
+            "schemaVersion": 2, "releaseId": fingerprint, "sourceCommit": source_commit,
+            "projectBasePath": "/procurement-materials-platform/",
+            "legacyRootCommit": "d55d156556368570ac4a5b290b5d9762019a61ca",
+            "legacyRootHashes": legacy_hashes,
+            "hashes": hashes,
+            "releaseTreeSha256": tree_hash(candidate),
+        }
+        (candidate / "release-manifest.json").write_text(
+            json.dumps(manifest, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        if release.exists():
+            require(tree_hash(release) == tree_hash(candidate), "immutable release collision")
+        else:
+            shutil.copytree(candidate, release)
     publication = seal_publication(output, fingerprint, "forward")
     verify_release(output, fingerprint)
     return publication

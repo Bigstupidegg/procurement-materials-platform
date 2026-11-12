@@ -135,6 +135,17 @@ def unpack(download: Path, output: Path, root: Path, source: str) -> dict:
         output.mkdir(parents=True)
         archive.extractall(output, members=members, filter="data")
     publication = read_json(output / PUBLICATION)
+    # upload-pages-artifact@v4 omitted this empty marker from the first release.
+    # Reconstruct only a missing empty marker whose complete subtree hash then
+    # matches the original seal. Never reseal or relax verification of any bytes.
+    for directory in (output / "releases").iterdir():
+        metadata = read_json(directory / "release-manifest.json")
+        marker = directory / ".nojekyll"
+        if (not marker.exists() and tree_hash(directory, {"release-manifest.json"})
+                != metadata.get("releaseTreeSha256")):
+            marker.touch()
+            if tree_hash(directory, {"release-manifest.json"}) != metadata.get("releaseTreeSha256"):
+                marker.unlink()
     verify_release(output, publication["releaseId"])
     ancestor(root, publication["sourceCommit"], source)
     return publication

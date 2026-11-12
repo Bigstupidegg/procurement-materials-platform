@@ -22,6 +22,7 @@ class RetainedReleaseTests(unittest.TestCase):
         self.fixture.setUp()
         self.addCleanup(self.fixture.doCleanups)
         self.root, self.site = self.fixture.root, self.fixture.root / "_site"
+        (self.site / ".nojekyll").touch()
         self.base = Path(self.fixture.temp.name)
         self.first = self.base / "first"
         self.one = release.package_release(self.root, self.site, self.first,
@@ -102,6 +103,68 @@ class RetainedReleaseTests(unittest.TestCase):
         ancestry.assert_called_once_with(self.root, "1" * 40, "2" * 40)
         self.assertEqual(result, self.one)
         self.assertEqual(release.tree_hash(output), release.tree_hash(self.first))
+
+    def test_production_tar_command_preserves_hidden_marker_and_full_hash(self):
+        download = self.base / "complete-download"
+        download.mkdir()
+        subprocess.run(["tar", "--directory", str(self.first), "-cf",
+                        str(download / "artifact.tar"), "."], check=True)
+        with patch.object(history, "ancestor"):
+            result = history.unpack(download, self.base / "complete-out", self.root, "2" * 40)
+        self.assertEqual(result, self.one)
+        self.assertEqual(release.tree_hash(self.base / "complete-out"),
+                         release.tree_hash(self.first))
+
+    def test_first_pages_archive_missing_only_empty_marker_recovers_original_seal(self):
+        download = self.base / "omitted-marker"
+        download.mkdir()
+        with tarfile.open(download / "artifact.tar", "w") as archive:
+            archive.add(self.first, arcname=".",
+                        filter=lambda member: None if member.name.endswith("/.nojekyll") else member)
+        with patch.object(history, "ancestor"):
+            result = history.unpack(download, self.base / "repaired", self.root, "2" * 40)
+        self.assertEqual(result, self.one)
+        self.assertEqual(release.tree_hash(self.base / "repaired"), release.tree_hash(self.first))
+
+    def test_marker_reconstruction_cannot_repair_missing_or_changed_payload(self):
+        original_index = (self.first / "index.html").read_bytes()
+        for kind in ("missing", "changed", "nonempty-marker"):
+            with self.subTest(kind=kind):
+                (self.first / "index.html").write_bytes(original_index)
+                (self.first / "releases" / self.one["releaseId"] / ".nojekyll").write_bytes(b"")
+                download = self.base / kind
+                download.mkdir()
+                if kind == "nonempty-marker":
+                    (self.first / "releases" / self.one["releaseId"] / ".nojekyll").write_text("x")
+                def selected(member):
+                    if kind != "nonempty-marker" and member.name.endswith("/.nojekyll"):
+                        return None
+                    if kind == "missing" and member.name.endswith("/assets/trend-signals.js"):
+                        return None
+                    return member
+                if kind == "changed":
+                    (self.first / "index.html").write_text("tampered")
+                with tarfile.open(download / "artifact.tar", "w") as archive:
+                    archive.add(self.first, arcname=".", filter=selected)
+                with self.assertRaises(release.ReleaseBlocked):
+                    history.unpack(download, self.base / (kind + "-out"), self.root, "2" * 40)
+
+    def test_duplicate_source_reuses_only_identical_immutable_release(self):
+        second, two = self.next_release(self.first, "duplicate", "1")
+        self.assertEqual(two, self.one)
+        self.assertEqual(release.tree_hash(second), release.tree_hash(self.first))
+        (self.site / "index.html").write_text("changed prepared HTML")
+        with self.assertRaisesRegex(release.ReleaseBlocked, "immutable release collision"):
+            self.next_release(self.first, "collision", "1")
+
+    def test_forward_after_rollback_can_reactivate_identical_retained_release(self):
+        second, two = self.next_release(self.first, "second", "2")
+        restored = self.base / "restored"
+        history.recover(second, self.first, restored, 101)
+        forward, result = self.next_release(restored, "forward-again", "2")
+        self.assertEqual(result["releaseId"], two["releaseId"])
+        self.assertEqual(result["retainedReleaseIds"], [self.one["releaseId"]])
+        self.assertEqual(release.tree_hash(forward), release.tree_hash(second))
 
     def test_unsafe_tar_paths_links_devices_and_duplicates_are_rejected(self):
         for kind in ("parent", "absolute", "symlink", "hardlink", "device", "duplicate"):
