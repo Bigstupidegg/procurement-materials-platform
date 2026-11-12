@@ -12,9 +12,15 @@ on:
     types: [completed]
     branches: [main]
   workflow_dispatch:
+    inputs:
+      rollback_run_id:
+        description: "Reviewed successful Pages run to restore; empty means normal publication"
+        required: false
+        type: string
 
 permissions:
   contents: read
+  actions: read
   pages: write
   id-token: write
 
@@ -74,10 +80,44 @@ jobs:
           node --check assets/trend-signals.js
           node --check assets/supplier-rationality.js
 
+      - name: Select trusted deployed artifact history
+        id: history
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ROLLBACK_RUN_ID: ${{ inputs.rollback_run_id }}
+        run: python scripts/release_history.py select --source-commit "${{ steps.source.outputs.sha }}" --selection "$RUNNER_TEMP/history.json"
+
+      - name: Download last deployed Pages artifact
+        if: steps.history.outputs.latest_runId != ''
+        uses: actions/download-artifact@v8
+        with:
+          artifact-ids: ${{ steps.history.outputs.latest_artifactId }}
+          run-id: ${{ steps.history.outputs.latest_runId }}
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+          digest-mismatch: error
+          path: ${{ runner.temp }}/download-latest
+
+      - name: Download reviewed rollback artifact
+        if: steps.history.outputs.target_runId != ''
+        uses: actions/download-artifact@v8
+        with:
+          artifact-ids: ${{ steps.history.outputs.target_artifactId }}
+          run-id: ${{ steps.history.outputs.target_runId }}
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+          digest-mismatch: error
+          path: ${{ runner.temp }}/download-target
+
+      - name: Verify history and prepare reviewed recovery
+        run: python scripts/release_history.py prepare --source-commit "${{ steps.source.outputs.sha }}" --selection "$RUNNER_TEMP/history.json"
+
       - name: Prepare website from pinned commit
+        if: steps.history.outputs.target_runId == ''
         run: python scripts/prepare_site.py
 
       - name: Rebuild the pinned trusted legacy root for cached clients
+        if: steps.history.outputs.target_runId == ''
         run: |
           git worktree add --detach "$RUNNER_TEMP/legacy-root" d55d156556368570ac4a5b290b5d9762019a61ca
           test "$(git -C "$RUNNER_TEMP/legacy-root" rev-parse HEAD)" = "d55d156556368570ac4a5b290b5d9762019a61ca"
@@ -86,7 +126,13 @@ jobs:
           cp "$RUNNER_TEMP/legacy-root/config/release.json" "$RUNNER_TEMP/legacy-root/_site/config/release.json"
 
       - name: Validate and package versioned release
-        run: python scripts/package_release.py --source-commit "${{ steps.source.outputs.sha }}" --legacy-site "$RUNNER_TEMP/legacy-root/_site"
+        if: steps.history.outputs.target_runId == ''
+        run: |
+          extra=()
+          if [ -d "$RUNNER_TEMP/site-latest" ]; then
+            extra+=(--previous-site "$RUNNER_TEMP/site-latest")
+          fi
+          python scripts/package_release.py --source-commit "${{ steps.source.outputs.sha }}" --legacy-site "$RUNNER_TEMP/legacy-root/_site" "${extra[@]}"
 
       - name: Recheck main immediately before artifact upload
         run: |
@@ -109,17 +155,26 @@ jobs:
         env:
           ARTIFACT_ID: ${{ steps.pages_artifact.outputs.artifact_id }}
           RELEASE_SHA: ${{ steps.source.outputs.sha }}
+          ROLLBACK_RUN_ID: ${{ steps.history.outputs.target_runId }}
         run: |
           set -euo pipefail
           test -n "$ARTIFACT_ID"
           python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
-          import json, pathlib, os
-          manifests=list(pathlib.Path('_release_site/releases').glob('*/release-manifest.json'))
-          assert len(manifests)==1
-          m=json.loads(manifests[0].read_text(encoding='utf-8'))
-          assert m['sourceCommit']==os.environ['RELEASE_SHA']
+          import json, pathlib, os, subprocess
+          from scripts.package_release import verify_release
+          site=pathlib.Path('_release_site')
+          m=json.loads((site/'publication-manifest.json').read_text(encoding='utf-8'))
+          verify_release(site,m['releaseId'])
+          if os.environ['ROLLBACK_RUN_ID']:
+            assert m['mode']=='rollback'
+            assert str(m['recoveredFromRun'])==os.environ['ROLLBACK_RUN_ID']
+            subprocess.run(['git','merge-base','--is-ancestor',m['sourceCommit'],os.environ['RELEASE_SHA']],check=True)
+          else:
+            assert m['mode']=='forward' and m['sourceCommit']==os.environ['RELEASE_SHA']
           print('Release ID:',m['releaseId'])
           print('Source commit:',m['sourceCommit'])
+          print('Publication mode:',m['mode'])
+          print('Retained releases:',len(m['retainedReleaseIds']))
           print('Payload tree SHA-256:',m['artifactTreeSha256'])
           print('Pages artifact ID:',os.environ['ARTIFACT_ID'])
           PY

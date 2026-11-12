@@ -278,7 +278,7 @@ class ReleasePackageTests(unittest.TestCase):
         shutil.copytree(self.output, preserved)
         release.verify_release(preserved, first["releaseId"])
         self.assertEqual(release.tree_hash(preserved, {
-            f'releases/{first["releaseId"]}/release-manifest.json'
+            release.PUBLICATION
         }), first["artifactTreeSha256"])
 
     def test_missing_manifest_or_artifact_hash(self):

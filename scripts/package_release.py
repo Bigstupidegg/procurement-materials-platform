@@ -21,6 +21,9 @@ OFFSETS = {"oneMonthPercent": 1, "threeMonthPercent": 3,
 SHA = re.compile(r"^[0-9a-f]{64}$")
 COMMIT = re.compile(r"^[0-9a-f]{40}$")
 MONTH = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
+RELEASE_ID = re.compile(r"^[0-9a-f]{20}$")
+PUBLICATION = "publication-manifest.json"
+MAX_SITE_BYTES = 900 * 1024 * 1024
 
 
 class ReleaseBlocked(RuntimeError):
@@ -164,7 +167,7 @@ def tree_hash(root: Path, exclude: set[str] | None = None) -> str:
 
 
 def package_release(root: Path, site: Path, output: Path, source_commit: str,
-                    legacy_site: Path) -> dict:
+                    legacy_site: Path, previous_site: Path | None = None) -> dict:
     require(bool(COMMIT.fullmatch(source_commit)), "invalid source commit")
     hashes = validate_sources(root)
     require(site.is_dir() and (site / "index.html").is_file(), "missing prepared site")
@@ -192,7 +195,11 @@ def package_release(root: Path, site: Path, output: Path, source_commit: str,
     legacy_hashes = {"assets": tree_hash(output / "assets"),
                      "data": tree_hash(output / "data"),
                      "config": tree_hash(output / "config")}
+    if previous_site is not None:
+        verify_release(previous_site, read_json(previous_site / PUBLICATION)["releaseId"])
+        shutil.copytree(previous_site / "releases", output / "releases")
     release = output / "releases" / fingerprint
+    require(not release.exists(), "release ID already retained")
     shutil.copytree(site, release)
     (release / "config").mkdir(exist_ok=True)
     shutil.copy2(root / "config" / "release.json", release / "config" / "release.json")
@@ -207,29 +214,71 @@ def package_release(root: Path, site: Path, output: Path, source_commit: str,
         '</html>', encoding="utf-8"
     )
     manifest = {
-        "schemaVersion": 1, "releaseId": fingerprint, "sourceCommit": source_commit,
+        "schemaVersion": 2, "releaseId": fingerprint, "sourceCommit": source_commit,
         "projectBasePath": "/procurement-materials-platform/",
         "legacyRootCommit": "d55d156556368570ac4a5b290b5d9762019a61ca",
         "legacyRootHashes": legacy_hashes,
         "hashes": hashes,
-        "artifactTreeSha256": tree_hash(output),
+        "releaseTreeSha256": tree_hash(release),
     }
     (release / "release-manifest.json").write_text(
         json.dumps(manifest, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
         encoding="utf-8",
     )
+    publication = seal_publication(output, fingerprint, "forward")
     verify_release(output, fingerprint)
-    return manifest
+    return publication
+
+
+def seal_publication(output: Path, release_id: str, mode: str,
+                     recovered_from_run: int | None = None) -> dict:
+    """Seal mutable publication metadata without rewriting immutable releases."""
+    require(bool(RELEASE_ID.fullmatch(release_id)), "invalid release ID")
+    require(mode in ("forward", "rollback"), "invalid publication mode")
+    require(sum(p.stat().st_size for p in output.rglob("*") if p.is_file()) <= MAX_SITE_BYTES,
+            "Pages history exceeds supported size; refusing to discard releases")
+    release = read_json(output / "releases" / release_id / "release-manifest.json")
+    publication = {
+        "schemaVersion": 1, "releaseId": release_id,
+        "sourceCommit": release["sourceCommit"], "mode": mode,
+        "retainedReleaseIds": sorted(p.name for p in (output / "releases").iterdir()
+                                     if p.name != release_id),
+        "artifactTreeSha256": tree_hash(output, {PUBLICATION}),
+    }
+    if recovered_from_run is not None:
+        publication["recoveredFromRun"] = recovered_from_run
+    (output / PUBLICATION).write_text(
+        json.dumps(publication, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+    return publication
 
 
 def verify_release(output: Path, release_id: str) -> None:
+    require(bool(RELEASE_ID.fullmatch(release_id)), "invalid release ID")
+    publication = read_json(output / PUBLICATION)
+    require(publication.get("schemaVersion") == 1
+            and publication.get("releaseId") == release_id
+            and publication.get("mode") in ("forward", "rollback"), "publication identity mismatch")
+    require(tree_hash(output, {PUBLICATION}) == publication.get("artifactTreeSha256"),
+            "artifact hash mismatch")
+    retained = publication.get("retainedReleaseIds")
+    require(isinstance(retained, list)
+            and all(isinstance(value, str) and RELEASE_ID.fullmatch(value) for value in retained)
+            and release_id not in retained and len(set(retained)) == len(retained),
+            "invalid retained release IDs")
+    require(set(p.name for p in (output / "releases").iterdir()) == set(retained) | {release_id},
+            "retained release set mismatch")
+    for rid in [release_id, *retained]:
+        directory = output / "releases" / rid
+        metadata = read_json(directory / "release-manifest.json")
+        require(metadata.get("schemaVersion") == 2 and metadata.get("releaseId") == rid
+                and bool(COMMIT.fullmatch(str(metadata.get("sourceCommit", ""))))
+                and tree_hash(directory, {"release-manifest.json"})
+                == metadata.get("releaseTreeSha256"), "retained release hash mismatch")
     manifest = read_json(output / "releases" / release_id / "release-manifest.json")
     require(manifest.get("releaseId") == release_id and bool(COMMIT.fullmatch(
-        str(manifest.get("sourceCommit", "")))), "release manifest identity mismatch")
-    require(bool(SHA.fullmatch(str(manifest.get("artifactTreeSha256", "")))),
-            "missing artifact hash")
-    require(tree_hash(output, {f"releases/{release_id}/release-manifest.json"})
-            == manifest["artifactTreeSha256"], "artifact hash mismatch")
+        str(manifest.get("sourceCommit", ""))))
+        and publication.get("sourceCommit") == manifest["sourceCommit"],
+        "release manifest identity mismatch")
     root_index = (output / "index.html").read_text(encoding="utf-8")
     require(f"./releases/{release_id}/index.html" in root_index,
             "wrong project-site release path")
@@ -301,6 +350,7 @@ def main() -> None:
     parser.add_argument("--source-commit", required=True)
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1])
     parser.add_argument("--legacy-site", type=Path, required=True)
+    parser.add_argument("--previous-site", type=Path)
     args = parser.parse_args()
     root = args.root.resolve()
     if os.environ.get("GITHUB_ACTIONS") == "true":
@@ -314,7 +364,8 @@ def main() -> None:
             and subprocess.run(["git", "-C", str(root), "diff", "--cached", "--quiet"]).returncode == 0,
             "tracked source changed during build")
     manifest = package_release(root, root / "_site", root / "_release_site",
-                               args.source_commit, args.legacy_site.resolve())
+                               args.source_commit, args.legacy_site.resolve(),
+                               args.previous_site.resolve() if args.previous_site else None)
     print(json.dumps({"releaseId": manifest["releaseId"],
                       "sourceCommit": manifest["sourceCommit"],
                       "artifactTreeSha256": manifest["artifactTreeSha256"]}, sort_keys=True))
