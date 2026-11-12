@@ -14,6 +14,8 @@ let status=null;
 let activeFilter='ALL';
 let carryPeriodKey='sixMonthPercent';
 let lastTransfer=null;
+let manualRateEdited=false;
+let applyingTransfer=false;
 
 const $=selector=>document.querySelector(selector);
 const esc=value=>String(value??'')
@@ -22,7 +24,7 @@ const esc=value=>String(value??'')
   .replace(/>/g,'&gt;')
   .replace(/"/g,'&quot;')
   .replace(/'/g,'&#39;');
-const finite=value=>Number.isFinite(Number(value));
+const finite=value=>typeof value==='number'&&Number.isFinite(value);
 const number=(value,decimals)=>{
   if(!finite(value))return '—';
   const numeric=Number(value);
@@ -40,6 +42,9 @@ const signedPercent=value=>{
   const numeric=Number(value);
   return (numeric>0?'▲ +':numeric<0?'▼ ':'— ')+number(numeric,2)+'%';
 };
+const monthIndex=value=>/^\d{4}-(0[1-9]|1[0-2])$/.test(String(value))
+  ?Number(String(value).slice(0,4))*12+Number(String(value).slice(5))
+  :null;
 const direction=value=>Number(value)>0.0005?'up':Number(value)<-0.0005?'down':'flat';
 const taipei=iso=>{
   const date=new Date(iso);
@@ -97,7 +102,7 @@ function addSection(){
   section.id='signals';
   section.innerHTML=`
     <h1 class="page-title">材料趨勢與議價訊號</h1>
-    <p class="page-desc">將World Bank月度價格轉成採購可執行的市場訊號；可選擇1、3、6或12個月變化率，一鍵帶入Should-Cost試算器。FRED僅用於來源一致性檢查。</p>
+    <p class="page-desc">World Bank月度行情的規則式提示；訊號觸發期間與Should-Cost帶入期間可能不同。可明確選擇1、3、6或12個月變化率；預設6個月。HIGH不代表未來必漲、供應商應調價、立即採購或節省承諾。FRED僅作交叉核對。</p>
 
     <div class="sig-policy" role="note">
       <div><span class="tag">TREND</span><b>World Bank決定市場方向</b><span>使用1、3、6、12個月變化與近12月價格位置。</span></div>
@@ -161,11 +166,16 @@ function validate(){
     signals?.signalPolicy?.automaticSupplierPriceDecision!==false
   )throw Error('議價訊號政策不符合平台規則');
 
-  if(status?.dataMode!=='WORLD_BANK_PRIMARY'||status?.worldBank?.status!=='SUCCESS'){
+  if(status?.isStale===true||status?.dataMode!=='WORLD_BANK_PRIMARY'||status?.worldBank?.status!=='SUCCESS'){
     throw Error('status.json未顯示World Bank主資料成功');
   }
   if(signals.latestPeriod!==status.worldBank.latestPeriod){
     throw Error('議價訊號月份與World Bank最新月份不一致');
+  }
+  if(!/^[a-f0-9]{64}$/i.test(String(signals.sourceSha256||''))||
+     signals.sourceSha256.toLowerCase()!==String(status.worldBank.sourceSha256||'').toLowerCase()||
+     signals.sourceUpdatedOn!==status.worldBank.sourceUpdatedOn){
+    throw Error('議價訊號與World Bank狀態的來源版本不一致');
   }
 
   ORDER.forEach(id=>{
@@ -173,9 +183,22 @@ function validate(){
     if(!item||item.id!==id||!item.negotiationSignal||!item.trend||!item.changes){
       throw Error(id+'議價訊號結構不完整');
     }
+    if(item.latestPeriod!==signals.latestPeriod||item.currency!=='USD'||
+       !item.sourceUnit||!item.displayUnit){
+      throw Error(id+'的月份、幣別或單位不符合帶入契約');
+    }
+    if(!['3M','3M+6M','6M','6M+12M_AVERAGE','NONE'].includes(item.negotiationSignal.triggerWindow)){
+      throw Error(id+'缺少訊號觸發期間');
+    }
+    const latestIndex=monthIndex(item.latestPeriod);
+    if(latestIndex===null)throw Error(id+'來源月份格式錯誤');
+    const offsets={oneMonthPercent:1,threeMonthPercent:3,sixMonthPercent:6,twelveMonthPercent:12};
     Object.keys(CARRY_PERIODS).forEach(key=>{
-      if(!finite(item.changes[key]))throw Error(id+'缺少'+key);
-      if(Number(item.changes[key])<-100)throw Error(id+'的'+key+'低於試算器可接受範圍');
+      if(!finite(item.changes[key]))throw Error(id+'缺少有效'+key);
+      if(item.changes[key]<-100)throw Error(id+'的'+key+'低於試算器可接受範圍');
+      if(monthIndex(item.changeBasePeriods?.[key])!==latestIndex-offsets[key]){
+        throw Error(id+'的'+key+'比較基準月不符合期間');
+      }
     });
   });
 }
@@ -232,7 +255,7 @@ function card(item){
       <div class="sig-carry">
         <div class="sig-carry-copy">
           <b>帶入Should-Cost試算器</b>
-          <span>只更新「原材料價格變化率」，其餘成本欄位維持目前輸入值。</span>
+          <span>只更新「原材料價格變化率」；若該欄位已手動修改，將停止帶入並保留您的輸入。</span>
         </div>
         <button class="btn primary sig-carry-btn" type="button" data-carry-material="${esc(item.id)}">帶入${esc(carryMeta.label)}變化率</button>
       </div>
@@ -247,11 +270,12 @@ function card(item){
         <p>${esc(item.trend.summary)}</p>
       </div>
       <div class="sig-block">
-        <div class="title">訊號判讀</div>
+        <div class="title">訊號判讀・觸發依據 ${esc(signal.triggerWindow)}</div>
         <div class="headline">${esc(signal.marketInterpretation)}</div>
+        <p>3M：${esc(period(item.changeBasePeriods.threeMonthPercent))} → ${esc(period(item.latestPeriod))}；6M：${esc(period(item.changeBasePeriods.sixMonthPercent))} → ${esc(period(item.latestPeriod))}。期間不同，方向可能不同。</p>
       </div>
       <div class="sig-action">
-        <div class="title">建議採購動作</div>
+        <div class="title">建議核實事項（非自動採購決策）</div>
         <p>${esc(signal.recommendedAction)}</p>
       </div>
       <div class="sig-check"><b>核實重點：</b>${esc(signal.supplierClaimCheck)}</div>
@@ -269,7 +293,7 @@ function renderSummary(){
     if(item.negotiationSignal.priority==='HIGH')counts.HIGH++;
   });
   $('#sigSummary').innerHTML=`
-    <div class="sig-summary-box"><div class="label">高優先訊號</div><div class="value">${counts.HIGH}</div><div class="detail">需優先進行供應商核實或議價</div></div>
+    <div class="sig-summary-box"><div class="label">高優先訊號</div><div class="value">${counts.HIGH}</div><div class="detail">需優先核對市場資料與供應商證據</div></div>
     <div class="sig-summary-box"><div class="label">降價／挑戰漲價</div><div class="value">${counts.DOWN}</div><div class="detail">市場方向偏弱</div></div>
     <div class="sig-summary-box"><div class="label">上漲核實</div><div class="value">${counts.UP}</div><div class="detail">先驗證成本傳導</div></div>
     <div class="sig-summary-box"><div class="label">盤整觀察</div><div class="value">${counts.MONITOR}</div><div class="detail">以條件與觸發門檻議價</div></div>`;
@@ -338,9 +362,10 @@ function ensureCalculatorContext(){
     </div>
     <div class="calc-market-context-grid">
       <div><span>材料</span><b id="calcMarketContextMaterial">—</b></div>
-      <div><span>採用期間</span><b id="calcMarketContextWindow">—</b></div>
+      <div><span>採用期間與基準月</span><b id="calcMarketContextWindow">—</b></div>
       <div><span>帶入變化率</span><b id="calcMarketContextValue">—</b></div>
       <div><span>價格來源</span><b>World Bank Pink Sheet</b></div>
+      <div><span>來源版本日期</span><b id="calcMarketContextSourceVersion">—</b></div>
     </div>
     <p id="calcMarketContextNote">本次只更新「原材料價格變化率」；材料成本占比、供應商要求漲幅、匯率、加工、能源與其他成本維持原值。FRED僅作交叉核對。</p>`;
   description.insertAdjacentElement('afterend',context);
@@ -361,8 +386,16 @@ function renderCalculatorContext(){
     :'Should-Cost市場資料已套用';
   $('#calcMarketContextPeriod').textContent='資料 '+period(lastTransfer.latestPeriod);
   $('#calcMarketContextMaterial').textContent=`${lastTransfer.nameZh} ${lastTransfer.nameEn}`;
-  $('#calcMarketContextWindow').textContent=CARRY_PERIODS[lastTransfer.periodKey].label;
+  $('#calcMarketContextWindow').textContent=
+    CARRY_PERIODS[lastTransfer.periodKey].label+'（'+period(lastTransfer.basePeriod)+' → '+period(lastTransfer.latestPeriod)+'）';
   $('#calcMarketContextValue').textContent=signedPercent(lastTransfer.appliedValue);
+  $('#calcMarketContextSourceVersion').textContent=lastTransfer.sourceUpdatedOn;
+  const opposing=lastTransfer.threeMonthPercent*lastTransfer.sixMonthPercent<0;
+  $('#calcMarketContextNote').textContent=
+    '訊號觸發依據 '+lastTransfer.triggerWindow+'；3M '+signedPercent(lastTransfer.threeMonthPercent)+
+    '，6M '+signedPercent(lastTransfer.sixMonthPercent)+'。'+
+    (opposing?'兩個期間方向相反，試算僅使用上方明示的帶入期間。':'試算僅使用上方明示的帶入期間。')+
+    (changed?'目前原材料變化率已手動修改，市場帶入值僅作歷史紀錄。':'其他成本欄位維持使用者輸入。');
   const field=input?.closest('.field');
   if(field)field.classList.toggle('market-linked',!changed);
 }
@@ -381,9 +414,10 @@ function transferToCalculator(materialId){
   const item=signals?.materials?.[materialId];
   const value=item?.changes?.[carryPeriodKey];
   if(!item||!finite(value))throw Error('選定材料缺少可帶入的變化率');
-  if(Number(value)<-100)throw Error('選定變化率低於Should-Cost試算器可接受範圍');
+  if(value<-100)throw Error('選定變化率低於Should-Cost試算器可接受範圍');
+  if(manualRateEdited)throw Error('原材料變化率已手動修改；為保留您的輸入，未自動帶入。重設試算器後可再次帶入。');
 
-  const appliedValue=Math.round(Number(value)*100)/100;
+  const appliedValue=Math.round(value*100)/100;
   const materialRateInput=$('#f_matRate');
   if(!materialRateInput)throw Error('找不到Should-Cost原材料價格變化率欄位');
 
@@ -393,12 +427,22 @@ function transferToCalculator(materialId){
     nameEn:item.nameEn,
     periodKey:carryPeriodKey,
     latestPeriod:item.latestPeriod,
-    rawValue:Number(value),
+    basePeriod:item.changeBasePeriods[carryPeriodKey],
+    sourceUpdatedOn:signals.sourceUpdatedOn,
+    triggerWindow:item.negotiationSignal.triggerWindow,
+    threeMonthPercent:item.changes.threeMonthPercent,
+    sixMonthPercent:item.changes.sixMonthPercent,
+    rawValue:value,
     appliedValue
   };
 
-  materialRateInput.value=String(appliedValue);
-  materialRateInput.dispatchEvent(new Event('input',{bubbles:true}));
+  applyingTransfer=true;
+  try{
+    materialRateInput.value=String(appliedValue);
+    materialRateInput.dispatchEvent(new Event('input',{bubbles:true}));
+  }finally{
+    applyingTransfer=false;
+  }
   renderCalculatorContext();
   activateTab('calc');
 
@@ -443,11 +487,15 @@ function setupInteractions(){
   const materialRateInput=$('#f_matRate');
   if(materialRateInput){
     materialRateInput.addEventListener('input',()=>{
+      if(!applyingTransfer)manualRateEdited=true;
       if(lastTransfer)renderCalculatorContext();
     });
   }
   const resetButton=$('#resetBtn');
-  if(resetButton)resetButton.addEventListener('click',clearCalculatorContext);
+  if(resetButton)resetButton.addEventListener('click',()=>{
+    manualRateEdited=false;
+    clearCalculatorContext();
+  });
 }
 
 async function json(url){
@@ -457,7 +505,7 @@ async function json(url){
 }
 
 function ready(){
-  $('#sigStatus').innerHTML=`正式訊號已驗證；資料至 <b>${esc(period(signals.latestPeriod))}</b>，最後產生時間 <b>${esc(taipei(signals.generatedAt))}</b>。預設帶入6個月變化率。`;
+  $('#sigStatus').innerHTML=`正式訊號已驗證；資料至 <b>${esc(period(signals.latestPeriod))}</b>，最後產生時間 <b>${esc(taipei(signals.generatedAt))}</b>。來源版本 ${esc(signals.sourceUpdatedOn)}；預設帶入6個月變化率。`;
   const sub=$('.brand .sub');
   if(sub)sub.textContent='International Raw Materials Procurement Analytics（Should-Cost串接版 v1.6.0）';
   renderSummary();
