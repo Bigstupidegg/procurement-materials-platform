@@ -445,11 +445,12 @@ function transferToCalculator(materialId){
   }
   renderCalculatorContext();
   activateTab('calc');
+  try{materialRateInput.focus({preventScroll:true});}catch(error){materialRateInput.focus();}
 
   window.setTimeout(()=>{
+    if(document.activeElement!==materialRateInput)return;
     const context=$('#calcMarketContext');
     if(context)context.scrollIntoView({behavior:'smooth',block:'start'});
-    try{materialRateInput.focus({preventScroll:true});}catch(error){materialRateInput.focus();}
   },60);
 }
 

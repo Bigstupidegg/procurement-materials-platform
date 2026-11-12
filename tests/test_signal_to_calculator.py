@@ -87,22 +87,27 @@ NODE_HANDOFF_SCRIPT = r"""
 const fs=require('fs'),vm=require('vm');
 const sourcePath=process.argv[1],mode=process.argv[2];
 function check(ok,message){if(!ok)throw Error(message);}
-function element(){
+const pendingTimers=[],focusEvents=[],scrollEvents=[];
+const deferTimers=mode.startsWith('focus_');
+function element(id='anonymous'){
   const handlers={},classes=new Set();
-  return {value:'',textContent:'',innerHTML:'',dataset:{},
+  const node={id,value:'',textContent:'',innerHTML:'',dataset:{},
     classList:{add:(...x)=>x.forEach(v=>classes.add(v)),
       remove:(...x)=>x.forEach(v=>classes.delete(v)),
       toggle:(v,on)=>on?classes.add(v):classes.delete(v),
       contains:v=>classes.has(v)},
     addEventListener:(name,fn)=>(handlers[name]||(handlers[name]=[])).push(fn),
     dispatchEvent:event=>(handlers[event.type]||[]).forEach(fn=>fn(event)),
-    closest:()=>element(),focus:()=>{},scrollIntoView:()=>{},setAttribute:()=>{}};
+    closest:()=>element(),
+    focus:()=>{document.activeElement=node;focusEvents.push(id);},
+    scrollIntoView:()=>scrollEvents.push(id),setAttribute:()=>{}};
+  return node;
 }
 const nodes={};
-const get=id=>(nodes[id]||(nodes[id]=element()));
+const get=id=>(nodes[id]||(nodes[id]=element(id)));
 const document={querySelector:s=>s.startsWith('#')?get(s.slice(1)):null,
-  getElementById:get,querySelectorAll:()=>[]};
-const window={setTimeout:fn=>fn()};
+  getElementById:get,querySelectorAll:()=>[],activeElement:null};
+const window={setTimeout:(fn,delay)=>deferTimers?pendingTimers.push({fn,delay}):fn()};
 const Event=class{constructor(type){this.type=type;}};
 let source=fs.readFileSync(sourcePath,'utf8');
 const anchor='\ninit();\n})();';
@@ -161,6 +166,40 @@ if(rejection.includes(mode)){
     check(get('calcMarketContextSourceVersion').textContent==='2025-02-04','source version not shown');
     if(mode==='up_down'||mode==='down_up')
       check(get('calcMarketContextNote').textContent.includes('方向相反'),'opposite horizons not disclosed');
+    if(deferTimers){
+      check(pendingTimers.some(timer=>timer.delay===60),'real deferred handoff not exercised');
+      if(mode==='focus_normal'){
+        check(document.activeElement===rate,'handoff must focus material input synchronously');
+        const count=focusEvents.length;
+        pendingTimers.splice(0).forEach(timer=>timer.fn());
+        check(document.activeElement===rate,'ordinary handoff lost focus');
+        check(focusEvents.length===count,'deferred callback must never focus an input');
+        check(scrollEvents.length===1,'ordinary handoff lost context scroll');
+      }else if(mode==='focus_rapid'){
+        materials.aluminium.changes.sixMonthPercent=20;
+        window.__test.transferToCalculator('aluminium');
+        check(rate.value==='20','second handoff did not replace the market value');
+        const other=get('nr_note');other.focus();other.value='latest note';
+        pendingTimers.splice(0).forEach(timer=>timer.fn());
+        check(document.activeElement===other,'older queued handoff stole focus');
+        check(rate.value==='20'&&other.value==='latest note','queued handoff changed inputs');
+        check(scrollEvents.length===0,'queued handoff scrolled away from current work');
+      }else{
+        const target=get(mode==='focus_numeric'?'f_price':mode==='focus_reset'?'resetBtn':
+          mode==='focus_navigation'?'overviewTab':'nr_note');
+        target.focus();target.value=mode==='focus_numeric'?'1250':'UAT note';
+        if(mode==='focus_reset'){
+          target.dispatchEvent(new Event('click'));
+          rate.value='6';
+        }
+        const expectedRate=rate.value,expectedTarget=target.value;
+        pendingTimers.splice(0).forEach(timer=>timer.fn());
+        check(document.activeElement===target,'deferred handoff stole focus from '+target.id);
+        check(rate.value===expectedRate&&target.value===expectedTarget,'deferred handoff changed inputs');
+        check(scrollEvents.length===0,'deferred handoff scrolled away from current work');
+      }
+      console.log(JSON.stringify({mode,active:document.activeElement.id,focusEvents,scrollEvents}));
+    }
   }
 }
 console.log('PASS '+mode);
@@ -188,6 +227,12 @@ class SyntheticDOMHandoffTests(unittest.TestCase):
     def test_source_version_fails_closed(self): self.check_synthetic("version_mismatch")
     def test_wrong_base_month_fails_closed(self): self.check_synthetic("wrong_anchor")
     def test_wrong_currency_fails_closed(self): self.check_synthetic("currency")
+    def test_focus_is_set_before_deferred_scroll(self): self.check_synthetic("focus_normal")
+    def test_metadata_edit_keeps_focus(self): self.check_synthetic("focus_metadata")
+    def test_numeric_edit_keeps_focus(self): self.check_synthetic("focus_numeric")
+    def test_reset_cancels_deferred_scroll_and_focus(self): self.check_synthetic("focus_reset")
+    def test_navigation_cancels_deferred_scroll_and_focus(self): self.check_synthetic("focus_navigation")
+    def test_rapid_handoffs_cannot_steal_later_focus(self): self.check_synthetic("focus_rapid")
 
 
 if __name__ == "__main__":
