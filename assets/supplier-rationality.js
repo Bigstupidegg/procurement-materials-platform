@@ -41,7 +41,7 @@ function addPanel(){
       <div>
         <div class="sra-eyebrow">3D-2B SUPPLIER REQUEST REVIEW</div>
         <h3>供應商漲幅合理性分析</h3>
-        <p>比較供應商要求、Should-Cost推估與各成本項目可解釋幅度。</p>
+        <p>依使用者輸入的成本假設，比較供應商要求、Should-Cost試算與各項可解釋幅度；不是確定的供應商成本。</p>
       </div>
       <span class="sra-badge waiting" id="sraBadge">載入規則中</span>
     </div>
@@ -51,7 +51,7 @@ function addPanel(){
     <div class="sra-metrics">
       <div class="sra-metric"><span>供應商要求</span><b id="sraSupplierAsk">—</b><small>使用者輸入</small></div>
       <div class="sra-metric"><span>Should-Cost推估</span><b id="sraEstimate">—</b><small>全部成本線性加總</small></div>
-      <div class="sra-metric"><span>材料行情可解釋</span><b id="sraMaterialImpact">—</b><small>材料占比 × 材料變化率</small></div>
+      <div class="sra-metric"><span>依輸入材料變化可解釋</span><b id="sraMaterialImpact">—</b><small>材料占比 × 材料變化率</small></div>
       <div class="sra-metric"><span>其他輸入成本可解釋</span><b id="sraOtherImpact">—</b><small>匯率＋加工＋能源＋其他</small></div>
       <div class="sra-metric emphasis"><span id="sraGapLabel">未由目前輸入解釋</span><b id="sraGap">—</b><small id="sraGapAmount">每單位價差 —</small></div>
     </div>
@@ -167,7 +167,7 @@ function recommendation(analysis){
     return {
       code:'REQUEST_REDUCTION',tone:'high',label:'要求降價／挑戰漲價',
       title:'目前模型不支持供應商漲價，應啟動降價檢討',
-      text:'Should-Cost推估為下降或持平，但供應商未提出相對應降幅。先否決以市場上漲為由的調價，並要求供應商說明成本未下降的具體原因。',
+      text:'Should-Cost推估為下降或持平，但供應商未提出相對應降幅。先暫緩接受以市場上漲為由的調價，並要求供應商說明成本未下降的具體原因。',
       evidence:[
         `Should-Cost推估 ${signedPercent(estimate)}，供應商要求 ${signedPercent(ask)}`,
         `未由目前輸入解釋 ${signedPoints(gap)}`,
@@ -204,7 +204,7 @@ function recommendation(analysis){
     return {
       code:'HIGH_CHALLENGE',tone:'high',label:'高優先挑戰漲價',
       title:'供應商要求明顯高於Should-Cost推估',
-      text:'超出模型的部分不可由目前成本輸入解釋。要求供應商提出成本結構、發票或採購月份等證據，否則不接受超額部分。',
+      text:'超出模型的部分不可由目前成本輸入解釋。要求供應商提出成本結構、發票或採購月份等證據，在補證前不宜認定超額部分合理。',
       evidence:[
         `供應商要求高於模型 ${signedPoints(gap)}`,
         `材料行情僅解釋 ${signedPoints(analysis.materialImpactPercentagePoints)}`,
@@ -251,7 +251,7 @@ function recommendation(analysis){
   return {
     code:'SUPPLIER_BELOW_MODEL',tone:'favorable',label:'供應商要求低於模型',
     title:'供應商要求未高於Should-Cost推估',
-    text:'目前條件相對模型較有利，不需主動提高價格；仍應確認品質、交期與調價條款，避免日後以其他名目補回差額。',
+    text:'目前條件相對模型較有利；仍應確認品質、交期與調價條款，不能單憑模型作出調價決策。',
     evidence:[
       `供應商要求低於模型 ${signedPoints(Math.abs(gap))}`,
       `Should-Cost推估 ${signedPercent(estimate)}`,
@@ -269,10 +269,12 @@ function marketContextText(){
   const windowLabel=$('#calcMarketContextWindow')?.textContent?.trim()||'—';
   const value=$('#calcMarketContextValue')?.textContent?.trim()||'—';
   const periodLabel=$('#calcMarketContextPeriod')?.textContent?.trim()||'—';
+  const sourceVersion=$('#calcMarketContextSourceVersion')?.textContent?.trim()||'—';
+  const horizonNote=$('#calcMarketContextNote')?.textContent?.trim()||'';
   if(context.classList.contains('manually-changed')){
-    return `市場資料紀錄：${material}｜${windowLabel}｜原帶入值 ${value}｜${periodLabel}；目前原材料變化率已手動修改。`;
+    return `市場資料紀錄：${material}｜${windowLabel}｜原帶入值 ${value}｜${periodLabel}｜版本 ${sourceVersion}；目前原材料變化率已手動修改。${horizonNote}`;
   }
-  return `市場資料：${material}｜${windowLabel}｜${value}｜World Bank Pink Sheet｜${periodLabel}；FRED僅作交叉核對。`;
+  return `市場資料：${material}｜${windowLabel}｜${value}｜World Bank Pink Sheet｜${periodLabel}｜版本 ${sourceVersion}；FRED僅作交叉核對。${horizonNote}`;
 }
 
 function setMetric(id,value,classValue){

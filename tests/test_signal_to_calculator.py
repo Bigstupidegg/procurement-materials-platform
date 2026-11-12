@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 import unittest
 from pathlib import Path
 
@@ -22,6 +23,8 @@ class SignalToCalculatorIntegrationTests(unittest.TestCase):
         for token in ("f_matRate", "f_matRatio", "resetBtn", "validateAndCalc"):
             self.assertIn(token, self.app_core_js)
         self.assertIn('id="calc"', self.index_html)
+        self.assertIn("sourceSha256", self.signals_js)
+        self.assertIn("changeBasePeriods", self.signals_js)
 
     def test_all_supported_market_windows_are_mapped(self) -> None:
         for key in (
@@ -64,7 +67,9 @@ class SignalToCalculatorIntegrationTests(unittest.TestCase):
             self.assertIn(token, self.signals_js)
 
     def test_reset_clears_market_context(self) -> None:
-        self.assertIn("resetButton.addEventListener('click',clearCalculatorContext)", self.signals_js)
+        self.assertIn("resetButton.addEventListener('click',()=>{", self.signals_js)
+        self.assertIn("manualRateEdited=false", self.signals_js)
+        self.assertIn("clearCalculatorContext();", self.signals_js)
         self.assertIn("lastTransfer=null", self.signals_js)
 
     def test_required_styles_exist(self) -> None:
@@ -75,6 +80,114 @@ class SignalToCalculatorIntegrationTests(unittest.TestCase):
             ".field.market-linked",
         ):
             self.assertIn(selector, self.signals_css)
+
+
+NODE_HANDOFF_SCRIPT = r"""
+'use strict';
+const fs=require('fs'),vm=require('vm');
+const sourcePath=process.argv[1],mode=process.argv[2];
+function check(ok,message){if(!ok)throw Error(message);}
+function element(){
+  const handlers={},classes=new Set();
+  return {value:'',textContent:'',innerHTML:'',dataset:{},
+    classList:{add:(...x)=>x.forEach(v=>classes.add(v)),
+      remove:(...x)=>x.forEach(v=>classes.delete(v)),
+      toggle:(v,on)=>on?classes.add(v):classes.delete(v),
+      contains:v=>classes.has(v)},
+    addEventListener:(name,fn)=>(handlers[name]||(handlers[name]=[])).push(fn),
+    dispatchEvent:event=>(handlers[event.type]||[]).forEach(fn=>fn(event)),
+    closest:()=>element(),focus:()=>{},scrollIntoView:()=>{},setAttribute:()=>{}};
+}
+const nodes={};
+const get=id=>(nodes[id]||(nodes[id]=element()));
+const document={querySelector:s=>s.startsWith('#')?get(s.slice(1)):null,
+  getElementById:get,querySelectorAll:()=>[]};
+const window={setTimeout:fn=>fn()};
+const Event=class{constructor(type){this.type=type;}};
+let source=fs.readFileSync(sourcePath,'utf8');
+const anchor='\ninit();\n})();';
+check(source.includes(anchor),'test hook missing');
+source=source.replace(anchor,"\nwindow.__test={setData:(s,st)=>{signals=s;status=st;},validate,setupInteractions,transferToCalculator};\n})();");
+vm.runInNewContext(source,{document,window,Event,console,Intl,Date,Number,Math,String,Error,Set,Array,isFinite});
+const ids=['zinc','copper','aluminium','nickel','iron_ore','crude_oil','natural_gas'];
+const changes={oneMonthPercent:1,threeMonthPercent:5,sixMonthPercent:10,twelveMonthPercent:2};
+if(mode==='aligned_down'){changes.threeMonthPercent=-5;changes.sixMonthPercent=-10;}
+if(mode==='up_down'){changes.threeMonthPercent=10;changes.sixMonthPercent=-5;}
+if(mode==='down_up'){changes.threeMonthPercent=-10;changes.sixMonthPercent=5;}
+const materials={};
+for(const id of ids)materials[id]={id,currency:'USD',sourceUnit:'($/mt)',displayUnit:'公噸(MT)',
+  latestPeriod:'2025-01',changes:Object.assign({},changes),
+  changeBasePeriods:{oneMonthPercent:'2024-12',threeMonthPercent:'2024-10',
+    sixMonthPercent:'2024-07',twelveMonthPercent:'2024-01'},
+  negotiationSignal:{triggerWindow:'3M'},trend:{}};
+const signals={isRealData:true,primarySource:'WORLD_BANK_PINK_SHEET',comparisonSource:'FRED',
+  signalPolicy:{worldBankDeterminesTrend:true,fredUsedForCorroborationOnly:true,
+    automaticSupplierPriceDecision:false},
+  latestPeriod:'2025-01',sourceSha256:'a'.repeat(64),sourceUpdatedOn:'2025-02-04',materials};
+const status={dataMode:'WORLD_BANK_PRIMARY',isStale:false,
+  worldBank:{status:'SUCCESS',latestPeriod:'2025-01',
+    sourceSha256:'a'.repeat(64),sourceUpdatedOn:'2025-02-04'}};
+if(mode==='old_schema'){delete signals.sourceSha256;delete signals.sourceUpdatedOn;
+  for(const id of ids){delete materials[id].changeBasePeriods;delete materials[id].negotiationSignal.triggerWindow;}}
+if(mode==='null')materials.copper.changes.sixMonthPercent=null;
+if(mode==='string_percent')materials.copper.changes.sixMonthPercent='5%';
+if(mode==='stale')status.isStale=true;
+if(mode==='version_mismatch')status.worldBank.sourceSha256='b'.repeat(64);
+if(mode==='wrong_anchor')materials.copper.changeBasePeriods.sixMonthPercent='2024-08';
+if(mode==='currency')materials.copper.currency='EUR';
+window.__test.setData(signals,status);
+const rejection=['old_schema','null','string_percent','stale','version_mismatch','wrong_anchor','currency'];
+if(rejection.includes(mode)){
+  let rejected=false;
+  try{window.__test.validate();}catch(error){rejected=true;}
+  check(rejected,'unsafe payload accepted: '+mode);
+}else{
+  window.__test.validate();
+  window.__test.setupInteractions();
+  const rate=get('f_matRate');
+  rate.value='6';
+  get('f_matRatio').value='35';
+  if(mode==='manual'){
+    rate.value='4.2';
+    rate.dispatchEvent(new Event('input'));
+    let rejected=false;
+    try{window.__test.transferToCalculator('copper');}catch(error){rejected=true;}
+    check(rejected&&rate.value==='4.2','manual value overwritten');
+  }else{
+    window.__test.transferToCalculator('copper');
+    check(rate.value===String(Math.round(changes.sixMonthPercent*100)/100),'wrong six-month value');
+    check(get('f_matRatio').value==='35','manual weight changed');
+    check(get('calcMarketContextWindow').textContent.includes('2024/07'),'base period not shown');
+    check(get('calcMarketContextSourceVersion').textContent==='2025-02-04','source version not shown');
+    if(mode==='up_down'||mode==='down_up')
+      check(get('calcMarketContextNote').textContent.includes('方向相反'),'opposite horizons not disclosed');
+  }
+}
+console.log('PASS '+mode);
+"""
+
+class SyntheticDOMHandoffTests(unittest.TestCase):
+    def check_synthetic(self, mode: str) -> None:
+        result = subprocess.run(
+            ["node", "-e", NODE_HANDOFF_SCRIPT, str(SIGNALS_JS), mode],
+            capture_output=True, text=True, encoding="utf-8", timeout=10,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("PASS " + mode, result.stdout)
+
+    def test_aligned_up(self): self.check_synthetic("aligned_up")
+    def test_aligned_down(self): self.check_synthetic("aligned_down")
+    def test_up_down(self): self.check_synthetic("up_down")
+    def test_down_up(self): self.check_synthetic("down_up")
+    def test_manual_input_priority(self): self.check_synthetic("manual")
+    def test_old_schema_fails_closed(self): self.check_synthetic("old_schema")
+    def test_null_percentage_fails_closed(self): self.check_synthetic("null")
+    def test_string_percentage_fails_closed(self): self.check_synthetic("string_percent")
+    def test_stale_status_fails_closed(self): self.check_synthetic("stale")
+    def test_source_version_fails_closed(self): self.check_synthetic("version_mismatch")
+    def test_wrong_base_month_fails_closed(self): self.check_synthetic("wrong_anchor")
+    def test_wrong_currency_fails_closed(self): self.check_synthetic("currency")
 
 
 if __name__ == "__main__":

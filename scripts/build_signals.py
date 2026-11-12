@@ -78,6 +78,12 @@ def validate_observations(series: dict[str, Any], material_id: str) -> list[dict
     periods = [item["period"] for item in observations]
     if periods != sorted(periods):
         raise RuntimeError(f"{material_id}月份不是遞增排列")
+    recent = observations[-MIN_OBSERVATIONS:]
+    for previous, current in zip(recent, recent[1:]):
+        previous_month = int(previous["period"][:4]) * 12 + int(previous["period"][5:])
+        current_month = int(current["period"][:4]) * 12 + int(current["period"][5:])
+        if current_month != previous_month + 1:
+            raise RuntimeError(f"{material_id}最近13個月不連續")
     return observations
 
 
@@ -206,6 +212,7 @@ def determine_signal(
 
     if three <= strong_down or (three <= down_3 and six <= down_6):
         return {
+            "triggerWindow": "3M" if three <= strong_down else "3M+6M",
             "code": "NEGOTIATE_REDUCTION",
             "label": "降價議價機會",
             "priority": "HIGH",
@@ -215,6 +222,7 @@ def determine_signal(
         }
     if three <= down_3 or (six <= down_6 and latest_vs_average_12 < 0):
         return {
+            "triggerWindow": "3M" if three <= down_3 else "6M+12M_AVERAGE",
             "code": "CHALLENGE_INCREASE",
             "label": "挑戰漲價依據",
             "priority": "MEDIUM",
@@ -224,6 +232,7 @@ def determine_signal(
         }
     if three >= strong_up or (three >= up_3 and six >= up_6):
         return {
+            "triggerWindow": "3M" if three >= strong_up else "3M+6M",
             "code": "VERIFY_STRONG_INCREASE",
             "label": "上漲壓力需核實",
             "priority": "HIGH",
@@ -233,6 +242,7 @@ def determine_signal(
         }
     if three >= up_3 or six >= up_6:
         return {
+            "triggerWindow": "3M" if three >= up_3 else "6M",
             "code": "VERIFY_INCREASE",
             "label": "核實成本傳導",
             "priority": "MEDIUM",
@@ -241,6 +251,7 @@ def determine_signal(
             "supplierClaimCheck": "避免直接套用市場漲幅；合理成品漲幅應為材料占比乘以可歸屬的材料變化率。",
         }
     return {
+        "triggerWindow": "NONE",
         "code": "MONITOR_AND_HOLD",
         "label": "盤整觀察",
         "priority": "LOW",
@@ -259,14 +270,18 @@ def build_material_signal(
     material_id = material["id"]
     observations = validate_observations(wb_series, material_id)
     latest = observations[-1]
+    if wb_series.get("latestPeriod") != latest["period"]:
+        raise RuntimeError(f"{material_id}來源月份與最後觀測值不一致")
     latest_value = latest["value"]
 
-    anchors = {
-        "oneMonthPercent": observations[-2]["value"],
-        "threeMonthPercent": observations[-4]["value"],
-        "sixMonthPercent": observations[-7]["value"],
-        "twelveMonthPercent": observations[-13]["value"],
+    anchor_observations = {
+        "oneMonthPercent": observations[-2],
+        "threeMonthPercent": observations[-4],
+        "sixMonthPercent": observations[-7],
+        "twelveMonthPercent": observations[-13],
     }
+    anchors = {key: item["value"] for key, item in anchor_observations.items()}
+    change_base_periods = {key: item["period"] for key, item in anchor_observations.items()}
     changes = {
         key: round_number(percent_change(latest_value, anchor))
         for key, anchor in anchors.items()
@@ -316,6 +331,7 @@ def build_material_signal(
         "latestPeriod": latest["period"],
         "latestValue": round_number(latest_value),
         "changes": changes,
+        "changeBasePeriods": change_base_periods,
         "twelveMonthStatistics": {
             "average": round_number(average_12),
             "high": round_number(high_12),
@@ -352,6 +368,20 @@ def build_signals_payload(
     thresholds = rules.get("thresholds")
     if not isinstance(thresholds, dict):
         raise RuntimeError("signal-rules.json缺少thresholds")
+    dataset = world_bank.get("dataset")
+    if not isinstance(dataset, dict):
+        raise RuntimeError("World Bank資料集結構錯誤")
+    download = dataset.get("download")
+    source_sha = download.get("sha256") if isinstance(download, dict) else None
+    source_updated = dataset.get("workbookUpdatedOn")
+    if not isinstance(source_sha, str) or len(source_sha) != 64 or any(
+        char not in "0123456789abcdefABCDEF" for char in source_sha
+    ):
+        raise RuntimeError("World Bank來源SHA-256缺失或格式錯誤")
+    if not isinstance(source_updated, str) or len(source_updated) != 10 or (
+        source_updated[4] != "-" or source_updated[7] != "-"
+    ):
+        raise RuntimeError("World Bank來源更新日缺失或格式錯誤")
 
     output: dict[str, Any] = {}
     for material in materials:
@@ -364,6 +394,8 @@ def build_signals_payload(
         output[material_id] = build_material_signal(
             material, wb_series, comparison_material, thresholds
         )
+        if output[material_id]["latestPeriod"] != dataset.get("latestPeriod"):
+            raise RuntimeError(f"{material_id}來源月份與資料集最新月份不一致")
 
     priority_counts = {"HIGH": 0, "MEDIUM": 0, "LOW": 0}
     signal_counts: dict[str, int] = {}
@@ -377,7 +409,9 @@ def build_signals_payload(
         "schemaVersion": 1,
         "generatedAt": generated_at,
         "isRealData": True,
-        "latestPeriod": world_bank["dataset"]["latestPeriod"],
+        "latestPeriod": dataset["latestPeriod"],
+        "sourceSha256": source_sha.lower(),
+        "sourceUpdatedOn": source_updated,
         "primarySource": "WORLD_BANK_PINK_SHEET",
         "comparisonSource": "FRED",
         "signalPolicy": rules["policy"],
