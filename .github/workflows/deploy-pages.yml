@@ -1,13 +1,26 @@
 name: Deploy GitHub Pages
 
+# The only workflow permitted to upload or deploy a production Pages artifact.
 on:
   push:
-    branches:
-      - main
+    branches: [main]
+  workflow_run:
+    workflows:
+      - Update Procurement Trend Signals
+      - Update World Bank Data
+      - Update FRED Comparison Data
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
+    inputs:
+      rollback_run_id:
+        description: "Reviewed successful Pages run to restore; empty means normal publication"
+        required: false
+        type: string
 
 permissions:
   contents: read
+  actions: read
   pages: write
   id-token: write
 
@@ -16,57 +29,161 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy:
+  publish:
+    if: >-
+      github.repository_id == '1315749314' &&
+      (github.event_name != 'workflow_run' ||
+       (github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.head_repository.id == 1315749314 &&
+        github.event.workflow_run.head_branch == 'main' &&
+        contains(fromJSON('["Update Procurement Trend Signals","Update World Bank Data","Update FRED Comparison Data"]'), github.event.workflow_run.name)))
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
-
+    timeout-minutes: 15
     steps:
-      - name: Checkout repository
+      - name: Checkout authoritative main with complete lineage
         uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
 
-      - name: Run procurement reporting integration tests
+      - name: Pin current main and verify event lineage
+        id: source
+        env:
+          UPSTREAM_SHA: ${{ github.event.workflow_run.head_sha }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          python -m unittest discover -s tests -p "test_supplier_rationality.py" -v
-          python -m unittest discover -s tests -p "test_negotiation_report.py" -v
-          python -m unittest discover -s tests -p "test_prepare_site.py" -v
-          node --check assets/app-core.js
-          node --check assets/demo-market.js
-          node --check assets/supplier-rationality.js
-          node --check assets/negotiation-report.js
-          node --check assets/world-bank-live.js
-          node --check assets/data-freshness.js
+          set -euo pipefail
+          git fetch origin main
+          pinned="$(git rev-parse HEAD)"
+          current="$(git ls-remote origin refs/heads/main | cut -f1)"
+          test "$pinned" = "$current"
+          if [ "$EVENT_NAME" = "workflow_run" ]; then
+            git merge-base --is-ancestor "$UPSTREAM_SHA" "$pinned"
+          fi
+          echo "sha=$pinned" >> "$GITHUB_OUTPUT"
 
-      - name: Prepare website files
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install Python dependencies
+        run: python -m pip install -r scripts/requirements.txt
+
+      - name: Run release and procurement tests
+        run: |
+          python -m unittest discover -s tests -v
+          node --check assets/trend-signals.js
+          node --check assets/supplier-rationality.js
+
+      - name: Select trusted deployed artifact history
+        id: history
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ROLLBACK_RUN_ID: ${{ inputs.rollback_run_id }}
+        run: python scripts/release_history.py select --source-commit "${{ steps.source.outputs.sha }}" --selection "$RUNNER_TEMP/history.json"
+
+      - name: Download last deployed Pages artifact
+        if: steps.history.outputs.latest_runId != ''
+        uses: actions/download-artifact@v8
+        with:
+          artifact-ids: ${{ steps.history.outputs.latest_artifactId }}
+          run-id: ${{ steps.history.outputs.latest_runId }}
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+          digest-mismatch: error
+          path: ${{ runner.temp }}/download-latest
+
+      - name: Download reviewed rollback artifact
+        if: steps.history.outputs.target_runId != ''
+        uses: actions/download-artifact@v8
+        with:
+          artifact-ids: ${{ steps.history.outputs.target_artifactId }}
+          run-id: ${{ steps.history.outputs.target_runId }}
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+          digest-mismatch: error
+          path: ${{ runner.temp }}/download-target
+
+      - name: Verify history and prepare reviewed recovery
+        run: python scripts/release_history.py prepare --source-commit "${{ steps.source.outputs.sha }}" --selection "$RUNNER_TEMP/history.json"
+
+      - name: Prepare website from pinned commit
+        if: steps.history.outputs.target_runId == ''
         run: python scripts/prepare_site.py
 
-      - name: Verify production source boundary
+      - name: Rebuild the pinned trusted legacy root for cached clients
+        if: steps.history.outputs.target_runId == ''
         run: |
-          node --check _site/assets/app-core.js
-          node --check _site/assets/data-freshness.js
-          grep -q './assets/app-core.js' _site/index.html
-          grep -q './assets/data-freshness.js' _site/index.html
-          if grep -q './assets/app.js' _site/index.html || test -f _site/assets/app.js; then
-            echo "Development bootstrap leaked into production deployment"
-            exit 1
+          git worktree add --detach "$RUNNER_TEMP/legacy-root" d55d156556368570ac4a5b290b5d9762019a61ca
+          test "$(git -C "$RUNNER_TEMP/legacy-root" rev-parse HEAD)" = "d55d156556368570ac4a5b290b5d9762019a61ca"
+          python "$RUNNER_TEMP/legacy-root/scripts/prepare_site.py"
+          mkdir -p "$RUNNER_TEMP/legacy-root/_site/config"
+          cp "$RUNNER_TEMP/legacy-root/config/release.json" "$RUNNER_TEMP/legacy-root/_site/config/release.json"
+
+      - name: Validate and package versioned release
+        if: steps.history.outputs.target_runId == ''
+        run: |
+          extra=()
+          if [ -d "$RUNNER_TEMP/site-latest" ]; then
+            extra+=(--previous-site "$RUNNER_TEMP/site-latest")
           fi
-          if grep -q 'demo-market.js' _site/index.html || test -f _site/assets/demo-market.js; then
-            echo "Development Demo market fixture leaked into production deployment"
-            exit 1
-          fi
-          if grep -Eq 'mulberry32|Seeded Random Walk|const MATERIALS|Development Demo fixture' _site/assets/app-core.js; then
-            echo "Demo market code leaked into production app core"
-            exit 1
-          fi
+          python scripts/package_release.py --source-commit "${{ steps.source.outputs.sha }}" --legacy-site "$RUNNER_TEMP/legacy-root/_site" "${extra[@]}"
+
+      - name: Recheck main immediately before artifact upload
+        run: |
+          set -euo pipefail
+          current="$(git ls-remote origin refs/heads/main | cut -f1)"
+          test "$current" = "${{ steps.source.outputs.sha }}"
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
 
-      - name: Upload GitHub Pages artifact
+      - name: Upload validated Pages artifact
+        id: pages_artifact
         uses: actions/upload-pages-artifact@v4
         with:
-          path: _site
+          path: _release_site
+          include-hidden-files: true
+          retention-days: 90
+
+      - name: Record uploaded artifact identity
+        env:
+          ARTIFACT_ID: ${{ steps.pages_artifact.outputs.artifact_id }}
+          RELEASE_SHA: ${{ steps.source.outputs.sha }}
+          ROLLBACK_RUN_ID: ${{ steps.history.outputs.target_runId }}
+        run: |
+          set -euo pipefail
+          test -n "$ARTIFACT_ID"
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json, pathlib, os, subprocess
+          from scripts.package_release import verify_release
+          site=pathlib.Path('_release_site')
+          m=json.loads((site/'publication-manifest.json').read_text(encoding='utf-8'))
+          verify_release(site,m['releaseId'])
+          if os.environ['ROLLBACK_RUN_ID']:
+            assert m['mode']=='rollback'
+            assert str(m['recoveredFromRun'])==os.environ['ROLLBACK_RUN_ID']
+            subprocess.run(['git','merge-base','--is-ancestor',m['sourceCommit'],os.environ['RELEASE_SHA']],check=True)
+          else:
+            assert m['mode']=='forward' and m['sourceCommit']==os.environ['RELEASE_SHA']
+          print('Release ID:',m['releaseId'])
+          print('Source commit:',m['sourceCommit'])
+          print('Publication mode:',m['mode'])
+          print('Retained releases:',len(m['retainedReleaseIds']))
+          print('Payload tree SHA-256:',m['artifactTreeSha256'])
+          print('Pages artifact ID:',os.environ['ARTIFACT_ID'])
+          PY
+
+      - name: Recheck main immediately before deployment
+        run: |
+          set -euo pipefail
+          current="$(git ls-remote origin refs/heads/main | cut -f1)"
+          test "$current" = "${{ steps.source.outputs.sha }}"
 
       - name: Deploy GitHub Pages
         id: deployment
