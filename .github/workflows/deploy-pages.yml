@@ -1,9 +1,16 @@
 name: Deploy GitHub Pages
 
+# The only workflow permitted to upload or deploy a production Pages artifact.
 on:
   push:
-    branches:
-      - main
+    branches: [main]
+  workflow_run:
+    workflows:
+      - Update Procurement Trend Signals
+      - Update World Bank Data
+      - Update FRED Comparison Data
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -16,57 +23,112 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy:
+  publish:
+    if: >-
+      github.repository_id == '1315749314' &&
+      (github.event_name != 'workflow_run' ||
+       (github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.head_repository.id == 1315749314 &&
+        github.event.workflow_run.head_branch == 'main' &&
+        contains(fromJSON('["Update Procurement Trend Signals","Update World Bank Data","Update FRED Comparison Data"]'), github.event.workflow_run.name)))
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
-
+    timeout-minutes: 15
     steps:
-      - name: Checkout repository
+      - name: Checkout authoritative main with complete lineage
         uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
 
-      - name: Run procurement reporting integration tests
+      - name: Pin current main and verify event lineage
+        id: source
+        env:
+          UPSTREAM_SHA: ${{ github.event.workflow_run.head_sha }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          python -m unittest discover -s tests -p "test_supplier_rationality.py" -v
-          python -m unittest discover -s tests -p "test_negotiation_report.py" -v
-          python -m unittest discover -s tests -p "test_prepare_site.py" -v
-          node --check assets/app-core.js
-          node --check assets/demo-market.js
-          node --check assets/supplier-rationality.js
-          node --check assets/negotiation-report.js
-          node --check assets/world-bank-live.js
-          node --check assets/data-freshness.js
+          set -euo pipefail
+          git fetch origin main
+          pinned="$(git rev-parse HEAD)"
+          current="$(git ls-remote origin refs/heads/main | cut -f1)"
+          test "$pinned" = "$current"
+          if [ "$EVENT_NAME" = "workflow_run" ]; then
+            git merge-base --is-ancestor "$UPSTREAM_SHA" "$pinned"
+          fi
+          echo "sha=$pinned" >> "$GITHUB_OUTPUT"
 
-      - name: Prepare website files
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install Python dependencies
+        run: python -m pip install -r scripts/requirements.txt
+
+      - name: Run release and procurement tests
+        run: |
+          python -m unittest discover -s tests -v
+          node --check assets/trend-signals.js
+          node --check assets/supplier-rationality.js
+
+      - name: Prepare website from pinned commit
         run: python scripts/prepare_site.py
 
-      - name: Verify production source boundary
+      - name: Rebuild the pinned trusted legacy root for cached clients
         run: |
-          node --check _site/assets/app-core.js
-          node --check _site/assets/data-freshness.js
-          grep -q './assets/app-core.js' _site/index.html
-          grep -q './assets/data-freshness.js' _site/index.html
-          if grep -q './assets/app.js' _site/index.html || test -f _site/assets/app.js; then
-            echo "Development bootstrap leaked into production deployment"
-            exit 1
-          fi
-          if grep -q 'demo-market.js' _site/index.html || test -f _site/assets/demo-market.js; then
-            echo "Development Demo market fixture leaked into production deployment"
-            exit 1
-          fi
-          if grep -Eq 'mulberry32|Seeded Random Walk|const MATERIALS|Development Demo fixture' _site/assets/app-core.js; then
-            echo "Demo market code leaked into production app core"
-            exit 1
-          fi
+          git worktree add --detach "$RUNNER_TEMP/legacy-root" d55d156556368570ac4a5b290b5d9762019a61ca
+          test "$(git -C "$RUNNER_TEMP/legacy-root" rev-parse HEAD)" = "d55d156556368570ac4a5b290b5d9762019a61ca"
+          python "$RUNNER_TEMP/legacy-root/scripts/prepare_site.py"
+          mkdir -p "$RUNNER_TEMP/legacy-root/_site/config"
+          cp "$RUNNER_TEMP/legacy-root/config/release.json" "$RUNNER_TEMP/legacy-root/_site/config/release.json"
+
+      - name: Validate and package versioned release
+        run: python scripts/package_release.py --source-commit "${{ steps.source.outputs.sha }}" --legacy-site "$RUNNER_TEMP/legacy-root/_site"
+
+      - name: Recheck main immediately before artifact upload
+        run: |
+          set -euo pipefail
+          current="$(git ls-remote origin refs/heads/main | cut -f1)"
+          test "$current" = "${{ steps.source.outputs.sha }}"
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
 
-      - name: Upload GitHub Pages artifact
+      - name: Upload validated Pages artifact
+        id: pages_artifact
         uses: actions/upload-pages-artifact@v4
         with:
-          path: _site
+          path: _release_site
+          include-hidden-files: true
+          retention-days: 90
+
+      - name: Record uploaded artifact identity
+        env:
+          ARTIFACT_ID: ${{ steps.pages_artifact.outputs.artifact_id }}
+          RELEASE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          test -n "$ARTIFACT_ID"
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json, pathlib, os
+          manifests=list(pathlib.Path('_release_site/releases').glob('*/release-manifest.json'))
+          assert len(manifests)==1
+          m=json.loads(manifests[0].read_text(encoding='utf-8'))
+          assert m['sourceCommit']==os.environ['RELEASE_SHA']
+          print('Release ID:',m['releaseId'])
+          print('Source commit:',m['sourceCommit'])
+          print('Payload tree SHA-256:',m['artifactTreeSha256'])
+          print('Pages artifact ID:',os.environ['ARTIFACT_ID'])
+          PY
+
+      - name: Recheck main immediately before deployment
+        run: |
+          set -euo pipefail
+          current="$(git ls-remote origin refs/heads/main | cut -f1)"
+          test "$current" = "${{ steps.source.outputs.sha }}"
 
       - name: Deploy GitHub Pages
         id: deployment
