@@ -1,8 +1,10 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-11-12T09:34:54Z",
+  "generatedAt": "2026-11-12T09:36:41Z",
   "isRealData": true,
   "latestPeriod": "2026-10",
+  "sourceSha256": "3c8d9d8dbb48342fdbf24777c39a8ce8964cc2fd0958f72f6779e6e4ad99cde2",
+  "sourceUpdatedOn": "2026-11-03",
   "primarySource": "WORLD_BANK_PINK_SHEET",
   "comparisonSource": "FRED",
   "signalPolicy": {
@@ -53,6 +55,12 @@
         "sixMonthPercent": 13.495838,
         "twelveMonthPercent": 21.129442
       },
+      "changeBasePeriods": {
+        "oneMonthPercent": "2026-09",
+        "threeMonthPercent": "2026-07",
+        "sixMonthPercent": "2026-04",
+        "twelveMonthPercent": "2025-10"
+      },
       "twelveMonthStatistics": {
         "average": 3480.166667,
         "high": 4021,
@@ -68,6 +76,7 @@
         "summary": "最近一個月回落，但三個月方向仍為上漲。"
       },
       "negotiationSignal": {
+        "triggerWindow": "3M+6M",
         "code": "VERIFY_STRONG_INCREASE",
         "label": "上漲壓力需核實",
         "priority": "HIGH",
@@ -109,6 +118,12 @@
         "sixMonthPercent": 12.022238,
         "twelveMonthPercent": 35.083799
       },
+      "changeBasePeriods": {
+        "oneMonthPercent": "2026-09",
+        "threeMonthPercent": "2026-07",
+        "sixMonthPercent": "2026-04",
+        "twelveMonthPercent": "2025-10"
+      },
       "twelveMonthStatistics": {
         "average": 13165.5,
         "high": 14508,
@@ -124,6 +139,7 @@
         "summary": "一個月、三個月與六個月變化率皆為正值。"
       },
       "negotiationSignal": {
+        "triggerWindow": "3M+6M",
         "code": "VERIFY_STRONG_INCREASE",
         "label": "上漲壓力需核實",
         "priority": "HIGH",
@@ -165,6 +181,12 @@
         "sixMonthPercent": -14.972222,
         "twelveMonthPercent": 9.595417
       },
+      "changeBasePeriods": {
+        "oneMonthPercent": "2026-09",
+        "threeMonthPercent": "2026-07",
+        "sixMonthPercent": "2026-04",
+        "twelveMonthPercent": "2025-10"
+      },
       "twelveMonthStatistics": {
         "average": 3228,
         "high": 3666,
@@ -180,6 +202,7 @@
         "summary": "一個月、三個月與六個月變化率皆為負值。"
       },
       "negotiationSignal": {
+        "triggerWindow": "3M+6M",
         "code": "NEGOTIATE_REDUCTION",
         "label": "降價議價機會",
         "priority": "HIGH",
@@ -221,6 +244,12 @@
         "sixMonthPercent": -14.063022,
         "twelveMonthPercent": 2.279353
       },
+      "changeBasePeriods": {
+        "oneMonthPercent": "2026-09",
+        "threeMonthPercent": "2026-07",
+        "sixMonthPercent": "2026-04",
+        "twelveMonthPercent": "2025-10"
+      },
       "twelveMonthStatistics": {
         "average": 16757.583333,
         "high": 18806,
@@ -236,6 +265,7 @@
         "summary": "一個月、三個月與六個月變化率皆為負值。"
       },
       "negotiationSignal": {
+        "triggerWindow": "3M+6M",
         "code": "NEGOTIATE_REDUCTION",
         "label": "降價議價機會",
         "priority": "HIGH",
@@ -277,6 +307,12 @@
         "sixMonthPercent": -14.420358,
         "twelveMonthPercent": -12.270531
       },
+      "changeBasePeriods": {
+        "oneMonthPercent": "2026-09",
+        "threeMonthPercent": "2026-07",
+        "sixMonthPercent": "2026-04",
+        "twelveMonthPercent": "2025-10"
+      },
       "twelveMonthStatistics": {
         "average": 101.2,
         "high": 108.6,
@@ -292,6 +328,7 @@
         "summary": "一個月、三個月與六個月變化率皆為負值。"
       },
       "negotiationSignal": {
+        "triggerWindow": "3M+6M",
         "code": "NEGOTIATE_REDUCTION",
         "label": "降價議價機會",
         "priority": "HIGH",
@@ -333,6 +370,12 @@
         "sixMonthPercent": 3.820598,
         "twelveMonthPercent": 93.199382
       },
+      "changeBasePeriods": {
+        "oneMonthPercent": "2026-09",
+        "threeMonthPercent": "2026-07",
+        "sixMonthPercent": "2026-04",
+        "twelveMonthPercent": "2025-10"
+      },
       "twelveMonthStatistics": {
         "average": 91.441667,
         "high": 125,
@@ -348,6 +391,7 @@
         "summary": "一個月、三個月與六個月變化率皆為正值。"
       },
       "negotiationSignal": {
+        "triggerWindow": "3M",
         "code": "VERIFY_STRONG_INCREASE",
         "label": "上漲壓力需核實",
         "priority": "HIGH",
@@ -389,6 +433,12 @@
         "sixMonthPercent": 6.859206,
         "twelveMonthPercent": -7.5
       },
+      "changeBasePeriods": {
+        "oneMonthPercent": "2026-09",
+        "threeMonthPercent": "2026-07",
+        "sixMonthPercent": "2026-04",
+        "twelveMonthPercent": "2025-10"
+      },
       "twelveMonthStatistics": {
         "average": 3.559167,
         "high": 7.58,
@@ -404,6 +454,7 @@
         "summary": "一個月、三個月與六個月變化率皆為正值。"
       },
       "negotiationSignal": {
+        "triggerWindow": "6M",
         "code": "VERIFY_INCREASE",
         "label": "核實成本傳導",
         "priority": "MEDIUM",
