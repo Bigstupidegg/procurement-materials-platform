@@ -114,13 +114,16 @@ def validate_sources(root: Path) -> dict[str, str]:
                 and isinstance(series.get("sourceUnit"), str)
                 and series["sourceUnit"] == signal.get("sourceUnit") and bool(series["sourceUnit"]),
                 f"{mid}: currency or unit mismatch")
-        finite_number(signal.get("latestValue"))
+        current = finite_number(obs[-1].get("value"))
+        signal_latest = finite_number(signal.get("latestValue"))
+        require(current > 0 and signal_latest > 0, f"{mid}: invalid latest price")
+        # build_signals.round_number publishes latestValue rounded to six decimals.
+        require(signal_latest == round(current, 6), f"{mid}: latest price mismatch")
         for key, offset in OFFSETS.items():
             base = signal.get("changeBasePeriods", {}).get(key)
             require(month_number(base) == latest_index - offset,
                     f"{mid}: wrong {key} anchor")
             actual = finite_number(signal.get("changes", {}).get(key))
-            current = finite_number(obs[-1].get("value"))
             anchor = finite_number(obs[-1-offset].get("value"))
             require(anchor > 0 and current > 0, f"{mid}: invalid source price")
             expected = round((current - anchor) / anchor * 100, 6)

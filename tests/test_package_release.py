@@ -156,6 +156,60 @@ class ReleasePackageTests(unittest.TestCase):
                     lambda d: d["worldBank"].update(sourceSha256="b" * 64))
         self.blocked()
 
+    def test_latest_price_mismatch_blocks_packaging_for_every_material(self):
+        for mid in release.IDS:
+            with self.subTest(material=mid):
+                for path in ("data/signals.json", "_site/data/signals.json"):
+                    self.change(path, lambda d: d["materials"][mid].update(latestValue=999999))
+                try:
+                    with self.assertRaisesRegex(release.ReleaseBlocked, "latest price mismatch"):
+                        self.package()
+                    self.assertFalse(self.output.exists())
+                finally:
+                    shutil.rmtree(self.output, ignore_errors=True)
+                    for path in ("data/signals.json", "_site/data/signals.json"):
+                        self.change(path, lambda d: d["materials"][mid].update(latestValue=112))
+
+    def test_invalid_latest_prices_are_rejected_for_every_material(self):
+        for mid in release.IDS:
+            for value in (None, "112", True, 0, -1, float("nan"), float("inf")):
+                with self.subTest(material=mid, value=value):
+                    self.change("data/signals.json",
+                                lambda d: d["materials"][mid].update(latestValue=value))
+                    self.blocked()
+            self.change("data/signals.json",
+                        lambda d: d["materials"][mid].update(latestValue=112))
+
+    def test_matching_nonpositive_latest_prices_are_rejected(self):
+        for mid in release.IDS:
+            for value in (0, -1):
+                with self.subTest(material=mid, value=value):
+                    self.change("data/signals.json",
+                                lambda d: d["materials"][mid].update(latestValue=value))
+                    self.change("data/world-bank.json", lambda d:
+                                d["series"][mid]["observations"][-1].update(value=value))
+                    self.blocked()
+            self.change("data/signals.json",
+                        lambda d: d["materials"][mid].update(latestValue=112))
+            self.change("data/world-bank.json", lambda d:
+                        d["series"][mid]["observations"][-1].update(value=112))
+
+    def test_latest_price_preserves_builder_six_decimal_rounding(self):
+        current = 112.123456789
+        self.change("data/world-bank.json", lambda d:
+                    d["series"]["copper"]["observations"][-1].update(value=current))
+        world_bank = release.read_json(self.root / "data/world-bank.json")
+        observations = world_bank["series"]["copper"]["observations"]
+        changes = {key: round((current - observations[-1-offset]["value"])
+                              / observations[-1-offset]["value"] * 100, 6)
+                   for key, offset in release.OFFSETS.items()}
+        self.change("data/signals.json", lambda d:
+                    d["materials"]["copper"].update(latestValue=round(current, 6), changes=changes))
+        for name in ("world-bank.json", "signals.json"):
+            shutil.copy2(self.root / "data" / name, self.root / "_site/data" / name)
+        manifest = self.package()
+        release.verify_release(self.output, manifest["releaseId"])
+
     def test_stale_source_status(self):
         self.change("data/status.json", lambda d: d.update(isStale=True))
         self.blocked()
