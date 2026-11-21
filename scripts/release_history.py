@@ -8,6 +8,7 @@ import re
 import shutil
 import subprocess
 import tarfile
+import time
 from datetime import datetime
 from pathlib import Path, PurePosixPath
 
@@ -58,10 +59,55 @@ def deployed_at(run_id: int) -> datetime | None:
     return datetime.fromisoformat(deployed[0]["completed_at"].replace("Z", "+00:00"))
 
 
+
+def artifact_name(attempt: int) -> str:
+    require(type(attempt) is int and 1 <= attempt <= 1000000,
+            "invalid Pages workflow attempt")
+    return f"github-pages-attempt-{attempt}"
+
+
+def wait_for_uploaded_artifact(run_id: int, attempt: int, artifact_id: int,
+                               source: str) -> None:
+    """Wait for the exact new artifact to appear before deploy-pages queries it."""
+    require(type(run_id) is int and run_id > 0
+            and type(artifact_id) is int and artifact_id > 0
+            and isinstance(source, str) and bool(COMMIT.fullmatch(source)),
+            "invalid uploaded Pages artifact identity")
+    name = artifact_name(attempt)
+    for check in range(12):
+        response = api(f"actions/runs/{run_id}/artifacts?per_page=100")
+        require(type(response.get("total_count")) is int
+                and response["total_count"] <= 100
+                and isinstance(response.get("artifacts"), list),
+                "unreviewable uploaded Pages artifact listing")
+        matches = [a for a in response["artifacts"] if a.get("name") == name]
+        require(len(matches) <= 1, "ambiguous uploaded Pages artifact")
+        if matches:
+            item = matches[0]
+            owner = item.get("workflow_run") or {}
+            require(item.get("id") == artifact_id and item.get("expired") is False
+                    and owner.get("id") == run_id
+                    and owner.get("head_sha") == source,
+                    "uploaded Pages artifact identity mismatch")
+            # REST visibility may precede availability in the Pages action backend.
+            time.sleep(5)
+            return
+        if check < 11:
+            time.sleep(3)
+    require(False, "uploaded Pages artifact did not become visible")
+
+
 def artifact_for(run: dict) -> dict:
     artifacts = api(f"actions/runs/{run['id']}/artifacts?per_page=100")
     require(artifacts.get("total_count", 0) <= 100, "ambiguous artifact pagination")
-    matches = [a for a in artifacts["artifacts"] if a.get("name") == "github-pages"]
+    expected = artifact_name(run.get("run_attempt", 1))
+    matches = [a for a in artifacts["artifacts"] if a.get("name") == expected]
+    if not matches:
+        # Read-only compatibility with releases published before per-attempt names.
+        require(not any(str(a.get("name", "")).startswith("github-pages-attempt-")
+                        for a in artifacts["artifacts"]),
+                "last deployed Pages attempt artifact missing")
+        matches = [a for a in artifacts["artifacts"] if a.get("name") == "github-pages"]
     require(len(matches) == 1 and matches[0].get("expired") is False,
             "last deployed Pages artifact missing or expired; history cannot be reset")
     item = matches[0]
@@ -176,16 +222,23 @@ def recover(latest: Path, target: Path, output: Path, run_id: int) -> dict:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=("select", "prepare"))
+    parser.add_argument("command", choices=("select", "prepare", "wait"))
     parser.add_argument("--source-commit", required=True)
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1])
-    parser.add_argument("--selection", type=Path, required=True)
+    parser.add_argument("--selection", type=Path)
+    parser.add_argument("--artifact-id", type=int)
     args = parser.parse_args()
     root = args.root.resolve()
     require(subprocess.check_output(["git", "-C", str(root), "rev-parse", "HEAD"],
                                     text=True).strip() == args.source_commit, "main is not pinned")
     validate_event(root, os.environ["GITHUB_EVENT_NAME"],
                    read_json(Path(os.environ["GITHUB_EVENT_PATH"])), args.source_commit)
+    if args.command == "wait":
+        wait_for_uploaded_artifact(int(os.environ["GITHUB_RUN_ID"]),
+                                   int(os.environ["GITHUB_RUN_ATTEMPT"]),
+                                   args.artifact_id, args.source_commit)
+        return
+    require(args.selection is not None, "Pages history selection path is required")
     temporary = Path(os.environ["RUNNER_TEMP"])
     if args.command == "select":
         rollback = os.environ.get("ROLLBACK_RUN_ID", "").strip()
