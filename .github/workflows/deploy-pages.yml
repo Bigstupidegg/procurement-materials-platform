@@ -150,10 +150,18 @@ jobs:
         id: pages_artifact
         uses: actions/upload-artifact@v4
         with:
-          name: github-pages
+          name: github-pages-attempt-${{ github.run_attempt }}
           path: ${{ runner.temp }}/artifact.tar
           if-no-files-found: error
           retention-days: 90
+
+      - name: Wait for exact uploaded Pages artifact visibility
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          python scripts/release_history.py wait
+          --source-commit "${{ steps.source.outputs.sha }}"
+          --artifact-id "${{ steps.pages_artifact.outputs.artifact-id }}"
 
       - name: Record uploaded artifact identity
         env:
@@ -192,3 +200,5 @@ jobs:
       - name: Deploy GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+        with:
+          artifact_name: github-pages-attempt-${{ github.run_attempt }}
