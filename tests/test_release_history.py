@@ -207,6 +207,7 @@ class HistorySelectionTests(unittest.TestCase):
         self.missing = False
         self.foreign_target = False
         self.empty = False
+        self.modern = False
 
     def api(self, endpoint):
         self.calls.append(endpoint)
@@ -229,6 +230,13 @@ class HistorySelectionTests(unittest.TestCase):
                  "completed_at": f"2026-11-12T00:{run_id}:00Z"}]}]}
         if "/artifacts?" in endpoint:
             run_id = int(endpoint.split("/")[2])
+            if self.modern:
+                return {"total_count": 0 if self.missing else 2,
+                        "artifacts": [] if self.missing else [
+                            {"name": "github-pages-attempt-1", "id": run_id * 100 + 1,
+                             "expired": False, "workflow_run": {"head_sha": "1" * 40}},
+                            {"name": "github-pages-attempt-2", "id": run_id * 100 + 2,
+                             "expired": self.expired, "workflow_run": {"head_sha": "1" * 40}}]}
             return {"total_count": 0 if self.missing else 1, "artifacts": [] if self.missing else [{
                 "name": "github-pages", "id": run_id * 100, "expired": self.expired,
                 "workflow_run": {"head_sha": "1" * 40}}]}
@@ -290,6 +298,70 @@ class HistorySelectionTests(unittest.TestCase):
         with patch.object(history.subprocess, "run", return_value=subprocess.CompletedProcess([], 1)):
             with self.assertRaises(release.ReleaseBlocked):
                 history.ancestor(Path("."), "1" * 40, "2" * 40)
+
+
+    def test_retried_successful_run_selects_exact_attempt_artifact(self):
+        self.run["run_attempt"] = 2
+        self.modern = True
+        selected = self.select()["latest"]
+        self.assertEqual(selected["runId"], 11)
+        self.assertEqual(selected["artifactId"], 1102)
+
+    def test_missing_retried_attempt_never_falls_back_to_prior_attempt(self):
+        self.run["run_attempt"] = 3
+        self.modern = True
+        with self.assertRaisesRegex(release.ReleaseBlocked, "attempt artifact missing"):
+            self.select()
+
+
+class PagesArtifactVisibilityTests(unittest.TestCase):
+    def test_attempt_name_rejects_invalid_values(self):
+        self.assertEqual(history.artifact_name(2), "github-pages-attempt-2")
+        for invalid in (0, -1, "2", True, 1000001):
+            with self.subTest(invalid=invalid), self.assertRaises(release.ReleaseBlocked):
+                history.artifact_name(invalid)
+
+    def test_waits_for_exact_artifact_and_allows_backend_settle(self):
+        run, artifact_id, source = 42, 102, "a" * 40
+        empty = {"total_count": 0, "artifacts": []}
+        ready = {"total_count": 1, "artifacts": [{
+            "name": "github-pages-attempt-2", "id": artifact_id, "expired": False,
+            "workflow_run": {"id": run, "head_sha": source}}]}
+        with patch.object(history, "api", side_effect=[empty, ready]) as api, \
+             patch.object(history.time, "sleep") as sleep:
+            history.wait_for_uploaded_artifact(run, 2, artifact_id, source)
+        self.assertEqual(api.call_count, 2)
+        self.assertEqual([c.args[0] for c in sleep.call_args_list], [3, 5])
+
+    def test_wrong_identity_duplicate_and_missing_artifact_fail_closed(self):
+        source = "a" * 40
+        wrong = {"total_count": 1, "artifacts": [{
+            "name": "github-pages-attempt-1", "id": 999, "expired": False,
+            "workflow_run": {"id": 42, "head_sha": source}}]}
+        duplicate = {"total_count": 2, "artifacts": [
+            dict(wrong["artifacts"][0], id=7),
+            dict(wrong["artifacts"][0], id=8)]}
+        for listing, message in ((wrong, "identity mismatch"), (duplicate, "ambiguous")):
+            with self.subTest(message=message), \
+                 patch.object(history, "api", return_value=listing), \
+                 patch.object(history.time, "sleep"), \
+                 self.assertRaisesRegex(release.ReleaseBlocked, message):
+                history.wait_for_uploaded_artifact(42, 1, 7, source)
+        with patch.object(history, "api", return_value={
+             "total_count": 0, "artifacts": []}) as api, \
+             patch.object(history.time, "sleep") as sleep, \
+             self.assertRaisesRegex(release.ReleaseBlocked, "did not become visible"):
+            history.wait_for_uploaded_artifact(42, 1, 7, source)
+        self.assertEqual(api.call_count, 12)
+        self.assertEqual(sleep.call_count, 11)
+
+    def test_workflow_keeps_upload_deploy_attempt_names_identical(self):
+        workflow = (Path(__file__).resolve().parents[1] /
+                    ".github/workflows/deploy-pages.yml").read_text(encoding="utf-8")
+        self.assertEqual(workflow.count("github-pages-attempt-" + "$" + "{{ github.run_attempt }}"), 2)
+        self.assertIn("release_history.py wait", workflow)
+        self.assertNotIn("overwrite: true", workflow)
+
 
 
 if __name__ == "__main__":
